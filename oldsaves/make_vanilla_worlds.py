@@ -138,6 +138,8 @@ class Builder:
         self.failures = []
         self.pending = []
         self.long = []
+        # where long commands' command block goes; None: beside the bot (mcbot.long_command's own spot)
+        self.scratch = None
 
     def cmd(self, line):
         """Queued; short ones go in batches, long ones through a command block, all in order at flush()."""
@@ -560,7 +562,7 @@ def fill_inventory(bot):
     put(5, item(310, 1, 0, ench=enchants((0, 4), (5, 3))))
     put(6, item(307))
     put(7, item(316, 1, 40))
-    put(8, LEATHER if False else item(301, 1, 0, display=compound(color=int_(0xAA2222))))
+    put(8, item(301, 1, 0, display=compound(color=int_(0xAA2222))))
     hotbar = [SWORD, item(261, 1, 0, ench=enchants((48, 5), (51, 1))), potion(8193), potion(16385), potion(8198),
               BOOK, ENCHANTED_BOOK, item(322, 3, 1), item(368, 16)]
     for i, stack in enumerate(hotbar):

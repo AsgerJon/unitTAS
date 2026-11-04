@@ -49,7 +49,11 @@ final class TasRunner implements Runnable {
 	static final double START_Z = 0.5;
 
 	private enum Outcome {
-		OK("ok"), FAIL("FAIL"), ERROR("ERROR"), SKIP("skipped");
+		OK("ok"), FAIL("FAIL"), ERROR("ERROR"), SKIP("skipped"),
+		/** @ExpectedFailure: failed as marked; and passed although marked, which fails the run. */
+		EXPECTED_FAILURE("expected failure"), UNEXPECTED_SUCCESS("unexpected success"),
+		/** unitTAS's own, not a test: a suite that doesn't exist, a class that can't run, a stop, a world that didn't load. */
+		PROBLEM("problem");
 
 		final String word;
 
@@ -69,14 +73,16 @@ final class TasRunner implements Runnable {
 		String noScreenshot;
 		/** The game stopped ticking or running steps during this test. */
 		boolean stuck;
+		/** What the test did that works but shouldn't be relied on, each with where it was. */
+		final List<String> warnings = new ArrayList<>();
 
 		Result(String name) {
 			this.name = name;
 		}
 
-		static Result error(String name, String detail) {
+		static Result problem(String name, String detail) {
 			Result result = new Result(name);
-			result.outcome = Outcome.ERROR;
+			result.outcome = Outcome.PROBLEM;
 			result.detail = detail;
 			return result;
 		}
@@ -108,7 +114,7 @@ final class TasRunner implements Runnable {
 	/** A report for a run that never got to its tests (the world didn't load, say): the problem as its one error. */
 	static void reportUnstarted(TasGame game, String name, String problem) {
 		TasRunner runner = new TasRunner(game);
-		runner.results.add(Result.error(name, problem));
+		runner.results.add(Result.problem(name, problem));
 		runner.writeReport(0.0);
 	}
 
@@ -117,7 +123,7 @@ final class TasRunner implements Runnable {
 		long start = System.currentTimeMillis();
 		try {
 			for (String problem : TasPlugins.problems()) {
-				results.add(Result.error("unitTAS.plugins", problem));
+				results.add(Result.problem("unitTAS.plugins", problem));
 			}
 			List<Test> tests = allTests();
 			if (!request.saves.isEmpty()) {
@@ -137,7 +143,7 @@ final class TasRunner implements Runnable {
 				}
 			}
 		} catch (Throwable t) {
-			results.add(Result.error("unitTAS", stackTrace(t)));
+			results.add(Result.problem("unitTAS", stackTrace(t)));
 			request.progress("unitTAS itself failed: " + t);
 		}
 		game.activity("writing the report");
@@ -160,7 +166,7 @@ final class TasRunner implements Runnable {
 				Collection<String> names = TasSuites.names();
 				String problem = "no suite called '" + suite + "' (there are: "
 					+ (names.isEmpty() ? "none, no class is marked @TasSuite" : String.join(", ", names)) + ")";
-				results.add(Result.error("unitTAS.suites", problem));
+				results.add(Result.problem("unitTAS.suites", problem));
 				request.progress(problem);
 				continue;
 			}
@@ -179,16 +185,16 @@ final class TasRunner implements Runnable {
 		try {
 			Class<?> type = Class.forName(className, true, TasRunner.class.getClassLoader());
 			if (!TasTestCase.class.isAssignableFrom(type)) {
-				results.add(Result.error(className, "marked @TasSuite, but it doesn't extend TasTestCase"));
+				results.add(Result.problem(className, "marked @TasSuite, but it doesn't extend TasTestCase"));
 				return null;
 			}
 			if (Modifier.isAbstract(type.getModifiers())) {
-				results.add(Result.error(className, "marked @TasSuite, but abstract: mark the classes that extend it instead"));
+				results.add(Result.problem(className, "marked @TasSuite, but abstract: mark the classes that extend it instead"));
 				return null;
 			}
 			return type.asSubclass(TasTestCase.class);
 		} catch (ClassNotFoundException | LinkageError e) {
-			results.add(Result.error(className, "can't load it: " + stackTrace(e)));
+			results.add(Result.problem(className, "can't load it: " + stackTrace(e)));
 			return null;
 		}
 	}
@@ -226,7 +232,7 @@ final class TasRunner implements Runnable {
 				TasSave.current = save;
 				String suffix = " [" + folder + ", load " + pass + "]";
 				if (problem != null) {
-					results.add(Result.error("TasRunner.openSave" + suffix, problem));
+					results.add(Result.problem("TasRunner.openSave" + suffix, problem));
 					request.progress(problem);
 				} else {
 					request.progress(String.format(Locale.ROOT, "%s loaded in %.0f s", folder, save.loadSeconds));
@@ -247,7 +253,7 @@ final class TasRunner implements Runnable {
 				game.activity("closing " + folder + ", load " + pass);
 				String quit = quitAndWait();
 				if (quit != null) {
-					results.add(Result.error("TasRunner.quitSave" + suffix, quit));
+					results.add(Result.problem("TasRunner.quitSave" + suffix, quit));
 					request.progress(quit);
 					return;
 				}
@@ -402,7 +408,10 @@ final class TasRunner implements Runnable {
 		game.testStarts(label + result.name);
 		int chatMark = game.chatMark();
 		long start = System.currentTimeMillis();
+		ExpectedFailure expected = expectedFailure(test);
 		Throwable problem = null;
+		// the problem came from the test method itself (not setUp, tearDown or the run): what @ExpectedFailure covers
+		boolean fromTest = false;
 		boolean pictured = false;
 		try {
 			TasTestCase instance = test.testClass.getConstructor().newInstance();
@@ -419,7 +428,9 @@ final class TasRunner implements Runnable {
 				test.method.invoke(instance);
 			} catch (Throwable t) {
 				problem = unwrap(t);
-				if (!(problem instanceof TasTestCase.Skip)) {
+				fromTest = true;
+				// an expected failure goes without a picture: it says nothing new
+				if (!(problem instanceof TasTestCase.Skip) && !asMarked(expected, problem)) {
 					// the failure's picture before tearDown puts things away; tearDown then gets its own full time
 					game.stopClock();
 					Thread.interrupted();
@@ -454,11 +465,19 @@ final class TasRunner implements Runnable {
 			game.stopClock();
 			Thread.interrupted();
 		}
-		if (problem == null) {
+		if (problem == null && expected != null) {
+			result.outcome = Outcome.UNEXPECTED_SUCCESS;
+			result.detail = "marked @ExpectedFailure(\"" + expected.value() + "\"), but it passed: the mark can go";
+		} else if (problem == null) {
 			result.outcome = Outcome.OK;
 		} else if (problem instanceof TasTestCase.Skip) {
 			result.outcome = Outcome.SKIP;
 			result.detail = problem.getMessage();
+		} else if (fromTest && asMarked(expected, problem) && problem.getSuppressed().length == 0) {
+			// as marked (a tearDown that also failed makes it what it is instead)
+			result.outcome = Outcome.EXPECTED_FAILURE;
+			result.detail = "expected: " + expected.value() + "\n"
+				+ (problem instanceof AssertionError ? "AssertionError: " + problem.getMessage() : problem.toString()) + where(problem, test);
 		} else if (problem instanceof AssertionError) {
 			result.outcome = Outcome.FAIL;
 			result.detail = "AssertionError: " + problem.getMessage() + where(problem, test);
@@ -478,8 +497,37 @@ final class TasRunner implements Runnable {
 		}
 		result.seconds = (System.currentTimeMillis() - start) / 1000.0;
 		result.chat = game.chatSince(chatMark);
+		for (Throwable warning : game.takeWarnings()) {
+			// once for each place: a warning in a loop is one warning
+			String line = warning.getMessage() + where(warning, test);
+			if (!result.warnings.contains(line)) {
+				result.warnings.add(line);
+			}
+		}
 		game.testEnds();
 		return result;
+	}
+
+	/** The test's @ExpectedFailure: on its method, or on its class (or a class above it). */
+	private static ExpectedFailure expectedFailure(Test test) {
+		ExpectedFailure mark = test.method.getAnnotation(ExpectedFailure.class);
+		return mark != null ? mark : test.testClass.getAnnotation(ExpectedFailure.class);
+	}
+
+	/**
+	 * The problem is one the mark covers: anything the test throws but unitTAS's own stops (out of time, the game
+	 * stopped answering, the watcher's fail), which say nothing of what the test checks.
+	 */
+	private static boolean asMarked(ExpectedFailure expected, Throwable problem) {
+		if (expected == null || problem instanceof TasTestCase.Skip) {
+			return false;
+		}
+		for (Throwable t = problem; t != null; t = t.getCause()) {
+			if (t instanceof TasGame.Timeout) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private String screenshot(Result result) {
@@ -551,7 +599,7 @@ final class TasRunner implements Runnable {
 				case ABORT: {
 					String problem = "the watcher stopped the run (alarm " + decision.alarm + ") after " + result.name + ": "
 						+ decision.why + "; " + left + " test" + (left == 1 ? "" : "s") + " not run";
-					results.add(Result.error("unitTAS.aborted", problem));
+					results.add(Result.problem("unitTAS.aborted", problem));
 					request.progress(problem);
 					return true;
 				}
@@ -572,7 +620,7 @@ final class TasRunner implements Runnable {
 		}
 		String problem = why + " after " + result.name + "; the run stops here, " + left + " test" + (left == 1 ? "" : "s")
 			+ " not run (threads in " + dump + ")";
-		results.add(Result.error("unitTAS.stopped", problem));
+		results.add(Result.problem("unitTAS.stopped", problem));
 		request.progress(problem);
 		return true;
 	}
@@ -584,7 +632,7 @@ final class TasRunner implements Runnable {
 			return false;
 		}
 		String problem = reason + "; " + left + " test" + (left == 1 ? "" : "s") + " not run";
-		results.add(Result.error("unitTAS.aborted", problem));
+		results.add(Result.problem("unitTAS.aborted", problem));
 		request.progress(problem);
 		return true;
 	}
@@ -720,10 +768,20 @@ final class TasRunner implements Runnable {
 		game.clientTicks(3);
 	}
 
+	/**
+	 * report.txt, as unittest prints its results: a line for each test, what went wrong under those that didn't pass,
+	 * then the counts. unitTAS's own problems are counted apart from the tests, and fail the run as an error does; so
+	 * does an unexpected success. The last line is OK or FAILED, which the scripts read for their exit code.
+	 */
 	private void writeReport(double seconds) {
+		int tests = 0;
 		int failures = 0;
 		int errors = 0;
 		int skipped = 0;
+		int expectedFailures = 0;
+		int unexpectedSuccesses = 0;
+		int problems = 0;
+		int warnings = 0;
 		StringBuilder report = new StringBuilder();
 		report.append("unitTAS report, ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new Date()))
 			.append(", suites: ").append(String.join(", ", request.suites));
@@ -743,41 +801,65 @@ final class TasRunner implements Runnable {
 				case SKIP:
 					skipped++;
 					break;
+				case EXPECTED_FAILURE:
+					expectedFailures++;
+					break;
+				case UNEXPECTED_SUCCESS:
+					unexpectedSuccesses++;
+					break;
+				case PROBLEM:
+					problems++;
+					break;
 				default:
 					break;
+			}
+			if (result.outcome != Outcome.PROBLEM) {
+				tests++;
 			}
 			if (result.outcome != Outcome.OK) {
 				for (String line : result.detail.split("\n")) {
 					report.append("    ").append(line).append('\n');
 				}
-				if (result.screenshot != null) {
-					report.append("    screenshot: ").append(result.screenshot).append('\n');
+			}
+			for (String warning : result.warnings) {
+				String[] lines = warning.split("\n");
+				report.append("    warning: ").append(lines[0]).append('\n');
+				for (int i = 1; i < lines.length; i++) {
+					report.append("    ").append(lines[i]).append('\n');
 				}
-				if (result.outcome != Outcome.SKIP) {
-					report.append("    chat during the test:\n");
-					for (TasGame.ChatLine line : result.chat) {
-						report.append("      | ").append(line.plain).append('\n');
-					}
+				warnings++;
+			}
+			if (result.screenshot != null) {
+				report.append("    screenshot: ").append(result.screenshot).append('\n');
+			}
+			if (result.outcome == Outcome.FAIL || result.outcome == Outcome.ERROR) {
+				report.append("    chat during the test:\n");
+				for (TasGame.ChatLine line : result.chat) {
+					report.append("      | ").append(line.plain).append('\n');
 				}
 			}
 		}
 		report.append("----------------------------------------------------------------------\n");
-		report.append(String.format(Locale.ROOT, "Ran %d tests in %.1f s%n%n", results.size(), seconds));
-		if (failures + errors == 0) {
-			report.append("OK").append(skipped > 0 ? " (skipped=" + skipped + ")" : "").append('\n');
-		} else {
-			List<String> counts = new ArrayList<>();
-			if (failures > 0) {
-				counts.add("failures=" + failures);
-			}
-			if (errors > 0) {
-				counts.add("errors=" + errors);
-			}
-			if (skipped > 0) {
-				counts.add("skipped=" + skipped);
-			}
-			report.append("FAILED (").append(String.join(", ", counts)).append(")\n");
+		report.append(String.format(Locale.ROOT, "Ran %d %s in %.1f s", tests, tests == 1 ? "test" : "tests", seconds));
+		if (problems > 0) {
+			report.append(", ").append(problems).append(problems == 1 ? " problem" : " problems").append(" outside them");
 		}
+		if (warnings > 0) {
+			report.append(", ").append(warnings).append(warnings == 1 ? " warning" : " warnings");
+		}
+		report.append("\n\n");
+		// as unittest counts them, and unitTAS's own problems last
+		List<String> counts = new ArrayList<>();
+		String[] names = {"failures", "errors", "skipped", "expected failures", "unexpected successes", "problems"};
+		int[] numbers = {failures, errors, skipped, expectedFailures, unexpectedSuccesses, problems};
+		for (int i = 0; i < names.length; i++) {
+			if (numbers[i] > 0) {
+				counts.add(names[i] + "=" + numbers[i]);
+			}
+		}
+		boolean ok = failures + errors + unexpectedSuccesses + problems == 0;
+		String within = counts.isEmpty() ? "" : " (" + String.join(", ", counts) + ")";
+		report.append(ok ? "OK" + within : "FAILED" + within).append('\n');
 		File folder = request.results;
 		if (!folder.isDirectory() && !folder.mkdirs()) {
 			UnitTas.LOG.error("Can't make {}", folder);
@@ -787,7 +869,7 @@ final class TasRunner implements Runnable {
 		} catch (IOException e) {
 			UnitTas.LOG.error("Can't write the report", e);
 		}
-		request.progress(failures + errors == 0 ? "done: OK" : "done: FAILED");
+		request.progress(ok ? "done: OK" : "done: FAILED");
 	}
 
 	/**

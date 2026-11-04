@@ -23,15 +23,19 @@ one).
 The script starts `./gradlew runClient`, shows each test as it finishes and prints the report when the game quits.
 Everything lands in `unittas-results/<time>/` (`unittas-results/latest` is the newest):
 
-- `report.txt`: one line per test (`ok`, `FAIL`, `ERROR`, `skipped`); for each that didn't pass, the assertion and
-  where it failed (or the stack trace), the chat during the test and its screenshot. Ends with `OK` or
-  `FAILED (failures=…, errors=…)`. A suite that doesn't exist is an error, not an empty run.
+- `report.txt`: one line per test (`ok`, `FAIL`, `ERROR`, `skipped`, `expected failure`, `unexpected success`); for
+  each that failed, the assertion and where (or the stack trace), the chat during the test and its screenshot; under
+  any test, its warnings. unitTAS's own problems (a suite that doesn't exist, a class that can't run, a run that
+  stopped) are lines of their own, `problem`, counted apart from the tests: `Ran 16 tests in 41.0 s, 1 problem
+  outside them`. Ends with `OK (expected failures=2)` or `FAILED (failures=1, errors=…, unexpected successes=…,
+  problems=…)`, as unittest counts.
 - `screenshots/`: one per failed test (taken before its `tearDown`), plus the ones tests take on purpose.
 - `progress.txt`, `gradle.log`: the run as it went.
 
-The test world is `run/client/saves/unittas`, made new each run; no other save is touched, and your `options.txt` is
-kept aside and put back. A run refuses to start beside a game already open in `run/client`. The run needs no focus;
-on KDE, `unittas.kwinrule` and `./unittas-desktop.sh` keep its window (titled and classed `unitTAS`) off your desktop.
+The test world is `run/client/saves/unittas`, made new each run; no other save is touched, and your `options.txt` and
+`config/` are kept aside and put back as they were (a file a test changed restored, one it made removed). A run
+refuses to start beside a game already open in `run/client`. The run needs no focus; on KDE, `unittas.kwinrule` and
+`./unittas-desktop.sh` keep its window (titled and classed `unitTAS`) off your desktop.
 
 ## Writing tests
 
@@ -62,10 +66,11 @@ thread and asks the game for each step.
   `type(text)` opens the chat and types key by key; its `TasChat` has `text()`, `suggestions()`, `usage()`,
   `key(…)`, `typeMore(text)`, `enter()`, `close()`.
 - **Steps:** `onServer(() -> …)` and `onClient(() -> …)` run a step on that thread and return its result; inside a
-  server step `player()` and `world()` are the server's. Never touch game objects outside a step, and never wait for
-  ticks inside one.
+  server step `player()` and `world()` are the server's. Never touch game objects outside a step (`player()`,
+  `world()`, `entitiesNear()` or `runCommand()` outside a server step put a warning in the report, with where), and
+  never wait for ticks inside one.
 - **Waiting:** `ticks(n)`, `serverTicks(n)`, `waitUntil("what", () -> condition, maxTicks)` (on the server),
-  `waitUntilOnClient(…)`.
+  `waitUntilOnClient(…)`. A wait gives up only when no tick has come for 15 s, so a slow game still gets there.
 - **Sounds:** `waitForSound("minecraft:random.bow", maxTicks)`, `soundsHeard()`, `clearSounds()`.
 - **Things:** `held()`, `inventory()`, `setHeld(stack)`, `id(stack)` (`minecraft:wool:14`),
   `spawn(EntityZombie::new, x, y, z)`, `entitiesNear(Type.class, radius)`, `difficulty(EnumDifficulty.PEACEFUL)`.
@@ -77,6 +82,9 @@ thread and asks the game for each step.
   (its third argument is the allowed difference), `fail`, `skipTest`; for commands `assertSaid`, `assertError`,
   `assertNoError`. ItemStacks are never equal to one another: compare `id(stack)` and the size.
 - `timeoutSeconds()` (default 60) stops a test that hangs.
+- `@ExpectedFailure("why")` on a test (or its class), as unittest's `expectedFailure`: a failure in the test itself is
+  an `expected failure` and the run can still be OK; a pass is an `unexpected success`, which fails the run (the mark
+  can go). setUp, tearDown and a test that ran out of time stay what they are.
 
 **The world:** flat (the surface is y 3), creative, cheats, seed 20261029, Easy, always noon, no weather, no mob
 spawning. Before every test the player is put back at 0.5 4 0.5 looking south (creative, not flying, empty inventory,
@@ -149,6 +157,10 @@ No coremod argument is needed: the development run finds unitTAS's coremod in it
 `./gradlew build` (Gradle on Unimined: Java 21 runs Gradle, the bytecode is Java 8) makes
 `build/libs/unittas-<version>.jar` (the release jar, Searge names, with its refmap) and `unittas-<version>-dev.jar`
 (MCP `stable_12` names).
+
+unitTAS's own tests are in `src/self/java`, in neither jar. `./unittas.sh self` must be all ok. The `self-red` suite is
+red on purpose, in known ways (the report's outcomes and counts, the warnings, the config put back):
+`./unittas.sh "self,self-red,nosuch"`, then `python3 bin/self_red_check.py` checks the report line by line.
 
 Releases are buttons in GitHub's Actions tab: `dev`, `rc`, `lts-micro`, `lts-minor` and `lts-major`. Nobody edits the
 version or tags by hand; `bin/release_tooling/VERSION` holds the counters. `rc` and the `lts-*` buttons run only when

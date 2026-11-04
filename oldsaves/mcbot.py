@@ -5,6 +5,7 @@ send position packets 20 times a second (a 1.7.10 player's own update runs once 
 command block's "set command" message (MC|AdvCdm), creative inventory slots, and the respawn request after the End.
 """
 import json
+import math
 import socket
 import struct
 import threading
@@ -327,8 +328,10 @@ class Bot:
 
         It runs in this player's dimension, where the command block is: give it absolute coordinates.
         """
-        x, y, z = at or (int(self.x) // 1, int(self.y) + 3, int(self.z))
-        x, y, z = int(x), int(y), int(z)
+        if at is None:
+            at = (self.x, self.y + 3, self.z)
+        # floor, not int(): int() rounds negative coordinates towards 0, into the next block
+        x, y, z = (int(math.floor(c)) for c in at)
         failures = self.commands(['/setblock %d %d %d command_block 0 replace' % (x, y, z)])
         if failures:
             return [(line, 'command block not placed: ' + failures[0][1], failures[0][2])]
@@ -387,5 +390,5 @@ def _succeeded(key):
     if key == 'commands.setblock.noChange':
         return True  # the block was already that
     bad = ('.failed', '.outOfWorld', '.notFound', '.tagError', '.usage', '.exception', '.permission',
-           '.notFound', 'generic.', '.invalid', '.noItem', '.notSafe', 'Error')
+           'generic.', '.invalid', '.noItem', '.notSafe', 'Error')
     return not any(b in key for b in bad)

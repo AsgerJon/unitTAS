@@ -18,9 +18,13 @@ import org.lwjgl.input.Mouse;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.Callable;
@@ -29,6 +33,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The game side of a unitTAS run: makes the test world from the main menu, starts the runner once the player stands in
@@ -117,9 +123,15 @@ public final class TasGame {
 	private boolean pauseOnLostFocus;
 	private EnumDifficulty difficulty;
 
+	/** The run going on, for the test helpers that have no game of their own (player() off the server thread warns here). */
+	private static volatile TasGame current;
+	/** The running test's warnings, each made where it was raised, so the report can say where. */
+	private final List<Throwable> warnings = new ArrayList<>();
+
 	TasGame(UnitTas.Request request) {
 		this.request = request;
 		this.watch = new TasWatch(this);
+		current = this;
 	}
 
 	UnitTas.Request request() {
@@ -293,6 +305,7 @@ public final class TasGame {
 	 */
 	private void prepareRun(Minecraft mc, boolean easy) {
 		backUpOptions(mc);
+		backUpConfig(mc);
 		pauseOnLostFocus = mc.gameSettings.pauseOnLostFocus;
 		difficulty = mc.gameSettings.difficulty;
 		mc.gameSettings.pauseOnLostFocus = false;
@@ -378,6 +391,93 @@ public final class TasGame {
 		}
 	}
 
+	/**
+	 * The game's config/ (Forge's settings and the mods'), kept aside as options.txt is: a test that changes a mod's
+	 * setting writes the mod's file with the run's value in it. Put back exactly at the end: changed files restored,
+	 * files the run made removed. The copy counts only once it is whole (its marker is written last), so a run that
+	 * died while copying never puts back half a folder.
+	 */
+	private static File configBackup(Minecraft mc) {
+		return new File(mc.mcDataDir, "unittas/config.backup");
+	}
+
+	private static File configBackupWhole(Minecraft mc) {
+		return new File(mc.mcDataDir, "unittas/config.backup.whole");
+	}
+
+	private void backUpConfig(Minecraft mc) {
+		File config = new File(mc.mcDataDir, "config");
+		File backup = configBackup(mc);
+		File whole = configBackupWhole(mc);
+		try {
+			if (whole.isFile()) {
+				// an earlier run died before putting it back; the copy is the player's
+				copyExactly(backup.toPath(), config.toPath());
+				return;
+			}
+			deleteTree(backup.toPath());
+			copyExactly(config.toPath(), backup.toPath());
+			Files.write(whole.toPath(), new byte[0]);
+		} catch (IOException | UncheckedIOException e) {
+			request.progress("can't keep config/ aside: " + e);
+		}
+	}
+
+	private void restoreConfig(Minecraft mc) {
+		File whole = configBackupWhole(mc);
+		if (!whole.isFile()) {
+			return;
+		}
+		File backup = configBackup(mc);
+		try {
+			copyExactly(backup.toPath(), new File(mc.mcDataDir, "config").toPath());
+			Files.delete(whole.toPath());
+			deleteTree(backup.toPath());
+		} catch (IOException | UncheckedIOException e) {
+			request.progress("can't put config/ back (the copy is in " + backup + "): " + e);
+		}
+	}
+
+	/** Makes the folder `to` hold exactly what `from` holds: every file copied over, anything `from` lacks removed. */
+	private static void copyExactly(Path from, Path to) throws IOException {
+		Files.createDirectories(to);
+		// deepest first, so a folder that goes is empty by its turn
+		List<Path> there = below(to);
+		Collections.reverse(there);
+		for (Path path : there) {
+			if (!Files.exists(from.resolve(to.relativize(path)), LinkOption.NOFOLLOW_LINKS)) {
+				Files.delete(path);
+			}
+		}
+		for (Path path : below(from)) {
+			Path target = to.resolve(from.relativize(path));
+			if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+				Files.createDirectories(target);
+			} else {
+				Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS);
+			}
+		}
+	}
+
+	private static void deleteTree(Path root) throws IOException {
+		List<Path> paths = below(root);
+		Collections.reverse(paths);
+		for (Path path : paths) {
+			Files.delete(path);
+		}
+		Files.deleteIfExists(root);
+	}
+
+	/** Everything under the folder (not the folder itself), each folder before what it holds; none if it isn't one. */
+	private static List<Path> below(Path root) throws IOException {
+		if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+			return new ArrayList<>();
+		}
+		try (Stream<Path> paths = Files.walk(root)) {
+			return paths.filter(path -> !path.equals(root)).collect(Collectors.toCollection(ArrayList::new));
+		}
+	}
+
 	/** Puts the player's settings back and quits the game (on the client thread). */
 	void finish(Minecraft mc) {
 		stage = Stage.DONE;
@@ -391,6 +491,7 @@ public final class TasGame {
 			}
 		}
 		restoreOptions(mc);
+		restoreConfig(mc);
 		mc.shutdown();
 	}
 
@@ -487,7 +588,39 @@ public final class TasGame {
 		activity = label;
 		doing = null;
 		testStartedAt = System.currentTimeMillis();
+		synchronized (warnings) {
+			warnings.clear();
+		}
 		inTest = true;
+	}
+
+	/**
+	 * A warning for the running test when the caller isn't on the server thread: the server's objects (its player, its
+	 * world) belong to that thread, and read from another they usually work and sometimes don't. A warning, not a
+	 * failure, for now.
+	 */
+	static void expectServerThread(String what) {
+		TasGame game = current;
+		if (game == null || !game.inTest) {
+			return;
+		}
+		Thread server = game.serverThread;
+		Thread here = Thread.currentThread();
+		if (server != null && here != server) {
+			String from = here == game.clientThread ? "the client thread" : "the test's thread";
+			synchronized (game.warnings) {
+				game.warnings.add(new Throwable(what + " outside a server step (onServer): it reads the server's objects from " + from));
+			}
+		}
+	}
+
+	/** The running test's warnings so far; they are the caller's after this. */
+	List<Throwable> takeWarnings() {
+		synchronized (warnings) {
+			List<Throwable> taken = new ArrayList<>(warnings);
+			warnings.clear();
+			return taken;
+		}
 	}
 
 	void testEnds() {
@@ -600,18 +733,33 @@ public final class TasGame {
 		waitTicks(ticks, false);
 	}
 
+	/**
+	 * Waits until that side has ticked this often. It gives up only when no tick has come for the step limit (the
+	 * timer starts again at each tick), so a game that is slow but ticking (10 ticks a second in a heavy test) gets
+	 * there however long it takes; the test's own time limit still applies.
+	 */
 	private void waitTicks(int ticks, boolean client) {
 		String side = client ? "client" : "server";
 		if (Thread.currentThread() == (client ? clientThread : serverThread)) {
 			throw new IllegalStateException("can't wait for " + side + " ticks inside a " + side + " step: that thread doesn't tick while it runs the step");
 		}
-		long target = (client ? clientTicks : serverTicks) + ticks;
-		long giveUp = System.currentTimeMillis() + ticks * 50L + STEP_TIMEOUT_SECONDS * 1000L;
 		synchronized (tickLock) {
-			while ((client ? clientTicks : serverTicks) < target) {
-				long left = giveUp - System.currentTimeMillis();
+			long seen = client ? clientTicks : serverTicks;
+			long target = seen + ticks;
+			long giveUp = System.currentTimeMillis() + STEP_TIMEOUT_SECONDS * 1000L;
+			while (true) {
+				long count = client ? clientTicks : serverTicks;
+				if (count >= target) {
+					return;
+				}
+				long now = System.currentTimeMillis();
+				if (count != seen) {
+					seen = count;
+					giveUp = now + STEP_TIMEOUT_SECONDS * 1000L;
+				}
+				long left = giveUp - now;
 				if (left <= 0) {
-					throw new Timeout("the " + side + " stopped ticking (paused or stuck?)", true);
+					throw new Timeout("the " + side + " stopped ticking: no tick in " + STEP_TIMEOUT_SECONDS + " s (paused or stuck?)", true);
 				}
 				try {
 					tickLock.wait(left);

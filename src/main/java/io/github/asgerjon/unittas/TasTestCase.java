@@ -144,13 +144,15 @@ public abstract class TasTestCase {
 		throw new AssertionError("waited " + maxTicks + " ticks for " + what);
 	}
 
-	/** The player on the server side; use inside {@link #onServer}. */
+	/** The player on the server side; use inside {@link #onServer} (outside it, the report warns where). */
 	protected static EntityPlayerMP player() {
+		TasGame.expectServerThread("player()");
 		return TasGame.serverPlayer();
 	}
 
-	/** The player's world on the server side; use inside {@link #onServer}. */
+	/** The player's world on the server side; use inside {@link #onServer} (outside it, the report warns where). */
 	protected static WorldServer world() {
+		TasGame.expectServerThread("world()");
 		return (WorldServer) TasGame.serverPlayer().worldObj;
 	}
 
@@ -231,7 +233,8 @@ public abstract class TasTestCase {
 	 * (a summoned mob before it takes a step). The replies still go to the chat.
 	 */
 	protected static int runCommand(String text) {
-		return MinecraftServer.getServer().getCommandManager().executeCommand(player(), text);
+		TasGame.expectServerThread("runCommand()");
+		return MinecraftServer.getServer().getCommandManager().executeCommand(TasGame.serverPlayer(), text);
 	}
 
 	/** Where the chat stands now; {@link #chatSince} gives what came after (for messages that no command answered). */
@@ -338,10 +341,11 @@ public abstract class TasTestCase {
 		return Item.itemRegistry.getNameForObject(stack.getItem()) + ":" + stack.getMetadata();
 	}
 
-	/** The entities of the type within the radius of the player; use inside {@link #onServer}. */
+	/** The entities of the type within the radius of the player; use inside {@link #onServer} (outside it, a warning). */
 	@SuppressWarnings("unchecked")
 	protected static <E extends Entity> List<E> entitiesNear(Class<E> type, double radius) {
-		EntityPlayerMP player = player();
+		TasGame.expectServerThread("entitiesNear()");
+		EntityPlayerMP player = TasGame.serverPlayer();
 		return (List<E>) player.worldObj.getEntitiesWithinAABB(type, player.boundingBox.expand(radius, radius, radius));
 	}
 
