@@ -949,6 +949,10 @@ final class TasRunner implements Runnable {
 		}
 		game.server(() -> {
 			EntityPlayerMP player = TasGame.serverPlayer();
+			// the client's container, not only its screen (closed above): a creative inventory left open keeps window 0,
+			// and the player's own slot updates would land in its grid; the close packet makes the client close it, as
+			// Esc does
+			player.closeScreen();
 			// out of a bed an earlier test left the player in, and no bed of its to respawn at
 			if (player.isPlayerSleeping()) {
 				player.wakeUpPlayer(true, true, false);
@@ -957,6 +961,9 @@ final class TasRunner implements Runnable {
 			player.inventory.clearInventory(null, -1);
 			player.clearItemInUse();
 			player.inventoryContainer.detectAndSendChanges();
+			// the player's slots whole, after the close above: what was sent while the client had another window 0 open
+			// went astray
+			player.sendContainerToPlayer(player.inventoryContainer);
 			player.clearActivePotions();
 			// arrows from earlier tests stay drawn stuck in the player, over what the next test's shots show
 			player.setArrowCountInEntity(0);

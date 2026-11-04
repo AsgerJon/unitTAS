@@ -109,8 +109,14 @@ if [ -n "$open_games" ]; then
 fi
 
 echo "unitTAS: suites ${SUITES:-all}${FILTER:+, only '$FILTER'}$([ "$PROJECT" != "$ROOT" ] && echo " in $PROJECT"); results in unittas-results/$STAMP"
-./unittas-desktop.sh | tee "$RESULTS/desktop.txt"
-(cd "$PROJECT" && exec ./gradlew --console=plain "$TASK") > "$RESULTS/gradle.log" 2>&1 &
+# the game's window (unittas-display.sh): by default in gamescope's own window, which never takes focus; only a game
+# straight on the desktop (UNITTAS_DISPLAY=plain) gets the desktop script that moves it to desktop 2
+if [ "${UNITTAS_DISPLAY:-nested}" = plain ]; then
+	./unittas-desktop.sh | tee "$RESULTS/desktop.txt"
+else
+	echo "test window: in gamescope (UNITTAS_DISPLAY=${UNITTAS_DISPLAY:-nested}), never focused" | tee "$RESULTS/desktop.txt"
+fi
+(cd "$PROJECT" && exec "$ROOT/unittas-display.sh" ./gradlew --console=plain "$TASK") > "$RESULTS/gradle.log" 2>&1 &
 GRADLE=$!
 
 SPIN='|/-\'

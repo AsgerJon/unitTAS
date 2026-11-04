@@ -2,18 +2,20 @@
 # unitTAS on old saves: the saves in run/oldsaves/vanilla/ (made by vanilla 1.7.10 with oldsaves/make_vanilla_worlds.py),
 # opened by unitTAS's save mode twice each (as vanilla left them, then as the mod's game saved them) and checked
 # against their pristine copies by the mod's `oldsaves` suite.
-#   ./unittas.sh oldsaves            the release jar, in a Prism instance (Forge, the mod, its libraries)
+#   ./unittas.sh oldsaves            the release jar, in a real client (Forge, the mod, its libraries)
 #   ./unittas.sh oldsaves dev        the dev client (runClient), to try the save mode itself
 #   ./unittas.sh oldsaves dev@devcheck   another set of saves: run/oldsaves/devcheck/ (for trying the mode)
-#   ./unittas.sh oldsaves inspect    only reports the Prism instance (components, Java, mods, saves) and Prism's log
+#   ./unittas.sh oldsaves inspect    only reports the real client: the launcher's command, its game folder
+#   ./unittas.sh oldsaves instance   no saves: the release jar (and run/oldsaves/mods/*.jar) in the real client, a
+#                                    normal run of every suite its jars hold, in the fresh test world. For unitTAS's own
+#                                    jar that is none: the check that the jar starts outside a development run (the game
+#                                    must reach the world and report "Ran 0 tests", OK)
 # The watcher runs it as "oldsaves" (or "oldsaves dev"). Results: unittas-results/<time>/ as for any run, with the
 # saves as the game left them in saves-after/ and the game's log in game.log.
-# The Prism instance: unitTAS_vanilla_1_7_10 unless unittas-oldsaves.conf names another (INSTANCE_NAME; Minecraft
-# 1.7.10, Forge 10.13.4.1614, Java 8). It is looked for where Prism's settings say its instances are, in
-# ~/.local/share/PrismLauncher and the Flatpak's folder; unittas-oldsaves.conf may say instead (PRISM_CMD, PRISM_DIR:
-# Prism's data folder, INSTANCES_DIR, INSTANCE: the instance's folder). Each run its mods are the mod's release jar
-# and run/oldsaves/mods/*.jar (its libraries; what was there goes into the results), and the saves are fresh copies,
-# moved into the results after (the instance's own saves stay as they are).
+# The real client: unitTAS's own launcher (bin/launch_client.py) starts Minecraft 1.7.10 with Forge 10.13.4.1614 on
+# Java 8 from what the Gradle cache already holds (no other launcher, nothing downloaded), in run/release/. Each run its
+# mods are the mod's release jar and run/oldsaves/mods/*.jar (its libraries, UniMixins at least; what was there goes
+# into the results), and the saves are fresh copies, moved into the results after.
 set -u
 cd "$(dirname "$0")" || exit 1
 ROOT=$(pwd)
@@ -26,10 +28,8 @@ case "$MODE" in
 	*@*) SET=${MODE#*@}; MODE=${MODE%%@*} ;;
 esac
 PRISTINE="$ROOT/run/oldsaves/$SET"
-INSTANCE_NAME="unitTAS_vanilla_1_7_10"
-PRISM_CMD="" PRISM_DIR="" INSTANCES_DIR="" INSTANCE=""
-# shellcheck disable=SC1091
-[ -f "$ROOT/unittas-oldsaves.conf" ] && . "$ROOT/unittas-oldsaves.conf"
+GAME="$ROOT/run/release"
+LAUNCHER="$ROOT/bin/launch_client.py"
 START=$(date +%s)
 clock() {
 	local elapsed=$(( $(date +%s) - START ))
@@ -39,14 +39,14 @@ say() {
 	printf '[%s] %s\n' "$(clock)" "$*"
 }
 
-# ---------------------------------------------------------------- the saves (inspect looks only at the instance)
+# ---------------------------------------------------------------- the saves (inspect looks only at the real client)
 SAVES=""
 for dir in "$PRISTINE"/*/; do
 	[ -f "$dir/level.dat" ] || continue
 	name=$(basename "$dir")
 	SAVES="${SAVES:+$SAVES,}$name"
 done
-if [ "$MODE" != "inspect" ]; then
+if [ "$MODE" != "inspect" ] && [ "$MODE" != "instance" ]; then
 	if [ -z "$SAVES" ]; then
 		echo "No saves in $PRISTINE: make them first (python3 oldsaves/make_vanilla_worlds.py)."
 		exit 1
@@ -80,57 +80,6 @@ keep_saves() {
 	return 0
 }
 
-# Prism's command, and the instance's folders, unless unittas-oldsaves.conf gave them.
-find_prism() {
-	if [ -z "$PRISM_CMD" ]; then
-		if command -v prismlauncher >/dev/null; then
-			PRISM_CMD=prismlauncher
-		elif command -v flatpak >/dev/null && flatpak info org.prismlauncher.PrismLauncher >/dev/null 2>&1; then
-			PRISM_CMD="flatpak run org.prismlauncher.PrismLauncher"
-		fi
-	fi
-	if [ -z "$INSTANCES_DIR" ] || [ -z "$INSTANCE" ]; then
-		# The instances folder the conf names, if it does; then Prism's data folders, whose prismlauncher.cfg says
-		# (InstanceDir) where the instances are, maybe on another disk. An instance is found by its folder or by the
-		# name in its instance.cfg. Answer: "data folder (or nothing)|instances folder|instance folder".
-		local found found_data
-		found=$(python3 -I - "$INSTANCE_NAME" "$INSTANCES_DIR" "$HOME/.local/share/PrismLauncher" \
-			"$HOME/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher" <<'PY'
-import os, sys
-wanted, known = sys.argv[1], sys.argv[2]
-places = [('', known)] if known else []
-for base in sys.argv[3:]:
-    cfg = os.path.join(base, 'prismlauncher.cfg')
-    if not os.path.isfile(cfg):
-        continue
-    instances = 'instances'
-    for line in open(cfg, encoding='utf-8', errors='replace'):
-        if line.startswith('InstanceDir='):
-            instances = line.split('=', 1)[1].strip()
-    places.append((base, instances if os.path.isabs(instances) else os.path.join(base, instances)))
-for base, instances in places:
-    if not os.path.isdir(instances):
-        continue
-    for folder in sorted(os.listdir(instances)):
-        name = folder
-        instance_cfg = os.path.join(instances, folder, 'instance.cfg')
-        if os.path.isfile(instance_cfg):
-            for line in open(instance_cfg, encoding='utf-8', errors='replace'):
-                if line.startswith('name='):
-                    name = line.split('=', 1)[1].strip()
-        if wanted in (folder, name):
-            print('|'.join((base, instances, folder)))
-            sys.exit(0)
-PY
-		)
-		if [ -n "$found" ]; then
-			IFS='|' read -r found_data INSTANCES_DIR INSTANCE <<< "$found"
-			# found through the conf's instances folder: the conf's data folder (if any) stays
-			[ -n "$found_data" ] && PRISM_DIR=$found_data
-		fi
-	fi
-}
-
 if [ "$MODE" = "dev" ]; then
 	# the dev client: ./unittas.sh does the run, with the save list in its request
 	STAMP=${UNITTAS_STAMP:-$(date +%Y-%m-%d_%H-%M-%S)}
@@ -147,37 +96,22 @@ if [ "$MODE" = "inspect" ]; then
 	RESULTS="$ROOT/unittas-results/$STAMP"
 	mkdir -p "$RESULTS"
 	ln -sfn "$STAMP" "$ROOT/unittas-results/latest"
-	find_prism
-	DIR="$INSTANCES_DIR/$INSTANCE"
 	{
-		echo "== Prism: ${PRISM_CMD:-not found}, data folder ${PRISM_DIR:-unknown}"
-		echo "== instance $INSTANCE_NAME: ${INSTANCE:-not found} in ${INSTANCES_DIR:-?}"
-		ls -la "$DIR" 2>&1
-		echo "== mmc-pack.json"
-		cat "$DIR/mmc-pack.json" 2>&1
-		echo "== instance.cfg (Java, memory, window, name)"
-		grep -E '^(name|InstanceType|OverrideJava|JavaPath|JavaVersion|JavaArchitecture|OverrideMemory|MinMemAlloc|MaxMemAlloc|OverrideWindow|MinecraftWinWidth|MinecraftWinHeight|LaunchMaximized|JvmArgs|ManagedPack)' "$DIR/instance.cfg" 2>&1
-		echo "== patches"
-		ls -la "$DIR/patches" 2>&1
-		for game in "$DIR/minecraft" "$DIR/.minecraft"; do
-			[ -d "$game" ] || continue
-			echo "== game folder $game"
-			ls -la "$game" 2>&1
-			echo "-- mods"; ls -la "$game/mods" 2>&1
-			echo "-- saves"; ls "$game/saves" 2>&1
-		done
-		echo "== Prism's log (the last launches)"
-		for log in "$PRISM_DIR/logs/PrismLauncher-0.log" "$PRISM_DIR/PrismLauncher-0.log"; do
-			# not KDE's file-watcher lines (kf.kio): they name paths, unitTAS's among them, and drown the rest
-			[ -f "$log" ] && grep -n -i -E 'metadata|meta\.|failed|error|unitTAS|Network|download' "$log" | grep -v 'kf\.kio' | tail -n 60
-		done
+		echo "== the launcher's command (bin/launch_client.py --dry-run)"
+		python3 -I "$LAUNCHER" --game "$GAME" --dry-run 2>&1
+		echo "== the game folder $GAME"
+		ls -la "$GAME" 2>&1
+		echo "-- mods"; ls -la "$GAME/mods" 2>&1
+		echo "-- saves"; ls "$GAME/saves" 2>&1
+		echo "-- the last game's log"
+		tail -n 40 "$GAME/logs/latest.log" 2>&1
 	} > "$RESULTS/inspect.txt" 2>&1
 	echo "report: unittas-results/$STAMP/inspect.txt"
 	echo "Ran 0 tests" > "$RESULTS/report.txt"
 	exit 0
 fi
-if [ "$MODE" != "release" ]; then
-	echo "Use: ./unittas.sh oldsaves [dev|release|inspect]"
+if [ "$MODE" != "release" ] && [ "$MODE" != "instance" ]; then
+	echo "Use: ./unittas.sh oldsaves [dev|release|inspect|instance]"
 	exit 1
 fi
 
@@ -201,32 +135,14 @@ if [ -z "$JAR" ]; then
 fi
 say "the jar: $JAR"
 
-# ---------------------------------------------------------------- Prism and the instance
-find_prism
-if [ -z "$PRISM_CMD" ]; then
-	echo "Prism Launcher is needed: install it. (Found no prismlauncher command and no Flatpak; a Prism started some other"
-	echo "way goes in unittas-oldsaves.conf as PRISM_CMD=<its command>.)"
-	exit 1
-fi
-if [ -z "$INSTANCES_DIR" ] || [ -z "$INSTANCE" ]; then
-	echo "No Prism instance called $INSTANCE_NAME (looked where Prism's settings say its instances are, in"
-	echo "~/.local/share/PrismLauncher and the Flatpak's folder). Make it in Prism (Minecraft 1.7.10, Forge 10.13.4.1614,"
-	echo "Java 8) and launch it once; somewhere else, put INSTANCES_DIR and INSTANCE (its folder) in unittas-oldsaves.conf."
-	exit 1
-fi
-DIR="$INSTANCES_DIR/$INSTANCE"
-GAME="$DIR/minecraft"
-[ -d "$GAME" ] || GAME="$DIR/.minecraft"
-if [ ! -f "$DIR/mmc-pack.json" ] || [ ! -d "$GAME" ]; then
-	echo "The Prism instance $INSTANCE_NAME ($DIR) has no game folder yet: launch it once in Prism."
-	exit 1
-fi
-if ! grep -q '"net.minecraftforge"' "$DIR/mmc-pack.json"; then
-	echo "The instance $INSTANCE_NAME has no Forge: Prism > Edit > Version > Install Forge (10.13.4.1614)."
+# ---------------------------------------------------------------- the real client
+if ! python3 -I "$LAUNCHER" --game "$GAME" --dry-run > "$RESULTS/launch-command.txt" 2>&1; then
+	echo "unitTAS's launcher can't start the game:"
+	cat "$RESULTS/launch-command.txt"
 	exit 1
 fi
 
-# ---------------------------------------------------------------- filling the test instance
+# ---------------------------------------------------------------- filling the game folder
 mkdir -p "$GAME/mods" "$GAME/unittas"
 if [ -n "$(ls -A "$GAME/mods" 2>/dev/null)" ]; then
 	mkdir -p "$RESULTS/mods-before-this-run"
@@ -239,21 +155,31 @@ done
 say "mods: $(ls "$GAME/mods" | tr '\n' ' ')"
 copy_saves "$GAME" "$RESULTS"
 {
-	echo "suites=oldsaves"
+	if [ "$MODE" = "instance" ]; then
+		# every suite the game folder's jars hold, in the fresh test world (no saves)
+		echo "suites="
+	else
+		echo "suites=oldsaves"
+		echo "saves=$SAVES"
+		echo "oldsaves=$PRISTINE"
+	fi
 	echo "filter="
 	echo "results=$RESULTS"
-	echo "saves=$SAVES"
-	echo "oldsaves=$PRISTINE"
 	[ "${UNITTAS_WATCHED:-0}" = 1 ] && echo "watched=true"
 	echo "watch.pictures=${UNITTAS_PICTURE_SECONDS:-10}"
 	echo "watch.decide=${UNITTAS_DECIDE_SECONDS:-300}"
 } > "$GAME/unittas/request.properties"
 
 # ---------------------------------------------------------------- the run
-say "$(./unittas-desktop.sh)"
-say "starting $INSTANCE_NAME"
-# shellcheck disable=SC2086
-$PRISM_CMD ${PRISM_DIR:+--dir "$PRISM_DIR"} --launch "$INSTANCE" > "$RESULTS/prism.log" 2>&1 &
+if [ "${UNITTAS_DISPLAY:-nested}" = plain ]; then
+	say "$(./unittas-desktop.sh)"
+else
+	say "test window: in gamescope (UNITTAS_DISPLAY=${UNITTAS_DISPLAY:-nested}), never focused"
+fi
+say "starting the real client (its output: unittas-results/$STAMP/client.log)"
+# the display and the launcher each become the next (exec), so this is the game's display's process id
+"$ROOT/unittas-display.sh" python3 -I "$LAUNCHER" --game "$GAME" > "$RESULTS/client.log" 2>&1 &
+GAME_PID=$!
 SPIN='|/-\'
 spin=0
 shown=0
@@ -269,24 +195,26 @@ while [ ! -f "$RESULTS/report.txt" ]; do
 			shown=$total
 		fi
 	fi
-	# no word from the game in 5 minutes: it never started (Prism's own trouble, as its metadata failing once)
+	# no word from the game in 5 minutes, and still running: stuck before unitTAS woke
 	if [ ! -f "$RESULTS/progress.txt" ] && [ "$(date +%s)" -gt "$(( launched + 300 ))" ]; then
 		printf '\r\033[K'
 		cp "$GAME/logs/latest.log" "$RESULTS/game.log" 2>/dev/null
-		tail -n 200 "$PRISM_DIR/logs/PrismLauncher-0.log" > "$RESULTS/prism-launcher.log" 2>/dev/null
-		echo "The game didn't start in 5 minutes. Prism's log: $RESULTS/prism-launcher.log, its output: $RESULTS/prism.log"
+		echo "The game didn't get to unitTAS in 5 minutes. Its output: $RESULTS/client.log; its log: $RESULTS/game.log"
+		kill "$GAME_PID" 2>/dev/null
 		rm -f "$GAME/unittas/request.properties"
 		keep_saves "$GAME" "$RESULTS"
 		exit 1
 	fi
-	# the game started, then went away without a report (it crashed): 30 s for the report to land, then stop waiting
-	if [ -f "$RESULTS/progress.txt" ] && ! pgrep -f "$DIR" >/dev/null; then
+	# the game went away without a report (it crashed, before unitTAS woke or after): 30 s for the report, then stop
+	if ! kill -0 "$GAME_PID" 2>/dev/null; then
 		gone=${gone:-$(date +%s)}
 		if [ $(( $(date +%s) - gone )) -gt 30 ] && [ ! -f "$RESULTS/report.txt" ]; then
 			printf '\r\033[K'
 			cp "$GAME/logs/latest.log" "$RESULTS/game.log" 2>/dev/null
 			cp "$GAME/logs/fml-client-latest.log" "$RESULTS/fml-client.log" 2>/dev/null
-			echo "The game ended without a report (a crash?). Its log: $RESULTS/game.log; crash reports in $GAME/crash-reports/"
+			echo "The game ended without a report (a crash?). Its output: $RESULTS/client.log; its log: $RESULTS/game.log;"
+			echo "crash reports in $GAME/crash-reports/"
+			rm -f "$GAME/unittas/request.properties"
 			keep_saves "$GAME" "$RESULTS"
 			exit 1
 		fi
@@ -296,7 +224,8 @@ while [ ! -f "$RESULTS/report.txt" ]; do
 	if [ "$(date +%s)" -gt "$deadline" ]; then
 		printf '\r\033[K'
 		cp "$GAME/logs/latest.log" "$RESULTS/game.log" 2>/dev/null
-		echo "No report in 40 minutes. Prism's log: $RESULTS/prism.log; the game's: $RESULTS/game.log"
+		echo "No report in 40 minutes. Its output: $RESULTS/client.log; its log: $RESULTS/game.log"
+		kill "$GAME_PID" 2>/dev/null
 		rm -f "$GAME/unittas/request.properties"
 		keep_saves "$GAME" "$RESULTS"
 		exit 1
@@ -307,7 +236,7 @@ done
 printf '\r\033[K'
 # the game quits after the report; its log is complete once it has
 for _ in $(seq 1 120); do
-	pgrep -f "$DIR" >/dev/null || break
+	kill -0 "$GAME_PID" 2>/dev/null || break
 	sleep 1
 done
 cp "$GAME/logs/latest.log" "$RESULTS/game.log" 2>/dev/null

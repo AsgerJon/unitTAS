@@ -34,14 +34,16 @@ test as it finishes, and prints the report when the game quits. Everything lands
 - `screenshots/`: one per failed test (taken before its tearDown), plus the ones tests take on purpose.
 - `progress.txt`, `gradle.log`: the run as it went.
 
-The window is titled just `unitTAS` from the moment it opens (an ordinary `runClient` window is
-`Minecraft 1.7.10`), and its window class is `unitTAS` too, so a KDE window rule can match it: `unittas.kwinrule`
-(System Settings > Window Management > Window Rules > Import) keeps it from taking focus when it opens
-(`unittas-nofocus.kwinrule` is the same rule matching the class as a substring). `./unittas-desktop.sh`, run before
-each game starts, loads a small KWin script that moves every test window to virtual desktop 2 as KWin adds it
-(`UNITTAS_DESKTOP=3` for another, `UNITTAS_DESKTOP=0` to leave them be). The run needs no focus: it ignores the real
-mouse and keyboard, never takes the mouse pointer, and doesn't pause when the window is in the background. Close it
-with its window button or Ctrl+C in the terminal.
+**The window.** Each game runs inside gamescope (a small Wayland compositor with an Xwayland of its own), and is
+seen in gamescope's window on your desktop. That window never takes focus: a Wayland compositor gives focus only to a
+window that brings an activation token from something you did, and gamescope is started without one; the game's own
+X11 focus requests stay inside gamescope's Xwayland. No desktop's settings or rules are involved.
+`UNITTAS_DISPLAY=headless` runs the game with no window at all (the pictures still come from the game itself), and
+`UNITTAS_DISPLAY=plain` straight on the desktop as before gamescope; `UNITTAS_WIDTH` and `UNITTAS_HEIGHT` size it
+(854 by 480). Without gamescope, or on a desktop that isn't Wayland, the game goes on the desktop plain. The run needs
+no focus either way: it ignores the real mouse and keyboard, never takes the mouse pointer, and doesn't pause when the
+window is in the background. Close it with its window button or Ctrl+C in the terminal. (Plain on KDE, the window is
+titled and classed `unitTAS`, and `./unittas-desktop.sh` moves it to virtual desktop 2.)
 
 A run never starts beside a game already open in `run/client` (your own `runClient`, say): both would use its
 options, saves and request, so the script refuses, and its report says why. The test world is
@@ -237,11 +239,17 @@ suites run in each with none of the per-test resets and no game rule changes (th
    EULA; Java 8, `UNITTAS_JAVA8` to name one), and a small scripted client of 1.7.10's protocol that builds a house
    and a block sweep in the overworld, a room in the Nether and a hut in the End, then leaves the player in one of
    them. Each world becomes a singleplayer save in `run/oldsaves/vanilla/`, with its building list.
-2. `./unittas.sh oldsaves` builds the release jar, puts it and `run/oldsaves/mods/*.jar` (its libraries, unitTAS's
-   release jar among them for a mod that takes unitTAS as a dependency) into a Prism Launcher instance
-   (`unitTAS_vanilla_1_7_10`: Minecraft 1.7.10, Forge 10.13.4.1614, Java 8; another name in `unittas-oldsaves.conf`),
-   copies the saves in fresh and runs it. `./unittas.sh oldsaves dev` does the same in the dev client;
-   `./unittas.sh oldsaves inspect` only reports the instance and Prism's log.
+2. `./unittas.sh oldsaves` builds the release jar and runs it in a real client: its game folder `run/release/`
+   holds the jar, `run/oldsaves/mods/*.jar` (its libraries: UniMixins at least, and unitTAS's release jar for a mod
+   that takes unitTAS as a dependency) and fresh copies of the saves. `./unittas.sh oldsaves dev` does the same in
+   the dev client; `./unittas.sh oldsaves inspect` only reports the real client's command and folder.
+
+**The real client** is unitTAS's own launcher, `bin/launch_client.py`: Minecraft 1.7.10 with Forge 10.13.4.1614 on
+Java 8 (`UNITTAS_JAVA8` to name one), made from what the Gradle cache already holds (Unimined's official client jar,
+Forge's universal jar, every library, the natives, the assets), so nothing is downloaded and no other launcher is
+needed. `./unittas.sh oldsaves instance` runs the release jar there with no saves, every suite its jars hold, in the
+fresh test world: for unitTAS's own jar there are none, and the run is the check that the jar starts outside a
+development run (`Ran 0 tests`, OK).
 
 ## The watcher
 

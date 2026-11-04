@@ -1,25 +1,30 @@
 package io.github.asgerjon.unittas.core;
 
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
-import org.spongepowered.asm.mixin.Mixins;
+import net.minecraft.launchwrapper.Launch;
 
 import java.util.Map;
 
 /**
- * Hands unitTAS's mixins (mixins.unittas.json) to Mixin as the game starts. Mixin itself is started by the game's
- * Mixin loader (UniMixins: its MixinTweaker, which runs before any coremod, on the class loader Mixin needs), never
- * here: started from a coremod, Mixin's classes end up in two class loaders and the game stops with a LinkageError.
- * The jar's manifest names this class (FMLCorePlugin) and says the jar holds a mod as well
- * (FMLCorePluginContainsFMLMod: true); a development run names it in -Dfml.coreMods.load.
+ * Hands unitTAS's mixins (mixins.unittas.json) to Mixin. Mixin itself is started by the game's Mixin loader
+ * (UniMixins' MixinTweaker), never here. The jar's manifest names this class (FMLCorePlugin) and says the jar holds a
+ * mod as well (FMLCorePluginContainsFMLMod: true).
+ *
+ * When matters. From a jar in mods/ (a real game), FML makes the coremods before UniMixins' tweaker has started Mixin,
+ * so the constructor is too early: touched then, Mixin's classes would land in the wrong class loader and the game stops
+ * (in UniMixins' own coremod). {@link #injectData} is late enough everywhere: LaunchWrapper makes every tweaker of a
+ * round (the MixinTweaker among them, which starts Mixin as it is made) before it calls any of them, and FML hands a
+ * coremod its data from such a call. In a development run the tweaker is on the command line, earlier still. Even so,
+ * the one Mixin call is in another class, {@link UnitTasMixins}, loaded only when it is made.
  */
 @IFMLLoadingPlugin.Name("unitTAS")
 @IFMLLoadingPlugin.MCVersion("1.7.10")
 @IFMLLoadingPlugin.TransformerExclusions("io.github.asgerjon.unittas.core")
 public final class UnitTasLoadingPlugin implements IFMLLoadingPlugin {
 
-	public UnitTasLoadingPlugin() {
-		Mixins.addConfiguration("mixins.unittas.json");
-	}
+	static final String CONFIG = "mixins.unittas.json";
+	/** Mixin's key on LaunchWrapper's blackboard (GlobalProperties.Keys.INIT): set once Mixin has started. */
+	private static final String MIXIN_STARTED = "mixin.initialised";
 
 	@Override
 	public String[] getASMTransformerClass() {
@@ -38,6 +43,11 @@ public final class UnitTasLoadingPlugin implements IFMLLoadingPlugin {
 
 	@Override
 	public void injectData(Map<String, Object> data) {
+		if (Launch.blackboard == null || Launch.blackboard.get(MIXIN_STARTED) == null) {
+			throw new IllegalStateException("unitTAS's mixins can't be loaded: Mixin hasn't started. Is a Mixin loader"
+				+ " (UniMixins) in the game?");
+		}
+		UnitTasMixins.addConfig();
 	}
 
 	@Override
