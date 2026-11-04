@@ -1,0 +1,15 @@
+[
+  {
+    "modid": "unittas",
+    "name": "unitTAS",
+    "description": "Tests that play the real game, in the manner of Python's unittest: a mod's tests drive a real client tick by tick and check what happened.",
+    "version": "${version}",
+    "mcversion": "1.7.10",
+    "url": "https://github.com/AsgerJon/unitTAS",
+    "authorList": ["AsgerJon"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

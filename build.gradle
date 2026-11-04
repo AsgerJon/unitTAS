@@ -1,0 +1,134 @@
+// unitTAS's build: a 1.7.10 Forge mod on Unimined, nothing of GTNH's.
+// Plain on purpose: another 1.7.10 mod (McFly) may take it as it is; what's unitTAS's own is marked so.
+// The Unimined parts follow its own 1.7.10 test project.
+
+plugins {
+    id 'java'
+    id 'maven-publish'
+    id 'xyz.wagyourtail.unimined' version '1.4.1'
+}
+
+group = 'io.github.asgerjon'
+version = project.mod_version
+base {
+    archivesName = 'unittas'
+}
+
+// Java 8 bytecode against Java 8's own library, whatever JDK runs Gradle: a Java 9+ call is a compile error
+tasks.withType(JavaCompile).configureEach {
+    options.release = 8
+    options.encoding = 'UTF-8'
+    // newer JDKs call release 8 "obsolete" on every compile; it is the point here
+    options.compilerArgs.add('-Xlint:-options')
+}
+
+sourceSets {
+    // unitTAS's own: the `self` suite, compiled against main and its Minecraft, run in main's runClient (below),
+    // in no jar
+    self {
+        // lazily: Unimined sets main's class paths (Minecraft on them) after this block has run
+        compileClasspath += sourceSets.main.output + files({ sourceSets.main.compileClasspath })
+        runtimeClasspath += sourceSets.main.output + files({ sourceSets.main.runtimeClasspath })
+    }
+}
+
+repositories {
+    maven {
+        name = 'unimined'
+        url = 'https://maven.wagyourtail.xyz/releases'
+    }
+    maven {
+        name = 'sponge (Mixin)'
+        url = 'https://repo.spongepowered.org/maven'
+    }
+    maven {
+        name = 'modrinth (UniMixins)'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
+    mavenCentral()
+}
+
+unimined.minecraft {
+    version project.minecraft_version
+
+    mappings {
+        searge()
+        mcp('stable', project.mcp_mappings)
+    }
+
+    minecraftForge {
+        loader project.forge_version
+        mixinConfig 'mixins.unittas.json'
+    }
+
+    runs {
+        config('client') {
+            // 1.7.10's own Java (newer ones need lwjgl3ify, which is GTNH's)
+            javaVersion = JavaVersion.VERSION_1_8
+            // unitTAS's own: where unittas.sh leaves its request and looks for the game
+            workingDir = file('run/client')
+            // Mixin started as a real game starts it: UniMixins' tweaker, before any coremod (a game finds it in the
+            // UniMixins jar's manifest; a development run is told)
+            // (a run config is a Gradle JavaExec: args(...) and jvmArgs(...) add to what Unimined set)
+            args('--tweakClass', 'org.spongepowered.asm.launch.MixinTweaker')
+            // the coremods a development run finds only when named: UniMixins' own, then (unitTAS's own) unitTAS's
+            jvmArgs('-Dfml.coreMods.load=io.github.legacymoddingmc.unimixins.all.AllCore,io.github.asgerjon.unittas.core.UnitTasLoadingPlugin')
+            // unitTAS's own: the `self` suite's classes in the same game (FML finds them on the class path)
+            classpath = classpath + sourceSets.self.output
+        }
+        config('server') {
+            enabled = false
+        }
+    }
+}
+
+dependencies {
+    // compiled against what UniMixins bundles; a game gets them from UniMixins
+    compileOnly "org.spongepowered:mixin:${project.mixin_version}"
+    compileOnly "io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"
+    // the Mixin loader for the development run: a mod jar in Searge names, which Unimined remaps to the run's MCP
+    // names (modImplementation); the publication lists its own artifacts, so this isn't a published dependency
+    modImplementation "maven.modrinth:unimixins:${project.unimixins_version}"
+}
+
+// the manifest a 1.7.10 coremod needs, in the dev jar and (remapped, it's kept) the release jar
+jar {
+    archiveClassifier = 'dev'
+    manifest {
+        attributes(
+            'FMLCorePlugin': 'io.github.asgerjon.unittas.core.UnitTasLoadingPlugin',
+            'FMLCorePluginContainsFMLMod': 'true'
+        )
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('mcmod.info') {
+        expand 'version': project.version
+    }
+}
+
+publishing {
+    // `publishToMavenLocal` for ~/.m2; unitTAS's own: a project folder too, which a session's sandbox (that can't see
+    // ~/.m2) and the watcher both reach: `publishUnittasPublicationToProjectLocalRepository`
+    repositories {
+        maven {
+            name = 'projectLocal'
+            url = layout.projectDirectory.dir('.local-maven')
+        }
+    }
+    publications {
+        unittas(MavenPublication) {
+            artifactId = 'unittas'
+            // the release jar (Searge names) as the main artifact, the dev jar (MCP names) beside it
+            artifact(remapJar)
+            artifact(jar) {
+                classifier = 'dev'
+            }
+        }
+    }
+}

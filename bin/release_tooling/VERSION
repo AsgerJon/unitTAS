@@ -1,0 +1,25 @@
+#  VERSION holds the counters the release workflows read to compute the
+#  next version each channel publishes. It is not the currently released
+#  version: that lives in gradle.properties (mod_version), in
+#  UnitTasMod.VERSION and in the jar names README.md's recipe gives, all
+#  stamped from here at release time.
+#
+#  MICRO, RC and DEV each hold the next value to publish directly:
+#    next lts -> MAJOR.MINOR.MICRO
+#    next rc  -> MAJOR.MINOR.MICRO-rc<RC>
+#    next dev -> MAJOR.MINOR.MICRO-dev<DEV>
+#  MAJOR and MINOR instead hold the current line, so the next minor and
+#  major releases add one rather than reading the field directly:
+#    next minor -> MAJOR.(MINOR+1).0
+#    next major -> (MAJOR+1).0.0
+#
+#  Within one MAJOR.MINOR.MICRO line every dev release must precede the
+#  first rc, since a dev version sorts below an rc. version_get.py enforces
+#  this by refusing a dev version once RC is non-zero. A lts, minor or
+#  major release resets RC and DEV to zero, reopening the dev window for
+#  the next line.
+MAJOR=0
+MINOR=1
+MICRO=0
+RC=0
+DEV=0

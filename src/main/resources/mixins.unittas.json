@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.github.asgerjon.unittas.mixins",
+  "refmap": "mixins.unittas.refmap.json",
+  "compatibilityLevel": "JAVA_8",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "client": [
+    "client.MixinHandshakeTrace",
+    "client.MixinLoginClientTrace",
+    "client.MixinLoginServerTrace",
+    "client.MixinMinecraft",
+    "client.MixinMouseHelper",
+    "client.MixinNetworkManagerTrace",
+    "client.MixinNetworkSystemTrace",
+    "client.MixinPlayClientTrace",
+    "client.MixinSoundHandler"
+  ]
+}

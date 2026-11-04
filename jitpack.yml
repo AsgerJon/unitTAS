@@ -1,0 +1,4 @@
+# JitPack builds a tag when it is first asked for it (com.github.AsgerJon:unitTAS:<tag>). Unimined needs Java 17 or
+# newer to run Gradle (JitPack's own default is 8); the build makes Java 8 bytecode either way.
+jdk:
+  - openjdk21

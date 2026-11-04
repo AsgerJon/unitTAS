@@ -1,0 +1,10 @@
+[unitTAS no focus]
+Description=unitTAS test windows: never take focus
+wmclass=unitTAS
+wmclassmatch=1
+wmclasscomplete=false
+types=1
+acceptfocus=false
+acceptfocusrule=2
+fsplevel=4
+fsplevelrule=2

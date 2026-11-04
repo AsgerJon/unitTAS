@@ -12,6 +12,8 @@
 
 # Package Files #
 *.jar
+# but the Gradle wrapper's own jar belongs in the repository (a clone builds with ./gradlew alone)
+!/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -22,3 +24,32 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Gradle's own: its output, its project cache, and the shared cache the scripts and sessions use
+/build/
+/.gradle/
+/.gradle-home/
+/.local-maven/
+
+# Python's own, from the release tooling's tests (bin/release_tooling/tests)
+__pycache__/
+
+# IntelliJ's project settings, and the EFR session's notes to this one
+/.idea/
+/unittas-reply.txt
+/PROMPT.md
+/SPEC.md
+/SPEC-excerpts.md
+/SUGGESTIONS.md
+/BRIEF.md
+/UNITTAS.md
+
+# what unitTAS's scripts make as they run, and each user's own settings for them
+/run/
+/unittas-results/
+/unittas-queue/
+/mp-logs/
+/hang-*.txt
+/unittas-oldsaves.conf
+/request_task.sh
+/.claude/settings.local.json

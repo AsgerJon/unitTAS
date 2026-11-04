@@ -1,0 +1,157 @@
+# lts-major: the official release button for the next major line. Publishes the next major version
+# (X.0.0, raising X) as the latest GitHub release with both jars. Guarded: it runs only when
+# 'bin/release_tooling/major.safety' read 'ALLOW' in the commit the button was pressed on; see the 'safety' job.
+# Manual trigger only (the Actions tab, "Run workflow"). README.md, "Building and releasing", says how the buttons work
+# together; bin/release_tooling/ holds the counters, the safeties and the scripts.
+name: lts-major
+
+on:
+  workflow_dispatch:
+
+# One release at a time, whichever button: two runs reading the same counters would make the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  safety:
+    # The guard. It reads 'major.safety' as committed in the commit the button was pressed on, locks every safety
+    # back to 'STOP', pushes the lock, and only then fails or lets the tests start. A refused run therefore still
+    # leaves every safety locked in the repository, and an arming is spent by the press of the button whatever the run
+    # does next.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the locked safeties
+    steps:
+      # The default checkout is the commit the button was pressed on, so the state of the safety at that moment
+      # decides.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Decide and lock
+        run: python bin/release_tooling/safety_check.py major SAFETY_VERDICT
+      - name: Push the lock
+        run: |
+          git config user.name "Asger Jon Vistisen"
+          git config user.email "asgerjon2@gmail.com"
+          git add bin/release_tooling/*.safety
+          git diff --cached --quiet || git commit -m "lts-major: safeties locked, verdict ${SAFETY_VERDICT}"
+          git push origin HEAD:${{ github.ref }}
+      - name: Enforce the verdict
+        run: test "$SAFETY_VERDICT" = "ALLOW"
+
+  test:
+    # What can be checked without a display: the release tooling's own tests, that the stamped files agree on the
+    # version, and the build. The game's own tests (./unittas.sh self) are run on the desktop before pressing.
+    needs: safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: The release tooling's tests
+        run: python -m unittest discover -s bin/release_tooling/tests
+      - name: The stamped files agree on the version
+        run: python bin/release_tooling/version_stamp.py --check
+      # Java 21 runs Gradle and Unimined; Java 8 is the game's own (the development run's toolchain)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+          cache: gradle
+      - name: Build
+        run: ./gradlew --console=plain build
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the version commit and its tag
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # The branch tip rather than the commit the button was pressed on: the version commit below has to sit on top
+      # of the lock commit the 'safety' job pushed.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+          cache: gradle
+
+      # Compute the next major version from VERSION and expose it as VERSION_INFO to the steps below.
+      - name: Resolve next version
+        run: python bin/release_tooling/version_get.py major VERSION_INFO
+      - name: Hand the version to the release job
+        id: version
+        run: echo "version=$VERSION_INFO" >> "$GITHUB_OUTPUT"
+
+      # Write VERSION_INFO into gradle.properties (the build names both jars and mcmod.info from it), into
+      # UnitTasMod.VERSION (the @Mod's version) and into README.md's recipe. It refuses if they disagree now.
+      - name: Stamp the version
+        run: python bin/release_tooling/version_stamp.py VERSION_INFO
+
+      - name: Build
+        run: ./gradlew --console=plain build
+      - name: The jars
+        run: |
+          ls -l build/libs
+          test -f "build/libs/unittas-$VERSION_INFO.jar"
+          test -f "build/libs/unittas-$VERSION_INFO-dev.jar"
+
+      # Advance the counters in VERSION, then commit VERSION and the stamped files, and tag that commit. The commit
+      # and its tag are pushed together or not at all (--atomic): if the branch moved meanwhile, or the tag is taken,
+      # nothing is pushed and the run fails here, before any release.
+      - name: Bump version counters
+        run: python bin/release_tooling/version_bump.py major
+      - name: Commit, tag and push
+        run: |
+          git config user.name "Asger Jon Vistisen"
+          git config user.email "asgerjon2@gmail.com"
+          git add bin/release_tooling/VERSION gradle.properties README.md \
+            src/main/java/io/github/asgerjon/unittas/UnitTasMod.java
+          git commit -m "LTS $VERSION_INFO"
+          git tag "$VERSION_INFO"
+          git push --atomic origin "HEAD:${{ github.ref }}" "refs/tags/$VERSION_INFO"
+
+      - name: Keep the jars for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: |
+            build/libs/unittas-${{ env.VERSION_INFO }}.jar
+            build/libs/unittas-${{ env.VERSION_INFO }}-dev.jar
+          if-no-files-found: error
+
+  release:
+    # A job of its own: should it fail (the tag is pushed by then), re-running only this job ("Re-run failed jobs")
+    # makes the release from the same tag and jars. Pressing the button again would make the next version instead.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: jars
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_INFO: ${{ needs.publish.outputs.version }}
+        run: |
+          gh release create "$VERSION_INFO" \
+            "jars/unittas-$VERSION_INFO.jar" "jars/unittas-$VERSION_INFO-dev.jar" \
+            --repo "${{ github.repository }}" --verify-tag \
+            --title "$VERSION_INFO" --latest --generate-notes
