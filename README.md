@@ -103,9 +103,26 @@ constructor arguments). Every method defaults to doing nothing:
 ## Using unitTAS in a mod on GTNH's buildscript
 
 Tried in a consumer check, where unitTAS's tests passed in another mod's development client. Take unitTAS's
-**release** jar (Searge names): the `-dev` jar's MCP names differ from that buildscript's.
+**release** jar (Searge names): RetroFuturaGradle renames it into the mod's names, and the `-dev` jar's MCP names
+differ from that buildscript's.
 
-1. `dependencies.gradle`: the jar **as a file**. By module name from a local repository, RetroFuturaGradle 2.0.5
+1. `repositories.gradle` and `dependencies.gradle`: unitTAS from JitPack.
+
+   ```groovy
+   maven {
+       name = 'JitPack'
+       url = 'https://jitpack.io'
+       content {
+           includeGroup 'com.github.AsgerJon'
+       }
+   }
+   ```
+
+   ```groovy
+   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev1'))
+   ```
+
+   A jar on your own machine goes **as a file**: by module name from a local repository, RetroFuturaGradle 2.0.5
    resolves it but silently doesn't rename it.
 
    ```groovy
@@ -174,6 +191,9 @@ pushes one commit with its tag, and makes the GitHub release with both jars. Pul
 - `./server-side-check.py` finds code a dedicated server can't load in a mod's built classes (references to
   `@SideOnly(CLIENT)` members and to `net.minecraft.client`).
 - `./multiplayer-test.sh [name]` starts a dedicated server and two clients to try multiplayer by hand.
+- `python3 bin/compare_reports.py before/report.txt after/report.txt` compares two runs test by test: the tests only
+  one ran, the outcomes that changed (a failure now marked `@ExpectedFailure` apart), unitTAS's problems. For a change
+  that must leave the results as they were.
 
 ## License
 

@@ -36,12 +36,14 @@ MOD_PATH = (
 #  The versions the release workflows publish.
 SCHEME = re.compile(r'\d+\.\d+\.\d+(?:-(?:rc|dev)\d+)?')
 #  A unitTAS version named in README.md: after 'unittas-' (a jar's name)
-#  or 'unittas:' (a module's coordinates). The '-dev' of 'unittas-X-dev.jar'
-#  is the dev jar's classifier, not a part of the version. Any suffix is
-#  read, not only the scheme's, so a version from before the scheme (such
-#  as '0.1.0-beta') is found and stamped over too.
+#  or 'unittas:' (a module's coordinates), in any case ('unitTAS:' is
+#  JitPack's 'com.github.AsgerJon:unitTAS:X'). The '-dev' of
+#  'unittas-X-dev.jar' is the dev jar's classifier, not a part of the
+#  version. Any suffix is read, not only the scheme's, so a version from
+#  before the scheme (such as '0.1.0-beta') is found and stamped over too.
 MENTION = re.compile(
-  r'(?<=unittas[-:])\d+\.\d+\.\d+(?:-(?!dev\.jar)[A-Za-z]+\d*)?'
+  r'(?<=unittas[-:])\d+\.\d+\.\d+(?:-(?!dev\.jar)[A-Za-z]+\d*)?',
+  re.IGNORECASE,
 )
 CONSTANT_VALUE = re.compile(r'"([^"]*)"')
 

@@ -42,7 +42,7 @@ jobs:
         run: test "$SAFETY_VERDICT" = "ALLOW"
 
   test:
-    # What can be checked without a display: the release tooling's own tests, that the stamped files agree on the
+    # What can be checked without a display: the tools' own tests, that the stamped files agree on the
     # version, and the build. The game's own tests (./unittas.sh self) are run on the desktop before pressing.
     needs: safety
     runs-on: ubuntu-latest
@@ -53,6 +53,8 @@ jobs:
           python-version: '3.12'
       - name: The release tooling's tests
         run: python -m unittest discover -s bin/release_tooling/tests
+      - name: The other tools' tests
+        run: python -m unittest discover -s bin/tests
       - name: The stamped files agree on the version
         run: python bin/release_tooling/version_stamp.py --check
       # Java 21 runs Gradle and Unimined; Java 8 is the game's own (the development run's toolchain)

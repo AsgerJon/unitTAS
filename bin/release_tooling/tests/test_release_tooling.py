@@ -61,7 +61,8 @@ MANUAL = """# unitTAS
 
 `rfg.deobf("io.github.asgerjon:unittas:{v}")` from a local repository
 resolves; the dev jar is `unittas-{v}-dev.jar`. UniMixins 1.7.10-0.3.1,
-JitPack: `com.github.AsgerJon:unitTAS:<tag>`.
+JitPack: `com.github.AsgerJon:unitTAS:<tag>`, as in
+   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:{v}'))
 """
 
 
