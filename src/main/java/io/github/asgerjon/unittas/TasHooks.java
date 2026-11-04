@@ -24,6 +24,18 @@ public interface TasHooks {
 	}
 
 	/**
+	 * Each time a test world is made (the run's first, and the fresh one each class gets unless it is
+	 * {@link SharedWorld}), on the server thread, once its game rules are set and before the class's setUpClass: what
+	 * the mod wants in every world its tests run in. Not in save mode, where the saves are what they are.
+	 */
+	default void setUpWorld() {
+	}
+
+	/** Before each test world is closed, and after the run's last test, on the server thread. Not in save mode. */
+	default void tearDownWorld() {
+	}
+
+	/**
 	 * Between tests, on the server thread, after unitTAS has put the player back (creative, an empty inventory, at
 	 * the spawn point): whatever the mod keeps of the player besides, as an off-hand slot.
 	 */

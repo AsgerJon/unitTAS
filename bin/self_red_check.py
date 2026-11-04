@@ -1,6 +1,6 @@
 """
 Checks the report of unitTAS's own red run line by line, for what a green run can't show: the report's outcomes and
-counts, the warnings, and what the run puts back after it.
+counts, the class fixtures, the worlds each class ran in, the warnings, and what the run puts back after it.
 
   ./unittas.sh "self,self-red,nosuch"
   python3 bin/self_red_check.py [report.txt]
@@ -25,33 +25,94 @@ CONFIG_MADE = 'unittas-red.cfg'
 
 EXPECTED = {
   'RedClassTests.testFailsUnderAClassMark': 'expected failure',
+  'RedSetUpClassTests.setUpClass': 'ERROR',
   'RedSetUpTests.testNeverRuns': 'ERROR',
+  'RedSkipClassTests.testA_skipped': 'skipped',
+  'RedSkipClassTests.testB_skippedToo': 'skipped',
+  'RedTearDownClassTests.tearDownClass': 'ERROR',
+  'RedTearDownClassTests.testA_runs': 'ok',
+  'RedTearDownClassTests.testB_runsToo': 'ok',
   'RedTests.testExpectedAssertion': 'expected failure',
   'RedTests.testExpectedException': 'expected failure',
   'RedTests.testLeavesTheConfigChanged': 'ok',
   'RedTests.testUnexpectedSuccess': 'unexpected success',
   'RedTests.testWarnsOutsideAStep': 'ok',
+  'RedWorldLeavesTests.testLeavesABlock': 'ok',
+  'RedWorldSharedTests.testFindsWhatTheClassBeforeLeft': 'ok',
   'unitTAS.suites': 'problem',
 }
-SELF_CLASSES = ('ChatTests.', 'MixinTests.', 'ResetTests.', 'SlowGameTests.')
+#  What some lines must say under them (a part of their details).
+DETAILS = {
+  'RedSetUpClassTests.setUpClass': ('setUpClass fails on purpose', 'its 1 test not run'),
+  'RedTearDownClassTests.tearDownClass': ('tearDownClass fails on purpose, after both tests',),
+  'RedSkipClassTests.testA_skipped': ('the whole class is skipped',),
+  'RedSkipClassTests.testB_skippedToo': ('the whole class is skipped',),
+}
+#  Lines that mustn't be there: tests that shouldn't have run.
+ABSENT = ('RedSetUpClassTests.testNeverRuns',)
+SELF_CLASSES = ('ChatTests.', 'ClassFixtureTests.', 'MixinTests.', 'ResetTests.', 'SlowGameTests.',
+                'WorldFreshATests.', 'WorldFreshBTests.')
+#  The one class that shares the world of the class before it, and that class.
+SHARED = ('RedWorldSharedTests', 'RedWorldLeavesTests')
 WARNED = 'RedTests.testWarnsOutsideAStep'
-LAST_LINE = 'FAILED (errors=1, expected failures=3, unexpected successes=1, problems=1)'
+LAST_LINE = 'FAILED (errors=3, skipped=2, expected failures=3, unexpected successes=1, problems=1)'
 
 RESULT = re.compile(r'^(\S+) \.\.\. (.+?) \(\d+\.\d s\)$')
+WORLD = re.compile(r'^world (\d+)(, shared)?: (.*)$')
 
 
 def parse(text: str) -> list:
-  """The report's results, in order: [name, outcome, detail lines], up to the line of dashes."""
+  """
+  The report's results, in order, up to the line of dashes: [name, outcome, detail lines, world line], the world line
+  (number, shared, what it says) being the one right before the result, or None.
+  """
   results = []
+  world = None
   for line in text.split('\n'):
     if line.startswith('-----'):
       break
     match = RESULT.match(line)
     if match:
-      results.append([match.group(1), match.group(2), []])
+      results.append([match.group(1), match.group(2), [], world])
+      world = None
+      continue
+    match = WORLD.match(line)
+    if match:
+      world = (int(match.group(1)), match.group(2) is not None, match.group(3))
     elif line.startswith('    ') and results:
       results[-1][2].append(line[4:])
   return results
+
+
+def checkWorlds(results: list) -> list:
+  """One world line before each class's first line; each a fresh world, one more than the last, but SHARED's."""
+  out = []
+  seen = set()
+  last = 0
+  for name, _, _, world in results:
+    owner = name.split('.')[0]
+    if owner == 'unitTAS':
+      if world is not None:
+        out.append('a world line before %s' % name)
+      continue
+    if owner in seen:
+      if world is not None:
+        out.append('a second world line for %s: %s' % (owner, world[2]))
+      continue
+    seen.add(owner)
+    if world is None:
+      out.append('no world line before %s' % name)
+      continue
+    number, shared, says = world
+    if owner == SHARED[0]:
+      if not shared or number != last or SHARED[1] not in says:
+        out.append('%s should share world %d as %s left it; its line says: world %d%s: %s'
+                   % (owner, last, SHARED[1], number, ', shared' if shared else '', says))
+    elif shared or number != last + 1:
+      out.append('%s should get a fresh world %d; its line says: world %d%s: %s'
+                 % (owner, last + 1, number, ', shared' if shared else '', says))
+    last = number
+  return out
 
 
 def check(text: str) -> list:
@@ -65,8 +126,17 @@ def check(text: str) -> list:
     elif byName[name][1] != outcome:
       first = (byName[name][2] or [''])[0]
       out.append('%s is "%s", should be "%s" (%s)' % (name, byName[name][1], outcome, first))
-  for name, outcome, details in results:
-    if name in EXPECTED:
+  for name, parts in DETAILS.items():
+    if name in byName:
+      said = '\n'.join(byName[name][2])
+      for part in parts:
+        if part not in said:
+          out.append('%s doesn\'t say %r under it' % (name, part))
+  for name in ABSENT:
+    if name in byName:
+      out.append('%s ran, and shouldn\'t have (%s)' % (name, byName[name][1]))
+  for name, outcome, details, _ in results:
+    if name in EXPECTED or name in ABSENT:
       continue
     if not name.startswith(SELF_CLASSES):
       out.append('a line nobody expects: %s ... %s' % (name, outcome))
@@ -75,7 +145,8 @@ def check(text: str) -> list:
   for prefix in SELF_CLASSES:
     if not any(result[0].startswith(prefix) for result in results):
       out.append('no test of %s in the report' % prefix[:-1])
-  warnings = [(name, i, details) for name, _, details in results
+  out.extend(checkWorlds(results))
+  warnings = [(name, i, details) for name, _, details, _ in results
               for i, line in enumerate(details) if line.startswith('warning: ')]
   if len(warnings) != 1:
     out.append('%d warnings in the report, should be 1 (under %s)' % (len(warnings), WARNED))

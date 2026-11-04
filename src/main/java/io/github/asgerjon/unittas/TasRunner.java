@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -34,6 +35,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * The test thread, as Python's unittest runs a suite: every public no-argument method whose name starts with `test`,
@@ -75,6 +77,8 @@ final class TasRunner implements Runnable {
 		boolean stuck;
 		/** What the test did that works but shouldn't be relied on, each with where it was. */
 		final List<String> warnings = new ArrayList<>();
+		/** The world line the report prints before this one: the first line of a class says which world it ran in. */
+		String worldNote;
 
 		Result(String name) {
 			this.name = name;
@@ -105,6 +109,13 @@ final class TasRunner implements Runnable {
 	private final TasGame game;
 	private final UnitTas.Request request;
 	private final List<Result> results = new ArrayList<>();
+	/** The tests counted so far and in all ("test 3/40"), for the progress lines and "N tests not run". */
+	private int number;
+	private int total;
+	/** The world line for the next class's first line in the report ("world 2: fresh for GiveTests ..."). */
+	private String worldNote;
+	/** How many of the plugins' problems are in the report already. */
+	private int pluginProblemsSeen;
 
 	TasRunner(TasGame game) {
 		this.game = game;
@@ -125,21 +136,28 @@ final class TasRunner implements Runnable {
 			for (String problem : TasPlugins.problems()) {
 				results.add(Result.problem("unitTAS.plugins", problem));
 			}
+			pluginProblemsSeen = TasPlugins.problems().size();
 			List<Test> tests = allTests();
 			if (!request.saves.isEmpty()) {
 				runSaves(tests);
 			} else {
 				game.activity("preparing the test world");
 				prepareWorld();
-				int number = 0;
-				for (Test test : tests) {
-					number++;
-					Result result = runOne(test, "", true, "test " + number + "/" + tests.size() + " ");
-					results.add(result);
-					request.progress(String.format(Locale.ROOT, "test %d/%d %s ... %s", number, tests.size(), result.name, result.outcome.word));
-					if (stopIfAborted(tests.size() - number) || stopIfStuck(result, tests.size() - number)) {
-						break;
-					}
+				total = tests.size();
+				String problem = null;
+				if (needsFreshWorlds(tests)) {
+					// the world as made, kept aside: each class after the first gets it back (unless @SharedWorld)
+					game.activity("keeping the test world aside");
+					problem = keepPristine();
+				}
+				if (problem != null) {
+					problem = "couldn't keep the test world aside for the classes' fresh worlds: " + problem + "; " + notRun(total);
+					results.add(Result.problem("unitTAS.world", problem));
+					request.progress(problem);
+				} else {
+					worldHooks("setUpWorld");
+					runTests(tests, "", true, true);
+					worldHooks("tearDownWorld");
 				}
 			}
 		} catch (Throwable t) {
@@ -208,8 +226,7 @@ final class TasRunner implements Runnable {
 	 * run in it as they find it: no resets, no game rule changes (they would change the save).
 	 */
 	private void runSaves(List<Test> tests) {
-		int total = tests.size() * request.saves.size() * 2;
-		int number = 0;
+		total = tests.size() * request.saves.size() * 2;
 		for (int pass = 1; pass <= 2; pass++) {
 			for (String folder : request.saves) {
 				if (stopIfAborted(total - number)) {
@@ -236,16 +253,11 @@ final class TasRunner implements Runnable {
 					request.progress(problem);
 				} else {
 					request.progress(String.format(Locale.ROOT, "%s loaded in %.0f s", folder, save.loadSeconds));
-					for (Test test : tests) {
-						number++;
-						Result result = runOne(test, suffix, false, "test " + number + "/" + total + " ");
-						results.add(result);
-						request.progress(String.format(Locale.ROOT, "test %d/%d %s ... %s", number, total, result.name, result.outcome.word));
-						if (stopIfAborted(total - number) || stopIfStuck(result, total - number)) {
-							TasSave.current = null;
-							log.quiet();
-							return;
-						}
+					// the saves are the worlds: no fresh ones, no world hooks (they would change the saves)
+					if (!runTests(tests, suffix, false, false)) {
+						TasSave.current = null;
+						log.quiet();
+						return;
 					}
 				}
 				TasSave.current = null;
@@ -402,6 +414,231 @@ final class TasRunner implements Runnable {
 		return tests;
 	}
 
+	private static String notRun(int left) {
+		return left + " test" + (left == 1 ? "" : "s") + " not run";
+	}
+
+	/** A class after the first that isn't @SharedWorld needs the world as made: then it's kept aside before the first. */
+	private static boolean needsFreshWorlds(List<Test> tests) {
+		for (Test test : tests) {
+			if (test.testClass != tests.get(0).testClass && !test.testClass.isAnnotationPresent(SharedWorld.class)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Closes the test world, copies it aside as it is (made, its game rules set), and opens it again; null, or what went wrong. */
+	private String keepPristine() {
+		String quit = quitAndWait();
+		if (quit != null) {
+			return quit;
+		}
+		try {
+			game.keepPristine();
+		} catch (IOException | UncheckedIOException e) {
+			return "couldn't copy it: " + e;
+		}
+		return openAndSettle(TasGame.WORLD_FOLDER);
+	}
+
+	/**
+	 * A class's fresh world: the world closed, the copy kept as it was made put back over it, exactly (what the classes
+	 * since made, the End included, is gone), and opened again. Null, or what went wrong.
+	 */
+	private String freshWorld() {
+		worldHooks("tearDownWorld");
+		String quit = quitAndWait();
+		if (quit != null) {
+			return quit;
+		}
+		try {
+			game.restorePristine();
+		} catch (IOException | UncheckedIOException e) {
+			return "couldn't put the kept world back: " + e;
+		}
+		String open = openAndSettle(TasGame.WORLD_FOLDER);
+		if (open != null) {
+			return open;
+		}
+		game.nextWorld();
+		worldHooks("setUpWorld");
+		return null;
+	}
+
+	/** The plugins' setUpWorld or tearDownWorld, on the server thread; a hook that throws is a problem in the report. */
+	private void worldHooks(String which) {
+		Consumer<TasHooks> call = "setUpWorld".equals(which) ? TasHooks::setUpWorld : TasHooks::tearDownWorld;
+		game.server(() -> {
+			TasPlugins.each(which, request, call);
+			return null;
+		});
+		List<String> problems = TasPlugins.problems();
+		for (int i = pluginProblemsSeen; i < problems.size(); i++) {
+			results.add(Result.problem("unitTAS.plugins", problems.get(i)));
+		}
+		pluginProblemsSeen = problems.size();
+	}
+
+	/**
+	 * The tests in order, a class at a time: the class's world (where fresh worlds are given: the run's own for the
+	 * first class, for each later one the kept world put back, unless it is @SharedWorld), its setUpClass, its tests,
+	 * its tearDownClass. False when the run stopped.
+	 */
+	private boolean runTests(List<Test> tests, String suffix, boolean resetFirst, boolean freshWorlds) {
+		String previous = null;
+		int i = 0;
+		while (i < tests.size()) {
+			Class<? extends TasTestCase> testClass = tests.get(i).testClass;
+			int end = i;
+			while (end < tests.size() && tests.get(end).testClass == testClass) {
+				end++;
+			}
+			String name = testClass.getSimpleName();
+			if (freshWorlds) {
+				if (previous == null) {
+					worldNote = "world " + game.worldNumber() + ": the run's first, for " + name;
+				} else if (testClass.isAnnotationPresent(SharedWorld.class)) {
+					worldNote = "world " + game.worldNumber() + ", shared: " + name + " runs in it as " + previous + " left it";
+				} else {
+					game.activity("putting the test world back for " + name);
+					long asked = System.currentTimeMillis();
+					String problem = freshWorld();
+					if (problem != null) {
+						problem = "couldn't give " + name + " a fresh world: " + problem + "; " + notRun(total - number);
+						results.add(Result.problem("unitTAS.world", problem));
+						request.progress(problem);
+						return false;
+					}
+					worldNote = String.format(Locale.ROOT, "world %d: fresh for %s (the kept world put back, opened in %.1f s)",
+						game.worldNumber(), name, (System.currentTimeMillis() - asked) / 1000.0);
+				}
+				request.progress(worldNote);
+			}
+			previous = name;
+			if (!runClass(testClass, tests.subList(i, end), suffix, resetFirst)) {
+				return false;
+			}
+			i = end;
+		}
+		return true;
+	}
+
+	/** A result of the running class, in the report and the progress; the class's first takes its world line. */
+	private void addResult(Result result) {
+		if (worldNote != null && result.outcome != Outcome.PROBLEM) {
+			result.worldNote = worldNote;
+			worldNote = null;
+		}
+		results.add(result);
+		request.progress(String.format(Locale.ROOT, "test %d/%d %s ... %s", number, total, result.name, result.outcome.word));
+	}
+
+	/** One class, as unittest runs one: setUpClass, its tests, tearDownClass. False when the run stopped. */
+	private boolean runClass(Class<? extends TasTestCase> testClass, List<Test> tests, String suffix, boolean resetFirst) {
+		Result setUp = runFixture(testClass, "setUpClass", suffix, resetFirst);
+		if (setUp.outcome == Outcome.SKIP) {
+			for (Test test : tests) {
+				number++;
+				Result skipped = new Result(test.name + suffix);
+				skipped.outcome = Outcome.SKIP;
+				skipped.detail = "setUpClass: " + setUp.detail;
+				addResult(skipped);
+			}
+			return !stopIfAborted(total - number);
+		}
+		if (setUp.outcome != Outcome.OK) {
+			number += tests.size();
+			setUp.detail += "\n(its " + notRun(tests.size()) + ")";
+			addResult(setUp);
+			return !(stopIfAborted(total - number) || stopIfStuck(setUp, total - number));
+		}
+		Result last = null;
+		for (Test test : tests) {
+			number++;
+			Result result = runOne(test, suffix, resetFirst, "test " + number + "/" + total + " ");
+			if (last == null) {
+				result.warnings.addAll(0, prefixed(setUp.warnings, "setUpClass: "));
+			}
+			addResult(result);
+			last = result;
+			if (stopIfAborted(total - number) || stopIfStuck(result, total - number)) {
+				return false;
+			}
+		}
+		Result tearDown = runFixture(testClass, "tearDownClass", suffix, false);
+		if (tearDown.outcome == Outcome.OK || tearDown.outcome == Outcome.SKIP) {
+			last.warnings.addAll(prefixed(tearDown.warnings, "tearDownClass: "));
+			return true;
+		}
+		addResult(tearDown);
+		return !(stopIfAborted(total - number) || stopIfStuck(tearDown, total - number));
+	}
+
+	private static List<String> prefixed(List<String> warnings, String prefix) {
+		List<String> out = new ArrayList<>();
+		for (String warning : warnings) {
+			out.add(prefix + warning);
+		}
+		return out;
+	}
+
+	/**
+	 * setUpClass or tearDownClass, on an instance of its own, with the class's time limit. Its result goes in the
+	 * report only when it didn't pass; anything it throws is an error, as in unittest (skipTest skips the class).
+	 */
+	private Result runFixture(Class<? extends TasTestCase> testClass, String which, String suffix, boolean resetFirst) {
+		Result result = new Result(testClass.getSimpleName() + "." + which + suffix);
+		game.testStarts(result.name);
+		int chatMark = game.chatMark();
+		long start = System.currentTimeMillis();
+		Throwable problem = null;
+		try {
+			TasTestCase instance = testClass.getConstructor().newInstance();
+			instance.attach(game);
+			if (resetFirst) {
+				reset();
+			}
+			chatMark = game.chatMark();
+			game.startClock(instance.timeoutSeconds());
+			if ("setUpClass".equals(which)) {
+				instance.setUpClass();
+			} else {
+				instance.tearDownClass();
+			}
+		} catch (Throwable t) {
+			problem = unwrap(t);
+		} finally {
+			game.stopClock();
+			Thread.interrupted();
+		}
+		if (problem == null) {
+			result.outcome = Outcome.OK;
+		} else if (problem instanceof TasTestCase.Skip) {
+			result.outcome = Outcome.SKIP;
+			result.detail = problem.getMessage();
+		} else {
+			result.outcome = Outcome.ERROR;
+			result.detail = problem instanceof AssertionError
+				? "AssertionError: " + problem.getMessage() + where(problem, testClass) : stackTrace(problem);
+			result.stuck |= stuck(problem);
+			result.screenshot = screenshot(result);
+			if (result.noScreenshot != null) {
+				result.detail += "\n(no screenshot: " + result.noScreenshot + ")";
+			}
+		}
+		result.seconds = (System.currentTimeMillis() - start) / 1000.0;
+		result.chat = game.chatSince(chatMark);
+		for (Throwable warning : game.takeWarnings()) {
+			String line = warning.getMessage() + where(warning, testClass);
+			if (!result.warnings.contains(line)) {
+				result.warnings.add(line);
+			}
+		}
+		game.testEnds();
+		return result;
+	}
+
 	/** One test; the label ("test 3/40 ") goes before its name in what the watch shows. */
 	private Result runOne(Test test, String suffix, boolean resetFirst, String label) {
 		Result result = new Result(test.name + suffix);
@@ -554,10 +791,14 @@ final class TasRunner implements Runnable {
 		return false;
 	}
 
-	/** "\n  at FooTests.testBar(FooTests.java:42)": the first frame in the test's own classes, or "" if none is. */
 	private static String where(Throwable problem, Test test) {
+		return where(problem, test.testClass);
+	}
+
+	/** "\n  at FooTests.testBar(FooTests.java:42)": the first frame in the test's own classes, or "" if none is. */
+	private static String where(Throwable problem, Class<?> testClass) {
 		Set<String> own = new HashSet<>();
-		for (Class<?> type = test.testClass; type != null && type != TasTestCase.class; type = type.getSuperclass()) {
+		for (Class<?> type = testClass; type != null && type != TasTestCase.class; type = type.getSuperclass()) {
 			own.add(type.getName());
 		}
 		for (StackTraceElement frame : problem.getStackTrace()) {
@@ -790,6 +1031,9 @@ final class TasRunner implements Runnable {
 		}
 		report.append("\n\n");
 		for (Result result : results) {
+			if (result.worldNote != null) {
+				report.append(result.worldNote).append('\n');
+			}
 			report.append(String.format(Locale.ROOT, "%s ... %s (%.1f s)%n", result.name, result.outcome.word, result.seconds));
 			switch (result.outcome) {
 				case FAIL:

@@ -47,12 +47,31 @@ public abstract class TasTestCase {
 		this.game = game;
 	}
 
-	/** Before each test, after the player and world were put back. */
+	/** Before each test, after the player was put back (see the README for what the reset puts back, and what not). */
 	protected void setUp() {
 	}
 
 	/** After each test, also when it failed. */
 	protected void tearDown() {
+	}
+
+	/**
+	 * Once before the class's first test, in the class's world (a fresh one, unless the class is {@link SharedWorld})
+	 * and after a reset of the player, as unittest's setUpClass. It runs on an instance of its own, so what it makes
+	 * for the tests goes in static fields. The reset still runs before every test: what setUpClass leaves must survive
+	 * it (blocks, game rules, a mod's state), not entities, items or effects. A failure here is an error and the
+	 * class's tests don't run; skipTest here skips them all.
+	 */
+	protected void setUpClass() {
+	}
+
+	/** Once after the class's last test, on an instance of its own; not when setUpClass failed or the run stopped. */
+	protected void tearDownClass() {
+	}
+
+	/** The world this test runs in, by the number the report gives it: 1 for the run's first, one more for each new. */
+	protected final int worldNumber() {
+		return game.worldNumber();
 	}
 
 	/** How long one test may take before it is stopped as an error. */

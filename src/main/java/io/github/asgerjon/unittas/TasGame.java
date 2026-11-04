@@ -123,6 +123,9 @@ public final class TasGame {
 	private boolean pauseOnLostFocus;
 	private EnumDifficulty difficulty;
 
+	/** The test world's number, as the report names it: 1 for the run's first world, one more for each new one. */
+	private volatile int worldNumber = 1;
+
 	/** The run going on, for the test helpers that have no game of their own (player() off the server thread warns here). */
 	private static volatile TasGame current;
 	/** The running test's warnings, each made where it was raised, so the report can say where. */
@@ -287,6 +290,8 @@ public final class TasGame {
 	/** A fresh world each run: the old test world goes first (only that folder), then creative, cheats, flat, a fixed seed. */
 	private void createWorld(Minecraft mc) {
 		prepareRun(mc, true);
+		// a run that died left its kept world: this run keeps its own
+		dropPristine();
 		ISaveFormat saves = mc.getSaveLoader();
 		saves.flushCache();
 		saves.deleteWorldDirectory(WORLD_FOLDER);
@@ -492,6 +497,7 @@ public final class TasGame {
 		}
 		restoreOptions(mc);
 		restoreConfig(mc);
+		dropPristine();
 		mc.shutdown();
 	}
 
@@ -638,6 +644,44 @@ public final class TasGame {
 
 	int testNumber() {
 		return testNumber;
+	}
+
+	int worldNumber() {
+		return worldNumber;
+	}
+
+	/** The next class's world is a new one, as the report counts them. */
+	void nextWorld() {
+		worldNumber++;
+	}
+
+	// ---------------------------------------------------------------- the test world, kept as made
+
+	private static File worldFolder() {
+		return new File(Minecraft.getMinecraft().mcDataDir, "saves/" + WORLD_FOLDER);
+	}
+
+	/** The test world as it was made, for each class's fresh world: in the game's own folder, not among the saves. */
+	private static File pristineFolder() {
+		return new File(Minecraft.getMinecraft().mcDataDir, "unittas/world.pristine");
+	}
+
+	/** Copies the closed test world aside, as it is now. */
+	void keepPristine() throws IOException {
+		copyExactly(worldFolder().toPath(), pristineFolder().toPath());
+	}
+
+	/** Puts the kept copy back over the closed test world, exactly: what was made in it since is gone, the End too. */
+	void restorePristine() throws IOException {
+		copyExactly(pristineFolder().toPath(), worldFolder().toPath());
+	}
+
+	private void dropPristine() {
+		try {
+			deleteTree(pristineFolder().toPath());
+		} catch (IOException | UncheckedIOException e) {
+			request.progress("can't remove the kept test world " + pristineFolder() + ": " + e);
+		}
 	}
 
 	int testLimitSeconds() {
