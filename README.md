@@ -119,14 +119,14 @@ differ from that buildscript's.
    ```
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev1'))
+   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev2'))
    ```
 
    A jar on your own machine goes **as a file**: by module name from a local repository, RetroFuturaGradle 2.0.5
    resolves it but silently doesn't rename it.
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev1.jar')))
+   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev2.jar')))
    ```
 
 2. `gradle.properties`: `forceEnableMixins = true` (a mod with `usesMixins = true` has it already).
