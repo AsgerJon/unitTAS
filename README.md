@@ -109,7 +109,7 @@ Tried in a consumer check, where unitTAS's tests passed in another mod's develop
    resolves it but silently doesn't rename it.
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev0.jar')))
+   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev1.jar')))
    ```
 
 2. `gradle.properties`: `forceEnableMixins = true` (a mod with `usesMixins = true` has it already).
