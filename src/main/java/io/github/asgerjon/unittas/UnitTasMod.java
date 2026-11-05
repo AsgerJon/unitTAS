@@ -13,7 +13,7 @@ import io.github.asgerjon.unittas.probe.Probe;
 public final class UnitTasMod {
 
 	public static final String MODID = "unittas";
-	public static final String VERSION = "0.1.0-dev5";
+	public static final String VERSION = "0.1.0-dev6";
 
 	@Mod.EventHandler
 	public void preInit(FMLPreInitializationEvent event) {
