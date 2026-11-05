@@ -212,8 +212,9 @@ public class GiveTests extends TasTestCase {
   `TasChat` it returns has `text()`, `suggestions()` (in 1.7.10's own chat: the completions the server sent for the
   last Tab), `usage()` (the line above the input, for a mod's chat that has one), `key(Keyboard.KEY_TAB)`,
   `typeMore(text)`, `enter()`, `close()`.
-- The game: `onServer(() -> …)` and `onClient(() -> …)` run a step on that thread and return its result (a step asked
-  for from inside a step on the same thread runs at once). Inside a server step, `player()` and `world()` are the
+- The game: `onServer(() -> …)` and `onClient(() -> …)` run a step on that thread at the end of its next tick and
+  return its result (a step asked for from inside a step on the same thread runs at once). One step after another
+  takes a tick each, so a test can sample once a tick with a step per sample. Inside a server step, `player()` and `world()` are the
   server's player and world. Never touch game objects outside a step, and don't wait for ticks inside one:
   `player()`, `world()`, `entitiesNear()` or `runCommand()` called outside a server step put a warning under the
   test in the report, with the line it came from (a warning for now, not a failure).

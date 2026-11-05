@@ -74,12 +74,20 @@ public final class Sides {
 		state.tickedAt = System.currentTimeMillis();
 	}
 
-	/** At the end of each tick: the queued steps, then the every-tick work, then the count, which wakes the waiters. */
+	/**
+	 * At the end of each tick: the queued steps, then the every-tick work, then the count, which wakes the waiters. Only
+	 * the steps queued before this tick's end began: one queued meanwhile (a waiter woken by the step before it, queuing
+	 * its next) waits for the next tick, so a step takes a tick (EFR's report, 2026-11-05; StepTests). They are counted,
+	 * not swapped out for a fresh queue, so a step never lands in a queue that has already been run.
+	 */
 	public void ticked(Side side) {
 		State state = of(side);
 		noteThread(side);
-		Runnable step;
-		while ((step = state.steps.poll()) != null) {
+		for (int queued = state.steps.size(); queued > 0; queued--) {
+			Runnable step = state.steps.poll();
+			if (step == null) {
+				break;
+			}
 			step.run();
 		}
 		for (EveryTick work : state.every) {
