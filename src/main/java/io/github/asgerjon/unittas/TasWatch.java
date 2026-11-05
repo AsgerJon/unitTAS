@@ -194,7 +194,7 @@ final class TasWatch implements Runnable {
 		int limit = game.testLimitSeconds();
 		Decision decision = ask("the test has run past its time limit (" + limit + " s)", false,
 			() -> game.inTest() && game.testNumber() == test && game.testOverTime(),
-			"stop this test as an error, with your reason, and go on with the next",
+			"stop this test (it has no result), with your reason, and go on with the next",
 			"the test is stopped as having run out of time");
 		switch (decision.action) {
 			case WAIT:

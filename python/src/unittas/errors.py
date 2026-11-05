@@ -129,3 +129,31 @@ def fromWire(error: Any, op: str, requestId: int) -> RequestError:
   except Exception:  # a type from a later protocol: kept as its string
     return RequestError(name, message, fields, op, requestId)
   return _BY_TYPE[kind](kind, message, fields, op, requestId)
+
+
+class NoResult(UnitTasError):
+  """
+  No test result could be obtained (SPEC.md 9.8): the game stopped ticking,
+  went away, or ran past a wall-clock guard. Not a failure and not an error
+  of the test, whose verdict was never reached; its message says so first.
+  """
+
+  PREFIX = 'NO TEST RESULT: '
+
+  def __init__(self, why: str) -> None:
+    UnitTasError.__init__(self, self.PREFIX + why)
+    self.why = why
+
+
+#  What ends a test with no result rather than a verdict: the game stuck, gone, or past a wall-clock guard. A mod's
+#  code that threw (GameError) is a result: an ERROR.
+NO_RESULT_ERRORS = (Stalled, TimedOut, LinkError)
+
+
+def whyNoResult(error: BaseException) -> str:
+  """What a no-result error says happened, for the report."""
+  if isinstance(error, Stalled):
+    return 'the game stopped ticking: %s' % error
+  if isinstance(error, TimedOut):
+    return 'a wall-clock guard ran out: %s' % error
+  return 'the game is gone, or doesn\'t answer: %s' % error

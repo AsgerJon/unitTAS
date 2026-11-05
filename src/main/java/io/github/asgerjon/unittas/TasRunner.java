@@ -57,6 +57,11 @@ final class TasRunner implements Runnable {
 		OK("ok", "ok"), FAIL("FAIL", "fail"), ERROR("ERROR", "error"), SKIP("skipped", "skipped"),
 		/** @ExpectedFailure: failed as marked; and passed although marked, which fails the run. */
 		EXPECTED_FAILURE("expected failure", "expected_failure"), UNEXPECTED_SUCCESS("unexpected success", "unexpected_success"),
+		/**
+		 * No verdict at all (SPEC.md 9.8): the game stopped ticking during the test, so no test result could be had. Never
+		 * an ERROR, whatever the test was marked: said first in the report, and it fails the run.
+		 */
+		NO_RESULT("NO RESULT", "no_result"),
 		/** unitTAS's own, not a test: a suite that doesn't exist, a class that can't run, a stop, a world that didn't load. */
 		PROBLEM("problem", "problem");
 
@@ -123,6 +128,8 @@ final class TasRunner implements Runnable {
 	private String worldNote;
 	/** How many of the plugins' problems are in the report already. */
 	private int pluginProblemsSeen;
+	/** The tests not run because the game stayed stuck: they have no result either, and the report's headline counts them. */
+	private int notRunStuck;
 
 	TasRunner(TasGame game) {
 		this.game = game;
@@ -391,16 +398,10 @@ final class TasRunner implements Runnable {
 	}
 
 	/** Steady conditions: no day and night, no weather, no mobs spawning on their own, no fire spread. */
+	/** The steady world (Worlds.prepare), the same body as the probe's world.prepare: one way to set a test world. */
 	private void prepareWorld() {
-		Map<String, String> rules = new LinkedHashMap<>();
-		rules.put("doDaylightCycle", "false");
-		rules.put("doMobSpawning", "false");
-		rules.put("doFireTick", "false");
-		rules.put("mobGriefing", "false");
 		game.server(() -> {
-			Worlds.setRules(rules);
-			Worlds.setTime(6000, null);
-			Worlds.setWeather(false, false, false);
+			Worlds.prepare();
 			return null;
 		});
 	}
@@ -628,6 +629,10 @@ final class TasRunner implements Runnable {
 		} else if (problem instanceof TasTestCase.Skip) {
 			result.outcome = Outcome.SKIP;
 			result.detail = problem.getMessage();
+		} else if (timedOut(problem)) {
+			result.outcome = Outcome.NO_RESULT;
+			result.detail = noResult(problem);
+			result.stuck |= stuck(problem);
 		} else {
 			result.outcome = Outcome.ERROR;
 			result.detail = problem instanceof AssertionError
@@ -713,7 +718,13 @@ final class TasRunner implements Runnable {
 			game.stopClock();
 			Thread.interrupted();
 		}
-		if (problem == null && expected != null) {
+		if (problem != null && timedOut(problem)) {
+			// before any other reading of it: a stuck game, the test's time limit, the watcher's stop. An expected
+			// failure that couldn't run to its verdict has no result either
+			result.outcome = Outcome.NO_RESULT;
+			result.detail = noResult(problem);
+			result.stuck |= stuck(problem);
+		} else if (problem == null && expected != null) {
 			result.outcome = Outcome.UNEXPECTED_SUCCESS;
 			result.detail = "marked @ExpectedFailure(\"" + expected.value() + "\"), but it passed: the mark can go";
 		} else if (problem == null) {
@@ -793,6 +804,29 @@ final class TasRunner implements Runnable {
 	}
 
 	/** Whether the game stopped answering (a step or a tick that never came), anywhere in the problem's causes. */
+	/** What a no result says: that there is none, and why (the stall's own words), with where it stopped. */
+	private static String noResult(Throwable problem) {
+		Throwable timeout = problem;
+		while (timeout != null && !(timeout instanceof TasGame.Timeout)) {
+			timeout = timeout.getCause();
+		}
+		return "no test result could be obtained: " + (timeout == null ? problem : timeout.getMessage()) + "\n"
+			+ stackTrace(problem);
+	}
+
+	/**
+	 * Whether the test ended without a verdict (SPEC.md 9.8): a TasGame.Timeout among its causes, which is a game that
+	 * stopped ticking, the test's own wall-clock limit, or the watcher's stop. Only a stuck one stops the run.
+	 */
+	private static boolean timedOut(Throwable problem) {
+		for (Throwable t = problem; t != null; t = t.getCause()) {
+			if (t instanceof TasGame.Timeout) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static boolean stuck(Throwable problem) {
 		for (Throwable t = problem; t != null; t = t.getCause()) {
 			if (t instanceof TasGame.Timeout && ((TasGame.Timeout) t).stuck) {
@@ -870,6 +904,7 @@ final class TasRunner implements Runnable {
 		} catch (RuntimeException e) {
 			dump = "nowhere (" + e + ")";
 		}
+		notRunStuck += left;
 		String problem = why + " after " + result.name + "; the run stops here, " + left + " test" + (left == 1 ? "" : "s")
 			+ " not run (threads in " + dump + ")";
 		record(Result.problem("unitTAS.stopped", problem));
@@ -968,11 +1003,27 @@ final class TasRunner implements Runnable {
 		int unexpectedSuccesses = 0;
 		int problems = 0;
 		int warnings = 0;
+		int noResults = 0;
+		String firstNoResult = null;
+		for (Result result : results) {
+			if (result.outcome == Outcome.NO_RESULT && firstNoResult == null) {
+				firstNoResult = result.name + ": " + result.detail.split("\n")[0];
+			}
+		}
 		StringBuilder report = new StringBuilder();
 		report.append("unitTAS report, ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT).format(new Date()))
 			.append(", suites: ").append(String.join(", ", request.suites));
 		if (request.filter != null) {
 			report.append(", only '").append(request.filter).append("'");
+		}
+		if (firstNoResult != null) {
+			// said first, before any line: these tests have no verdict at all (SPEC.md 9.8)
+			int none = notRunStuck;
+			for (Result result : results) {
+				none += result.outcome == Outcome.NO_RESULT ? 1 : 0;
+			}
+			report.append("\nNO TEST RESULT could be obtained for ").append(none).append(none == 1 ? " test: " : " tests: ")
+				.append(firstNoResult);
 		}
 		report.append("\n\n");
 		for (Result result : results) {
@@ -998,6 +1049,9 @@ final class TasRunner implements Runnable {
 					break;
 				case PROBLEM:
 					problems++;
+					break;
+				case NO_RESULT:
+					noResults++;
 					break;
 				default:
 					break;
@@ -1039,14 +1093,15 @@ final class TasRunner implements Runnable {
 		report.append("\n\n");
 		// as unittest counts them, and unitTAS's own problems last
 		List<String> counts = new ArrayList<>();
-		String[] names = {"failures", "errors", "skipped", "expected failures", "unexpected successes", "problems"};
-		int[] numbers = {failures, errors, skipped, expectedFailures, unexpectedSuccesses, problems};
+		String[] names = {"failures", "errors", "skipped", "expected failures", "unexpected successes", "no results",
+			"problems"};
+		int[] numbers = {failures, errors, skipped, expectedFailures, unexpectedSuccesses, noResults, problems};
 		for (int i = 0; i < names.length; i++) {
 			if (numbers[i] > 0) {
 				counts.add(names[i] + "=" + numbers[i]);
 			}
 		}
-		boolean ok = failures + errors + unexpectedSuccesses + problems == 0;
+		boolean ok = failures + errors + unexpectedSuccesses + noResults + problems == 0;
 		Map<String, Integer> summary = new LinkedHashMap<>();
 		summary.put("ran", tests);
 		summary.put("failures", failures);
@@ -1054,6 +1109,7 @@ final class TasRunner implements Runnable {
 		summary.put("skipped", skipped);
 		summary.put("expected_failures", expectedFailures);
 		summary.put("unexpected_successes", unexpectedSuccesses);
+		summary.put("no_results", noResults);
 		summary.put("problems", problems);
 		String within = counts.isEmpty() ? "" : " (" + String.join(", ", counts) + ")";
 		report.append(ok ? "OK" + within : "FAILED" + within).append('\n');

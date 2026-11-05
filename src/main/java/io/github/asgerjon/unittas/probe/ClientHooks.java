@@ -139,8 +139,11 @@ public final class ClientHooks {
 		if (quitAsked) {
 			quitAsked = false;
 			if (mc.theWorld != null) {
-				mc.theWorld.sendQuittingDisconnectingPacket();
-				mc.loadWorld(null);
+				// as the pause menu's Save and Quit, before the title screen's Quit. Its title screen takes the game out of
+				// focus: without it, the frame after the world went still turned the player as a focused game does, a player
+				// that was gone (a NullPointerException in EntityRenderer: a crash at nearly every quit from a world, found by
+				// the crash event, 2026-11-05)
+				Worlds.close(mc);
 			}
 			mc.shutdown();
 		}

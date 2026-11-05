@@ -2,7 +2,9 @@
 The probe's own tests in the game: 'python -m unittas.selftest [filter]'
 from the repository's root, as the watcher's 'probe' request runs it.
 The tests are python/tests/probe; each class starts the development
-client it needs (unittas.dev). The report is unittest's own, written to
+client it needs (unittas.dev). The report is unittest's own, each test
+numbered as the Java runner's progress has it (test 3/144 Class.method
+... ok), written to
 'unittas-results/<time>/report.txt' as it runs and ending in OK or FAILED,
 as the Java runner's does; the exit code is 0 only for OK.
 """
@@ -17,6 +19,33 @@ import unittest
 
 ROOT_MARKER = 'settings.gradle'
 TESTS = os.path.join('python', 'tests', 'probe')
+
+
+class NumberedResult(unittest.TextTestResult):
+  """
+  unittest's own lines, each test numbered against the run's total as the
+  Java runner's progress has it: 'test 69/420 Class.method ... ok'.
+  """
+
+  total = 0
+
+  def __init__(self, *args, **kwargs) -> None:
+    super().__init__(*args, **kwargs)
+    self.labels = {}
+
+  def startTest(self, test: unittest.TestCase) -> None:
+    self.labels[test] = 'test %d/%d %s.%s' % (self.testsRun + 1, self.total, type(test).__name__,
+                                             getattr(test, '_testMethodName', str(test)))
+    super().startTest(test)
+
+  def getDescription(self, test: unittest.TestCase) -> str:
+    return self.labels.get(test) or super().getDescription(test)
+
+
+def runNumbered(suite: unittest.TestSuite, stream) -> unittest.TestResult:
+  """The suite run as the probe's tests run, its lines numbered (NumberedResult)."""
+  result = type('BoundNumberedResult', (NumberedResult,), {'total': suite.countTestCases()})
+  return unittest.TextTestRunner(stream=stream, verbosity=2, resultclass=result).run(suite)
 
 
 class _Both:
@@ -58,7 +87,7 @@ def main(argv: list) -> int:
     stream = _Both(report, sys.stdout)
     stream.write('unitTAS probe tests, %s%s\n\n' % (time.strftime('%Y-%m-%d %H:%M:%S'),
                                                     ', only tests matching %r' % wanted if wanted else ''))
-    result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+    result = runNumbered(suite, stream)
   if result.testsRun == 0:
     print('unittas.selftest: no test matched', file=sys.stderr)
     return 1

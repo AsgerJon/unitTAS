@@ -72,6 +72,10 @@ def _copyExactly(source: str, target: str) -> None:
       shutil.copy2(path, copy, follow_symlinks=False)
 
 
+#  the run's kept world uses them too (unittas.run)
+copyExactly = _copyExactly
+
+
 def _removeTree(folder: str) -> None:
   """The folder and everything under it, deepest first, links removed as links."""
   for path in reversed(_below(folder)):
@@ -152,3 +156,7 @@ class GameFiles(BaseObject):
     os.remove(self.marker)
     _removeTree(self.backup)
     return True
+
+
+#  the run's kept world uses it too (unittas.run)
+removeTree = _removeTree

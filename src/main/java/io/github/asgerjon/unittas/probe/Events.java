@@ -7,8 +7,9 @@ import java.util.List;
 /** Which events the orchestrator wants (PROTOCOL.md 7, events.set): chat, sounds and screens on, the log from warn. */
 final class Events {
 
-	/** The events this probe sends so far (phase 2 adds the others step by step: chat, sound, screen, world, tick ...). */
-	static final List<String> KINDS = Collections.unmodifiableList(Arrays.asList("ready", "log", "quit", "dropped", "world", "chat", "sound", "screen"));
+	/** The events this probe sends (PROTOCOL.md 7); multiplayer's come with phase 3b. */
+	static final List<String> KINDS = Collections.unmodifiableList(Arrays.asList("ready", "log", "quit", "dropped", "world", "chat", "sound", "screen",
+		"java.result", "tick", "crash"));
 	static final List<String> LOG_LEVELS = Collections.unmodifiableList(Arrays.asList("off", "error", "warn", "info", "debug"));
 
 	volatile boolean chat = true;

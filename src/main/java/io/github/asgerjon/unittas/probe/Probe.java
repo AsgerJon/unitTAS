@@ -37,6 +37,8 @@ public final class Probe implements Link.Handler {
 	public static final String MINECRAFT = "1.7.10";
 	/** The protocol versions this probe speaks. */
 	private static final int[] PROTOCOLS = {1};
+	/** How often the heartbeat (the tick event) goes, from the probe's own thread, whether or not the game ticks. */
+	private static final long HEARTBEAT_MILLIS = 1000;
 	/** After a quit began on a game that is up, how long before the probe ends the process itself. */
 	private static final int WATCHDOG_SECONDS = 30;
 	/** The same for a game that is still loading: it finishes loading first, which a modpack takes its time over. */
@@ -128,6 +130,64 @@ public final class Probe implements Link.Handler {
 		}
 		LOG.info("unitTAS probe: dialling 127.0.0.1:{} as {} ({})", made.start.port, made.start.name, made.start.role);
 		made.link.start();
+		Thread heartbeat = new Thread(made::heartbeat, "unitTAS probe heartbeat");
+		heartbeat.setDaemon(true);
+		heartbeat.start();
+	}
+
+	/**
+	 * The tick event, once a second for as long as the link lasts (PROTOCOL.md 7): the sides' tick counts and how long
+	 * ago each ticked, the screen, the state. From this thread, so it comes while the game threads are stuck too: the
+	 * watch tells a slow game from a stuck one by it. Kept by the link until the welcome, like any event.
+	 */
+	private void heartbeat() {
+		while (!link.ended()) {
+			sleep(HEARTBEAT_MILLIS);
+			if (link.ended() || Thread.currentThread().isInterrupted()) {
+				return;
+			}
+			if (!link.welcomed()) {
+				continue;
+			}
+			try {
+				Sides sides = Sides.get();
+				long now = System.currentTimeMillis();
+				boolean server = snapshot.serverRunning;
+				long clientAt = sides.tickedAt(Side.CLIENT);
+				long serverAt = sides.tickedAt(Side.SERVER);
+				link.event("tick", Json.object(
+					"client", sides.ticks(Side.CLIENT),
+					"server", server ? sides.ticks(Side.SERVER) : null,
+					"client_ago_ms", clientAt == 0 ? null : now - clientAt,
+					"server_ago_ms", server && serverAt != 0 ? now - serverAt : null,
+					"screen", snapshot.screen,
+					"state", snapshot.state,
+					"paused", snapshot.paused));
+			} catch (RuntimeException e) {
+				LOG.warn("unitTAS probe: a heartbeat failed: {}", e.toString());
+			}
+		}
+	}
+
+	/**
+	 * The game is crashing (MixinMinecraft, as it shows its crash report, which is saved by then): the orchestrator
+	 * hears it, with the report's file and what it says, before the JVM goes, and then the quit, with reason crash.
+	 * No Minecraft class here: the mixin passes plain values.
+	 */
+	public static void crashed(File report, String description, Throwable cause) {
+		Probe made = probe;
+		if (made == null) {
+			return;
+		}
+		String summary = (description == null ? "no description" : description) + (cause == null ? "" : ": " + cause
+			+ (cause.getStackTrace().length == 0 ? "" : " at " + cause.getStackTrace()[0]));
+		LOG.error("unitTAS probe: the game crashed: {} (its crash report: {})", summary, report);
+		made.link.event("crash", Json.object("report", report == null ? null : report.getAbsolutePath(), "summary", summary));
+		if (made.quitting.compareAndSet(false, true)) {
+			made.snapshot.state = "quitting";
+			made.link.event("quit", Json.object("reason", "crash"));
+		}
+		made.link.flush(2000);
 	}
 
 	public static boolean active() {

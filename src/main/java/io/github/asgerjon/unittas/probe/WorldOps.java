@@ -41,6 +41,10 @@ final class WorldOps {
 		probe.op("world.time.set").does(WorldOps::time);
 		probe.op("world.weather.set").does(WorldOps::weather);
 		probe.op("world.difficulty.set").does(WorldOps::difficulty);
+		probe.op("world.prepare").does(call -> {
+			Worlds.prepare();
+			return new JsonObject();
+		});
 	}
 
 	// ---------------------------------------------------------------- making, opening, closing

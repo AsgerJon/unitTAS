@@ -185,6 +185,22 @@ public final class Worlds {
 		return unknown;
 	}
 
+	/**
+	 * The steady world a test world is given, on the server thread, by both runners (TasRunner.prepareWorld, and the
+	 * probe's world.prepare for the orchestrator's): no daylight cycle, mob spawning, fire tick or mob griefing; the
+	 * time noon (6000); clear weather. Each reset then holds the weather clear and sets Easy (Reset.world).
+	 */
+	public static void prepare() {
+		Map<String, String> rules = new java.util.LinkedHashMap<>();
+		rules.put("doDaylightCycle", "false");
+		rules.put("doMobSpawning", "false");
+		rules.put("doFireTick", "false");
+		rules.put("mobGriefing", "false");
+		setRules(rules);
+		setTime(6000, null);
+		setWeather(false, false, false);
+	}
+
 	/** Sets the game rules in every dimension (1.7.10 keeps them per world). */
 	public static void setRules(Map<String, String> values) {
 		for (WorldServer world : MinecraftServer.getServer().worldServers) {

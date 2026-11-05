@@ -21,7 +21,7 @@ import unittest
 
 from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
 from unittas.dev import DevGame
-from unittas.errors import BadRequest, Cancelled, LinkTimeout, NotReady
+from unittas.errors import BadRequest, Cancelled, LinkTimeout, NoResult, NotReady
 
 SELF_PLUGIN = 'io.github.asgerjon.unittas.self.SelfPlugin'
 #  a line of the Java runner's report.txt, as bin/self_red_check.py reads it
@@ -31,7 +31,7 @@ WORDS = {'ok': 'ok', 'fail': 'FAIL', 'error': 'ERROR', 'skipped': 'skipped', 'ex
          'unexpected_success': 'unexpected success', 'problem': 'problem'}
 #  the Java run of self, self-red and nosuch: bin/self_red_check.py's last line, as counts
 RED_COUNTS = {'failures': 0, 'errors': 3, 'skipped': 2, 'expected_failures': 3, 'unexpected_successes': 1,
-              'problems': 1}
+              'no_results': 0, 'problems': 1}
 #  a whole Java run of unitTAS's own suites, its fresh worlds included
 JAVA_SECONDS = 900.0
 
@@ -116,17 +116,20 @@ class CoreTests(unittest.TestCase):
     self.assertIn('the test world is loaded', lines[-1])
 
   def test_05_debug_threads_while_the_server_sleeps(self) -> None:
-    # the server sleeps 4 s in its next tick; debug.threads answers meanwhile, and shows it asleep there
-    self.request('debug.lag', {'ms': 4000, 'ticks': 1}, side='server')
-    time.sleep(0.5)
-    asked = time.monotonic()
-    text = self.request('debug.threads', timeout=10)['text']
-    self.assertLess(time.monotonic() - asked, 2.0, 'debug.threads waited for the sleeping server')
+    # the server sleeps 6 s in its tick; debug.threads answers while it is held, and shows it asleep there. Held is
+    # told by the server's ticks, not by the time (SPEC.md 9.8): its count doesn't move while it sleeps
+    lag = self.connection.send('debug.lag', {'ms': 6000, 'ticks': 1}, side='server')
+    lag.result(30)
+    threads = self.connection.send('debug.threads')
+    text = threads.result(30)['text']
+    if threads.at.server != lag.at.server:
+      raise NoResult('the server\'s 6 s hold was over before debug.threads answered (server tick %s, then %s): this '
+                     'machine was too slow to tell' % (lag.at.server, threads.at.server))
     server = text[text.index('"Server thread"'):]
     server = server[:server.index('\n\n')]
     self.assertIn('TIMED_WAITING', server.split('\n')[0])
     self.assertIn('java.lang.Thread.sleep', server)
-    self.request('ticks.wait', {'side': 'server', 'ticks': 1}, timeout=30)
+    self.request('ticks.wait', {'side': 'server', 'n': 1}, timeout=30)
 
   # ---------------------------------------------------------------- the mods' hooks
 

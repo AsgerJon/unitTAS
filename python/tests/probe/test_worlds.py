@@ -138,6 +138,20 @@ class WorldTests(unittest.TestCase):
     self.request('world.difficulty.set', {'difficulty': 'easy'})
     self.assertEqual('easy', self.request('world.get')['difficulty'])
 
+  def test_10b_prepare(self) -> None:
+    # the steady world both runners give a test world (TasRunner.prepareWorld's body): four rules off, noon, clear
+    self.request('world.rules.set', {'rules': {'doDaylightCycle': True, 'doMobSpawning': True, 'doFireTick': True,
+                                               'mobGriefing': True}})
+    self.request('world.time.set', {'time': 1000})
+    self.request('world.weather.set', {'weather': 'rain'})
+    self.assertEqual({}, self.request('world.prepare'))
+    world = self.request('world.get')
+    self.assertEqual({rule: 'false' for rule in ('doDaylightCycle', 'doMobSpawning', 'doFireTick', 'mobGriefing')},
+                     {rule: world['rules'][rule] for rule in ('doDaylightCycle', 'doMobSpawning', 'doFireTick',
+                                                              'mobGriefing')})
+    self.assertEqual(6000, world['day_time'])
+    self.assertEqual((False, False), (world['raining'], world['thundering']))
+
   def test_11_close(self) -> None:
     mark = self.connection.events.mark()
     closed = self.request('world.close', timeout=240)

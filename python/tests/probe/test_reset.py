@@ -28,6 +28,9 @@ class ResetTests(unittest.TestCase):
     cls.connection = cls.game.start()
     cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.connection.request('world.create', {}, timeout=240)
+    # as the Java runner's world (TasRunner.prepareWorld): a flat world spawns slimes by itself, and one that came
+    # between a reset and its check failed test_01 once (2026-11-05)
+    cls.connection.request('world.rules.set', {'rules': {'doDaylightCycle': False, 'doMobSpawning': False}})
 
   @classmethod
   def tearDownClass(cls) -> None:

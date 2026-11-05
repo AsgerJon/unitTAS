@@ -144,21 +144,19 @@ final class Reflect {
 
 	private static Object step(Call call, Object here, JsonElement step) throws ProbeException {
 		if (step.isJsonPrimitive()) {
-			String name = step.getAsString();
-			Field field = field(owner(here), name, here instanceof Statics);
-			if (field != null) {
-				try {
-					return field.get(here instanceof Statics ? null : here);
-				} catch (IllegalAccessException e) {
-					throw new ProbeException("ProbeError", "can't read " + name + ": " + e, null);
-				}
-			}
-			return invoke(call, here, name, new JsonArray(), null);
+			return byName(call, here, step.getAsString());
+		}
+		if (!step.isJsonObject()) {
+			throw ProbeException.badRequest("path", "a step is a name or an object, not " + step);
 		}
 		JsonObject object = step.getAsJsonObject();
+		if (object.has("name")) {
+			return byName(call, here, pick(here, names(object.get("name"), "name"), Member.ANY));
+		}
 		if (object.has("call")) {
 			JsonArray args = object.has("args") ? object.getAsJsonArray("args") : new JsonArray();
-			return invoke(call, here, object.get("call").getAsString(), args, Json.string(object, "sig"));
+			String name = pick(here, names(object.get("call"), "call"), Member.METHOD);
+			return invoke(call, here, name, args, Json.string(object, "sig"));
 		}
 		if (object.has("index")) {
 			int index = object.get("index").getAsInt();
@@ -183,7 +181,107 @@ final class Reflect {
 			}
 			return ((Map<?, ?>) here).get(object.get("key").getAsString());
 		}
-		throw ProbeException.badRequest("path", "a step is a name, {\"call\": ...}, {\"index\": n} or {\"key\": k}, not " + step);
+		throw ProbeException.badRequest("path", "a step is a name, {\"name\": ...}, {\"call\": ...}, {\"index\": n} or"
+			+ " {\"key\": k}, not " + step);
+	}
+
+	/** A field by that name, read; else a method with no arguments, called. */
+	private static Object byName(Call call, Object here, String name) throws ProbeException {
+		Field field = field(owner(here), name, here instanceof Statics);
+		if (field != null) {
+			try {
+				return field.get(here instanceof Statics ? null : here);
+			} catch (IllegalAccessException e) {
+				throw new ProbeException("ProbeError", "can't read " + name + ": " + e, null);
+			}
+		}
+		return invoke(call, here, name, new JsonArray(), null);
+	}
+
+	/** What a candidate name must be on the object's class chain to fit. */
+	private enum Member {
+		/** a name step's: a field, or a method */
+		ANY("a field or a method"),
+		/** a call's */
+		METHOD("a method"),
+		/** reflect.set's last step's */
+		FIELD("a field");
+
+		final String words;
+
+		Member(String words) {
+			this.words = words;
+		}
+	}
+
+	/** A step's name, or its candidates (PROTOCOL.md 5.9): a string, or a list of strings that isn't empty. */
+	private static List<String> names(JsonElement given, String key) throws ProbeException {
+		List<String> out = new ArrayList<>();
+		if (given.isJsonPrimitive() && given.getAsJsonPrimitive().isString()) {
+			out.add(given.getAsString());
+			return out;
+		}
+		if (given.isJsonArray() && given.getAsJsonArray().size() > 0) {
+			for (JsonElement each : given.getAsJsonArray()) {
+				if (!each.isJsonPrimitive() || !each.getAsJsonPrimitive().isString()) {
+					throw ProbeException.badRequest("path", key + "'s candidates are names, not " + each);
+				}
+				out.add(each.getAsString());
+			}
+			return out;
+		}
+		throw ProbeException.badRequest("path", key + " is a name, or a list of candidate names, not " + given);
+	}
+
+	/**
+	 * The one of the candidate names the object's class chain has (PROTOCOL.md 5.9): the orchestrator sends a readable
+	 * name's Searge names with it, not knowing the class a step lands on. A single name is taken as it is (its own
+	 * error, if any, says more). Several fitting is a BadRequest naming them; none, NotFound naming them all.
+	 */
+	private static String pick(Object here, List<String> names, Member member) throws ProbeException {
+		if (names.size() == 1) {
+			return names.get(0);
+		}
+		Class<?> type = owner(here);
+		boolean statics = here instanceof Statics;
+		List<String> fits = new ArrayList<>();
+		for (String name : names) {
+			boolean has = member != Member.METHOD && field(type, name, statics) != null
+				|| member != Member.FIELD && hasMethod(type, name, statics);
+			if (has && !fits.contains(name)) {
+				fits.add(name);
+			}
+		}
+		if (fits.size() == 1) {
+			return fits.get(0);
+		}
+		if (fits.isEmpty()) {
+			throw new ProbeException("NotFound", type.getName() + " has none of " + String.join(", ", names) + " as "
+				+ member.words, Json.object("what", names));
+		}
+		throw ProbeException.badRequest("path", "several of the candidates are " + member.words + " of " + type.getName()
+			+ ": " + String.join(", ", fits));
+	}
+
+	/** Whether the class chain (or the class's interfaces) has a method by that name, static or not as asked. */
+	private static boolean hasMethod(Class<?> type, String name, boolean statics) {
+		for (Class<?> at = type; at != null; at = at.getSuperclass()) {
+			for (Method method : at.getDeclaredMethods()) {
+				if (method.getName().equals(name) && statics == Modifier.isStatic(method.getModifiers())) {
+					return true;
+				}
+			}
+		}
+		if (!statics) {
+			for (Class<?> face : type.getInterfaces()) {
+				for (Method method : face.getMethods()) {
+					if (method.getName().equals(name)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	private static Class<?> owner(Object here) {
@@ -557,14 +655,17 @@ final class Reflect {
 
 	static JsonElement set(Call call) throws ProbeException {
 		JsonArray path = path(call);
-		if (path.size() == 0 || !path.get(path.size() - 1).isJsonPrimitive()) {
-			throw ProbeException.badRequest("path", "reflect.set's path ends in a field's name");
+		JsonElement last = path.size() == 0 ? null : path.get(path.size() - 1);
+		boolean named = last != null && (last.isJsonPrimitive() || last.isJsonObject() && last.getAsJsonObject().has("name"));
+		if (!named) {
+			throw ProbeException.badRequest("path", "reflect.set's path ends in a field's name (or its candidates)");
 		}
 		Object owner = walk(call, from(call, call.args.get("from")), path, path.size() - 1);
-		String name = path.get(path.size() - 1).getAsString();
 		if (owner == null) {
-			throw new ProbeException("NotFound", "the path reached null before " + name, null);
+			throw new ProbeException("NotFound", "the path reached null before its last step " + last, null);
 		}
+		String name = last.isJsonPrimitive() ? last.getAsString()
+			: pick(owner, names(last.getAsJsonObject().get("name"), "name"), Member.FIELD);
 		Field field = field(owner(owner), name, owner instanceof Statics);
 		if (field == null) {
 			throw new ProbeException("NotFound", owner(owner).getName() + " has no field " + name, Json.object("what", name));

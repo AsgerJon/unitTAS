@@ -77,7 +77,9 @@ class LauncherTests(unittest.TestCase):
     self.client = os.path.join(unimined, 'minecraft-1.7.10-client.jar')
     open(self.client, 'w').close()
     os.makedirs(os.path.join(self.cache, 'caches', 'unimined', 'assets', 'indexes'))
-    open(os.path.join(self.cache, 'caches', 'unimined', 'assets', 'indexes', '1.7.10.json'), 'w').close()
+    # an asset index with no objects: the launcher takes the cache's assets only with every object its index names
+    with open(os.path.join(self.cache, 'caches', 'unimined', 'assets', 'indexes', '1.7.10.json'), 'w') as f:
+      json.dump({'objects': {}}, f)
     for group, artifact, version, classifier in JARS:
       path = modulePath(self.cache, group, artifact, version, classifier)
       os.makedirs(os.path.dirname(path), exist_ok=True)

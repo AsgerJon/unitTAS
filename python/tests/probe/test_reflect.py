@@ -17,6 +17,8 @@ import unittest
 from probegame import READY_SECONDS, ROOT, results
 from unittas.dev import DevGame
 from unittas.errors import BadRequest, NotFound
+from unittas.launcher import Sources
+from unittas.mappings import Mappings
 from unittas.reset import reset
 from unittas.snbt import Byte, Float, Short, dumps, loads
 
@@ -161,6 +163,33 @@ class ReflectTests(unittest.TestCase):
     with self.assertRaises(NotFound) as caught:
       self.reflect({'from': {'ref': kept['ref']}, 'path': []})
     self.assertIn('closed', caught.exception.message)
+
+  # ---------------------------------------------------------------- candidate names (phase 3, step 4)
+
+  def test_13a_the_candidate_the_class_has(self) -> None:
+    path = [{'name': ['noSuchField', 'inventory', 'field_71071_by']}, 'currentItem']
+    self.assertEqual(0, self.reflect({'from': 'player', 'path': path}))
+    self.assertEqual(20.0, self.reflect({'from': 'player', 'path': [{'call': ['func_110143_aJ', 'getHealth']}]}))
+
+  def test_13b_several_fit_or_none(self) -> None:
+    with self.assertRaises(BadRequest) as several:
+      self.reflect({'from': 'player', 'path': [{'name': ['inventory', 'inventoryContainer']}]})
+    self.assertIn('inventoryContainer', several.exception.message)
+    with self.assertRaises(NotFound) as none:
+      self.reflect({'from': 'player', 'path': [{'name': ['noSuchField', 'norThisOne']}]})
+    self.assertIn('norThisOne', none.exception.message)
+    with self.assertRaises(NotFound):
+      self.reflect({'from': 'player', 'path': [{'call': ['noSuchMethod', 'norThisOne']}]})
+
+  def test_13c_set_by_candidates(self) -> None:
+    path = [{'name': ['inventory', 'field_71071_by']}, {'name': ['currentItem', 'field_70461_c']}]
+    self.reflect({'from': 'player', 'path': path, 'value': 4}, op='reflect.set')
+    self.assertEqual(4, self.reflect({'from': 'player', 'path': ['inventory', 'currentItem']}))
+
+  def test_13d_a_path_translated_from_the_mappings(self) -> None:
+    mappings = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
+    self.assertEqual(0, self.reflect({'from': 'player', 'path': mappings.translate(['inventory', 'currentItem'])}))
+    self.assertEqual(20.0, self.reflect({'from': 'player', 'path': mappings.translate([{'call': 'getHealth'}])}))
 
   def test_14_quit(self) -> None:
     self.assertEqual({}, self.request('quit', {'reason': 'test_14'}))

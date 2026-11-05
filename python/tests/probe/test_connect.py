@@ -1,8 +1,8 @@
 """
 Step 2 of phase 2 (SPEC.md section 8.3): the probe connects. In the real
 development client: the hello, status while the game loads, ready at the
-title screen, an operation the probe doesn't have, events.set, quit; a
-hello refused; and the orchestrator going away, while the game loads and
+title screen, an operation the probe doesn't have, events.set, the
+heartbeat, quit; a hello refused; and the orchestrator going away, while the game loads and
 at the title screen. Each class is one launch of its own.
 
   python -m unittas.selftest connect      (through the watcher: "probe connect")
@@ -55,6 +55,9 @@ class ConnectTests(unittest.TestCase):
     for op in ('status', 'events.set', 'quit'):
       self.assertIn(op, hello.ops)
     self.assertIn('log', hello.events)
+    self.assertIn('java.result', hello.events, 'java.run sends one for each line of its report')
+    self.assertIn('tick', hello.events, 'the heartbeat')
+    self.assertIn('crash', hello.events)
 
   def test_1b_dialled_only_once_minecraft_is_launched(self) -> None:
     # Until LaunchWrapper launches Minecraft, its tweakers are still adding class transformers, and its class loader
@@ -107,7 +110,6 @@ class ConnectTests(unittest.TestCase):
     self.assertFalse(second['window']['pointer_grabbed'])
     self.assertGreater(second['ticks']['client'], first['ticks']['client'], 'the client ticks')
     self.assertIsNone(second['ticks']['server'], 'no server while no world is open')
-    self.assertLess(second['ago_ms']['client'], 2000)
 
   def test_5_an_operation_the_probe_lacks(self) -> None:
     with self.assertRaises(Unsupported) as caught:
@@ -119,6 +121,32 @@ class ConnectTests(unittest.TestCase):
     self.assertEqual({'chat': True, 'sound': False, 'screen': True, 'log': 'info'}, settings)
     again = self.connection.request('events.set', {'log': 'warn'}, timeout=10)
     self.assertEqual({'chat': True, 'sound': False, 'screen': True, 'log': 'warn'}, again)
+
+  def test_6b_the_heartbeat(self) -> None:
+    # once a second, from the probe's own thread, whether or not the game ticks (PROTOCOL.md 7). Held in a client tick
+    # on purpose (debug.lag, 10 s), the heartbeat still comes: two in that one tick, the client's count standing and
+    # its age growing. Decided by the events; the waits' times are only there for a heartbeat that never comes.
+    def isTick(event: dict) -> bool:
+      return event.get('event') == 'tick'
+
+    beat = self.connection.events.waitFor(isTick, 30, since=self.connection.events.mark())
+    for field in ('client', 'server', 'client_ago_ms', 'server_ago_ms', 'screen', 'state', 'paused'):
+      self.assertIn(field, beat)
+    self.assertEqual('menu', beat['state'])
+    self.assertIsNone(beat['server'], 'no server while no world is open')
+    self.assertIsNone(beat['server_ago_ms'])
+    self.assertTrue(beat['screen'].endswith('GuiMainMenu'), beat['screen'])
+    self.assertFalse(beat['paused'])
+    mark = self.connection.events.mark()
+    self.connection.request('debug.lag', {'ms': 10000, 'ticks': 1}, side='client', timeout=30)
+    held = self.connection.events.waitFor(lambda event: isTick(event) and event['client_ago_ms'] >= 2000, 60,
+                                          since=mark)
+    after = self.connection.events.mark()
+    again = self.connection.events.waitFor(isTick, 30, since=after)
+    self.assertEqual(held['client'], again['client'], 'the client ticked while held: %s, then %s' % (held, again))
+    self.assertGreater(again['client_ago_ms'], held['client_ago_ms'])
+    # and once it is let go, the client ticks on, and the heartbeat says so
+    self.connection.events.waitFor(lambda event: isTick(event) and event['client'] > held['client'], 60, since=after)
 
   def test_7_quit(self) -> None:
     mark = self.connection.events.mark()

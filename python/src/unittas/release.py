@@ -87,17 +87,26 @@ class ReleaseGame(LaunchedGame):
   run/oldsaves/mods/*.jar.
   """
 
-  def __init__(self, root: str, results: str, name: str = 'release', jar: str = None) -> None:
+  def __init__(self, root: str, results: str, name: str = 'release', jar: str = None, cache: str = None,
+               gradleCache: bool = True) -> None:
     LaunchedGame.__init__(self, root, results, name)
     self.__jar__ = jar
     self.__mods__ = []
+    #  the download cache to fill (None: the Gradle cache only, nothing downloaded), and whether to use the Gradle cache
+    self.__cache__ = cache
+    self.__gradle_cache__ = gradleCache
 
   def gameFolder(self) -> str:
     return os.path.join(self.root(), 'run', 'release')
 
   def command(self) -> list:
-    return [os.path.join(self.root(), 'unittas-display.sh'), sys.executable, '-I',
-            os.path.join(self.root(), 'bin', 'launch_client.py'), '--game', self.gameFolder()]
+    words = [os.path.join(self.root(), 'unittas-display.sh'), sys.executable, '-I',
+             os.path.join(self.root(), 'bin', 'launch_client.py'), '--game', self.gameFolder()]
+    if self.__cache__:
+      words += ['--cache', self.__cache__]
+    if not self.__gradle_cache__:
+      words.append('--no-gradle-cache')
+    return words
 
   def outputName(self) -> str:
     return 'client.log'

@@ -62,6 +62,7 @@ final class Ops {
 		probe.register(Op.onSide("world.time.set", Side.SERVER));
 		probe.register(Op.onSide("world.weather.set", Side.SERVER));
 		probe.register(Op.onSide("world.difficulty.set", Side.SERVER));
+		probe.register(Op.onSide("world.prepare", Side.SERVER));
 		// the player, the inventory, containers, commands, entities, screens, the mods' hooks (8.1, 8.4 to 8.9), given
 		// their bodies at preInit (GameOps)
 		probe.register(Op.onSide("command.run", Side.SERVER));

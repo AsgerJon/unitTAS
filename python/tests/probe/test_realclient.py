@@ -17,6 +17,8 @@ import unittest
 
 from probegame import GONE_SECONDS, MIXINS, READY_SECONDS, ROOT, modVersion, results
 from unittas.errors import NotFound
+from unittas.launcher import Sources
+from unittas.mappings import Mappings
 from unittas.release import ReleaseGame
 from unittas.reset import reset
 from unittas.wire import Role
@@ -100,6 +102,13 @@ class RealClientTests(unittest.TestCase):
       self.reflect(['inventory'])
     with self.assertRaises(NotFound):
       self.reflect([{'call': 'getHealth'}])
+
+  def test_07b_readable_names_translated(self) -> None:
+    translate = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home'))).translate
+    self.assertEqual(0, self.reflect(translate(['inventory', 'currentItem'])))
+    self.assertEqual(20.0, self.reflect(translate([{'call': 'getHealth'}])))
+    self.assertEqual('Red Wool', self.reflect(translate(['inventory', {'call': 'getCurrentItem'},
+                                                         {'call': 'getDisplayName'}])))
 
   def test_08_the_reset(self) -> None:
     self.request('player.teleport', {'pos': [20.5, 4.0, 20.5]})

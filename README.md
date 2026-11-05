@@ -24,13 +24,18 @@ The script leaves a request in `run/client/unittas/request.properties`, starts `
 test as it finishes, and prints the report when the game quits. Everything lands in `unittas-results/<time>/`
 (`unittas-results/latest` points at the newest):
 
-- `report.txt`: one line per test (`ok`, `FAIL`, `ERROR`, `skipped`, `expected failure`, `unexpected success`); for
+- `report.txt`: one line per test (`ok`, `FAIL`, `ERROR`, `skipped`, `expected failure`, `unexpected success`,
+  `NO RESULT`); for
   each that failed, the assertion and where in the test it failed (or the stack trace with its causes), the chat
   during the test and its screenshot; under any test, its warnings. unitTAS's own problems (a suite that doesn't
   exist, a class that can't run, a plugin that won't load, a run that stopped) are lines of their own, `problem`,
   counted apart from the tests: `Ran 16 tests in 41.0 s, 1 problem outside them`. Ends with `OK`,
-  `OK (expected failures=2)` or `FAILED (failures=…, errors=…, unexpected successes=…, problems=…)`, as unittest
-  counts; the scripts' exit code follows it. Before each class's first line, the world it ran in (below).
+  `OK (expected failures=2)` or `FAILED (failures=…, errors=…, unexpected successes=…, no results=…, problems=…)`, as
+  unittest counts; the scripts' exit code follows it. Before each class's first line, the world it ran in (below).
+- `NO RESULT` is a test that couldn't be run to a verdict: the game stopped ticking during it, or it ran past its time
+  limit, or the watcher stopped it. It is never a FAIL or an ERROR, which are verdicts. A test's verdict depends on
+  the game's ticks, never on how fast the machine is. A report with one says so before any test line: `NO TEST
+  RESULT could be obtained for 1 test: …`. The run is FAILED.
 - `screenshots/`: one per failed test (taken before its tearDown), plus the ones tests take on purpose.
 - `progress.txt`, `gradle.log`: the run as it went.
 
@@ -55,9 +60,9 @@ time.
 
 ### When the game hangs
 
-- A step the game doesn't run within 15 s is an error; a test that runs past its `timeoutSeconds()` is stopped. A
-  wait for ticks gives up only when no tick has come for 15 s, so a game that is slow but ticking (a heavy test at
-  10 ticks a second) still gets there.
+- A step the game doesn't run because it hasn't ticked for 15 s, and a test that runs past its `timeoutSeconds()`, are
+  `NO RESULT`: no verdict. A wait for ticks gives up only when no tick has come for 15 s, so a game that is slow but
+  ticking (a heavy test at 10 ticks a second) still gets there.
 - When a test ends because the game stopped answering, the runner checks that the client and the server still tick.
   If one doesn't, the run stops there (the rest of the tests not run, said so in the report) and the threads are
   dumped into `hang-threads.txt`.
@@ -93,8 +98,8 @@ threads, when the client can't take pictures), and the answers to choose from. T
 
 - `N wait <seconds>`: it is working, give it that long. If it is still at it then, a new alarm comes with new
   pictures.
-- `N fail <why>`: stop the test as an error, with the reason, and go on with the next. For a game that stopped
-  answering after a test, it means going on with the next test.
+- `N fail <why>`: stop the test, with the reason, and go on with the next. The test is `NO RESULT`: it never reached a
+  verdict. For a game that stopped answering after a test, it means going on with the next test.
 - `N abort <why>`: stop the whole run, with the reason; the report says so.
 
 An answer for another alarm is dropped, and one that is none of the three is pointed out in `alarm.txt`. An alarm
@@ -102,6 +107,12 @@ whose situation passes by itself (the test finishes) closes on its own. `alarms.
 answer, and each shows in `progress.txt`. Without an answer in 5 minutes (`UNITTAS_DECIDE_SECONDS`), unitTAS does what
 it does unwatched, so a run nobody watches still ends. The quiet-game limit of `./unittas.sh` then counts `watch.txt`
 too: only a game whose watch has stopped as well is stopped from outside.
+
+A Python run (`unittas run`, below) has the same watch, with the same files, words and answers. Its `watch.txt` reads
+the client and the server from the probe's heartbeat, which comes once a second even when the game doesn't tick, and
+says when the probe has gone silent. It is watched with `--watched` or `UNITTAS_WATCHED=1`, and its alarms come for a
+test past its `timeout_seconds` and for a test world not loaded in 60 s. A `fail` or no answer leaves that test, or
+the world and every test after it, `NO RESULT`.
 
 The watcher judges only whether the game is stuck, never whether a test passed. A test passes when its asserts hold,
 and only then; `ticks(n)` and `waitUntil(…, maxTicks)` are part of what a test asserts and stay as they are.
@@ -245,10 +256,104 @@ public class GiveTests extends TasTestCase {
   world a test runs in, as the report numbers them.
 - `@ExpectedFailure("why")` on a test (or on its class), as unittest's `expectedFailure`: a failed assert or an
   exception from the test itself is an `expected failure`, and the run can still end OK; a pass is an
-  `unexpected success`, which fails the run (the mark has done its work and should go). setUp, tearDown and
-  unitTAS's own stops (out of time, a game that stopped answering, the watcher's fail) stay what they are.
+  `unexpected success`, which fails the run (the mark has done its work and should go). setUp and tearDown stay
+  what they are, and unitTAS's own stops (out of time, a game that stopped answering, the watcher's fail) are
+  `NO RESULT`: a marked test that couldn't run to its verdict hasn't failed as expected either.
 - `TasLogErrors` listens to FML's logger and the root logger for errors and warnings (FML only logs the exception of
   an entity or tile entity that fails to load); `TasTrace` is the loading trace.
+
+## Tests in Python
+
+The same game, driven from outside it. The `unittas` Python package (in `python/`) starts the game an instance spec
+names, with unitTAS's probe inside, and runs Python tests against it over a local socket (PROTOCOL.md). The four
+levels are the ones above. The report has the Java runner's shape, so `unittas compare` can compare a Python run with
+a Java one line by line. The Java front end stays: a test that lives in a mod's internals is still best written in
+Java.
+
+**The instance spec**, `unittas.toml` in the mod's repository, says which game:
+
+```toml
+minecraft = "1.7.10"
+loader = { forge = "10.13.4.1614" }
+client = "real"                                # or "gradle": said, never assumed
+build = "./gradlew --console=plain remapJar"   # run first, without a shell
+mods = ["build/libs/mymod-*.jar"]              # each matching exactly one file
+libraries = ["maven:com.example:alib:1.0", "libs/unimixins-1.7.10-0.3.1.jar"]
+repositories = ["https://maven.example.com/"]  # where maven: libraries come from (https only)
+probe = "libs/unittas-0.1.0.jar"               # unitTAS's jar, the probe
+config = "test-config"                         # copied into the game's config/ for the run
+options = { autoJump = false }                 # set in options.txt for the run
+game = "run/unittas"                           # the real client's game folder
+window = { width = 854, height = 480, display = "nested" }   # or "headless", "plain"
+```
+
+- `client = "real"` is a real (not development) client. Its `mods/` holds the probe, the spec's mod jars and its
+  libraries. What it needs comes from the Gradle cache where that has it. The rest is downloaded from Mojang's and
+  Forge's own servers over HTTPS into `~/.cache/unittas` (or `UNITTAS_CACHE`), each file checked against its sha1.
+  Java 8 is never downloaded: `java = "/path/to/java"`, `UNITTAS_JAVA8`, or the usual JDK folders.
+- `client = "gradle"` is the mod's own development run, in a `[gradle]` table: `project` (its folder), `task`
+  (`runClient`) and `game` (its run folder).
+- Paths are taken from the spec's own folder. A mod jar of the spec's own project that is older than the newest file
+  under its `src/` is refused, as not built from those sources. Every mistake names the file and the key.
+
+**A test class** is a plain `unittest.TestCase`:
+
+```python
+from unittas.testcase import GameTestCase
+
+class GiveTests(GameTestCase):
+
+  def test_red_wool(self):
+    said = self.command('/give @p wool 1 14')
+    self.assertIn('Given [Red Wool] * 1', said.lines)
+    held = self.held()
+    self.assertEqual(('minecraft:wool', 14), (held.id, held.meta))
+```
+
+- `self.game` is the game (`unittas.api.Game`): `command`, `player`, `teleport`, `look`, `held`, `slot`,
+  `inventory`, `setSlot`, `block`, `setBlock`, `spawn`, `entity`, `entities`, `remove`, the keys (`tap`, `keyDown`,
+  `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), `ticks(n)`, `waitUntil`, `screenshot`, and
+  `reflect` by readable names (a real client's are translated). Its values are typed (`unittas.values`). An error
+  from the game is the package's exception (`unittas.errors`): a mod that threw is a `GameError`.
+- The levels are the Java runner's. Each class gets the kept world back unless it says `shared_world = True`. The
+  player is reset before every test, whatever its own `setUp` does. `setUpClass` (which calls
+  `super().setUpClass()` first, as unittest has it) runs in the class's world. `self.chat()` and `self.sounds()` are
+  this test's.
+- A test's verdict depends on the game's ticks, never on the clock: wait with `self.game.ticks(n)`, or check once a
+  tick for a bounded number of ticks. A game that stops ticking makes the test `NO RESULT`, never a FAIL.
+- `timeout_seconds` (60) on a class stops a test of it that never ends. It is stopped with no result (`NO RESULT`),
+  since a clock is no verdict, and in a watched run the watcher is asked first (below, "Watching a run").
+- The game crashing is `NO RESULT` too: the test's line names the crash and its crash report, and the tests after it
+  aren't run.
+
+**Running:**
+
+```
+unittas run                                            # every test*.py under the current folder
+unittas run tests.test_give                            # a module
+unittas run tests.test_give.GiveTests.test_red_wool    # one test (or a class)
+unittas run --instance other.toml --results out/
+unittas run --watched                                  # alarms for a watcher where a limit would decide
+unittas launch --world                                 # the game alone, in the test world, to look at
+unittas watch                                          # the watcher, for a session that can't open windows
+unittas compare before/report.txt after/report.txt
+python -m unittest discover                            # plain unittest: the first GameTestCase starts the run
+```
+
+- `python -m unittas` is the same command.
+- The spec is `--instance`'s, else `UNITTAS_INSTANCE`'s, else `unittas.toml` in the current folder.
+- The tests are loaded before the game starts, so one that can't load costs no launch. A game that can't start
+  leaves every test `NO RESULT`, under a `unitTAS.game` problem.
+- Everything lands in `unittas-results/<time>/` beside the spec (`latest` points at the newest): `report.txt`,
+  `screenshots/`, `progress.txt`, `watch.txt`, `unittest.txt` (unittest's own lines), and the game's output under
+  `game/`. The terminal shows each test's line as it ends, numbered as the Java runner's
+  (`test 3/40 GiveTests.test_red_wool ... ok`), then the report's verdict.
+- The exit code: 0 for OK, 1 for FAILED, 2 for a mistake in the command or the spec, 130 after Ctrl+C.
+- Ctrl+C (or SIGTERM) ends the run properly: the game quits, its folder's options and `config/` are put back, and
+  the report has what ran. The tests it didn't reach are `NO RESULT`, not run.
+- `launch` is for looking at the game, not playing it: the probe drops the real mouse and keyboard.
+- Under plain unittest the run's `report.txt` is written at exit, into the same results folder. The class fixtures
+  are then in unittest's own output only.
 
 ## A mod's own part
 
@@ -313,6 +418,10 @@ until [ -f unittas-queue/done ] || [ -f "$(cat unittas-queue/run)/alarm.txt" ]; 
 ```
 
 A line appended to `unittas-queue/notify` is handed to your own `./request_task.sh`.
+
+`unittas watch` is the same watcher in Python, with the same files, run from the folder the runs are made in. Its
+request line is `unittas run`'s tests, and each run is watched. In unitTAS's own repository it takes the script's
+lines as they are (`<suites> [filter]`, `probe [filter]`). It replaces `./unittas-watch.sh` once you restart into it.
 
 The scripts run another project's game with a first word `@<folder>`: `./unittas.sh @../my-mod "end"`, or a watcher
 request line `@<folder> <suites> [filter]`; the results stay in unitTAS's `unittas-results/`.
@@ -440,9 +549,11 @@ safeties are WorkToy's, adapted.
   common classes changed on the branch (`--base REF`, or a file list with `--stdin`) to `@SideOnly(CLIENT)` members
   and classes and to `net.minecraft.client`.
 - `./multiplayer-test.sh [name]` starts a dedicated server and two clients to try multiplayer by hand.
-- `python3 bin/compare_reports.py before/report.txt after/report.txt` compares two runs test by test: the tests only
-  one ran, the outcomes that changed (a failure now marked `@ExpectedFailure` listed apart), unitTAS's problems;
-  times and details don't count. For a change that must leave the results as they were.
+- `unittas compare before/report.txt after/report.txt` (or `python3 bin/compare_reports.py ...`, which needs nothing
+  installed) compares two runs test by test: the tests only one ran, the outcomes that changed (a failure now marked
+  `@ExpectedFailure` listed apart), every `NO RESULT` (no verdict is the same as nothing), unitTAS's problems; times
+  and details don't count. For a change that must leave the results as they were. It reads Java and Python reports
+  alike.
 
 ## License
 

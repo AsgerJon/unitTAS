@@ -49,7 +49,10 @@ class TicksTests(unittest.TestCase):
     self.assertGreaterEqual(value['from'], before, 'it counts from when it began')
     self.assertEqual(20, value['tick'] - value['from'])
     self.assertGreaterEqual(pending.at.client, value['tick'], 'answered once the tick was there')
-    self.assertGreater(value['waited_ms'], 700)
+    # not 20 x 50 ms of wall time: a client that is behind (right after loading, on a busy machine) catches up by
+    # running ticks back to back, and 20 came in 668 ms once (2026-11-05). The count above is the exact part; the time
+    # only shows the wait waited, and isn't stuck
+    self.assertGreater(value['waited_ms'], 0)
     self.assertLess(value['waited_ms'], 5000)
 
   def test_03_until_a_tick(self) -> None:
@@ -59,9 +62,9 @@ class TicksTests(unittest.TestCase):
     self.assertGreaterEqual(pending.at.client, target)
 
   def test_04_none_at_all(self) -> None:
-    started = time.monotonic()
-    self.assertLess(self.request('ticks.wait', {'side': 'client', 'n': 0})['waited_ms'], 200)
-    self.assertLess(time.monotonic() - started, 1.0)
+    # by its ticks, not its time (SPEC.md 9.8): no tick was waited for
+    waited = self.request('ticks.wait', {'side': 'client', 'n': 0})
+    self.assertEqual(waited['from'], waited['tick'])
 
   def test_05_wrong_arguments(self) -> None:
     for args, field in (({'side': 'client', 'n': -1}, 'n'), ({'side': 'sideways', 'n': 1}, 'side'),
@@ -138,12 +141,10 @@ class TicksTests(unittest.TestCase):
     self.assertIsInstance(found['tick'], int)
 
   def test_14_wait_until_never_holds(self) -> None:
-    started = time.monotonic()
     found = self.until({'path': ['pauses'], 'eq': True}, maxTicks=10)
     self.assertFalse(found['held'])
     self.assertEqual(10, found['checks'], 'one check a tick, for max_ticks ticks')
     self.assertFalse(found['value']['pauses'])
-    self.assertGreater(time.monotonic() - started, 0.3)
 
   def test_15_the_tests(self) -> None:
     menu = 'net.minecraft.client.gui.GuiMainMenu'
@@ -200,11 +201,11 @@ class TicksTests(unittest.TestCase):
 
   def test_20_the_stall_rule(self) -> None:
     self.request('debug.lag', {'ms': 17000, 'ticks': 1}, side='client')
-    started = time.monotonic()
     with self.assertRaises(Stalled) as caught:
       self.request('ticks.wait', {'side': 'client', 'n': 2}, timeout=60)
     self.assertGreaterEqual(caught.exception.fields['since_tick_ms'], 15000)
-    self.assertLess(time.monotonic() - started, 17.0, 'it gave up at 15 s without a tick, not later')
+    # Stalled at all says it gave up before the 17 s lag ended (the tick at its end would have answered the wait):
+    # no wall-clock bound of its own needed (SPEC.md 9.8)
     self.assertEqual('menu', self.request('status')['state'], 'status answers through a stall')
     self.request('ticks.wait', {'side': 'client', 'n': 2}, timeout=30)
 

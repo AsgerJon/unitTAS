@@ -3,7 +3,10 @@ Checks the report of unitTAS's own red run line by line, for what a green run ca
 counts, the class fixtures, the worlds each class ran in, the warnings, and what the run puts back after it.
 
   ./unittas.sh "self,self-red,nosuch"
-  python3 bin/self_red_check.py [report.txt]
+  python3 bin/self_red_check.py [--python] [report.txt]
+
+--python checks the Python twins' run instead (python/tests/selfsuite, SPEC.md 9.3 step 7): the same table, less what
+Python doesn't twin (StepTests, RedTests.testWarnsOutsideAStep, and so the warning in the Ran line).
 
 The report defaults to unittas-results/latest/report.txt. `self` must be all ok; the self-red suite's tests
 (src/self/java/.../self/Red*.java) and the unknown suite 'nosuch' must come out exactly as listed below. Exits 0 when
@@ -115,12 +118,20 @@ def checkWorlds(results: list) -> list:
   return out
 
 
-def check(text: str) -> list:
-  """Every way the report differs from what the red run should give."""
+#  What the Python twins don't have (python/tests/selfsuite): StepTests forces a race inside the JVM's step queue, and
+#  the warning is the Java helpers' own (player() outside a server step)
+JAVA_ONLY_CLASSES = ('StepTests.',)
+JAVA_ONLY_TESTS = (WARNED,)
+
+
+def check(text: str, python: bool = False) -> list:
+  """Every way the report differs from what the red run should give; 'python' for the Python twins' run."""
   out = []
+  expected = {name: outcome for name, outcome in EXPECTED.items() if not (python and name in JAVA_ONLY_TESTS)}
+  selfClasses = tuple(prefix for prefix in SELF_CLASSES if not (python and prefix in JAVA_ONLY_CLASSES))
   results = parse(text)
   byName = {result[0]: result for result in results}
-  for name, outcome in EXPECTED.items():
+  for name, outcome in expected.items():
     if name not in byName:
       out.append('no line for %s (should be "%s")' % (name, outcome))
     elif byName[name][1] != outcome:
@@ -136,20 +147,20 @@ def check(text: str) -> list:
     if name in byName:
       out.append('%s ran, and shouldn\'t have (%s)' % (name, byName[name][1]))
   for name, outcome, details, _ in results:
-    if name in EXPECTED or name in ABSENT:
+    if name in expected or name in ABSENT:
       continue
-    if not name.startswith(SELF_CLASSES):
+    if not name.startswith(selfClasses):
       out.append('a line nobody expects: %s ... %s' % (name, outcome))
     elif outcome != 'ok':
       out.append('self test %s is "%s" (%s)' % (name, outcome, (details or [''])[0]))
-  for prefix in SELF_CLASSES:
+  for prefix in selfClasses:
     if not any(result[0].startswith(prefix) for result in results):
       out.append('no test of %s in the report' % prefix[:-1])
   out.extend(checkWorlds(results))
   warnings = [(name, i, details) for name, _, details, _ in results
               for i, line in enumerate(details) if line.startswith('warning: ')]
-  if len(warnings) != 1:
-    out.append('%d warnings in the report, should be 1 (under %s)' % (len(warnings), WARNED))
+  if len(warnings) != (0 if python else 1):
+    out.append('%d warnings in the report, should be %s' % (len(warnings), '0' if python else '1 (under %s)' % WARNED))
   for name, i, details in warnings:
     where = details[i + 1] if i + 1 < len(details) else ''
     if name != WARNED or 'player() outside a server step' not in details[i] \
@@ -157,10 +168,11 @@ def check(text: str) -> list:
       out.append('a warning that is not the one expected: under %s: %s / %s' % (name, details[i], where))
   tests = sum(1 for result in results if result[1] != 'problem')
   ran = [line for line in text.split('\n') if line.startswith('Ran ')]
-  want = r'^Ran %d tests in \d+\.\d s, 1 problem outside them, 1 warning$' % tests
+  warned = '' if python else ', 1 warning'
+  want = r'^Ran %d tests in \d+\.\d s, 1 problem outside them%s$' % (tests, warned)
   if len(ran) != 1 or not re.match(want, ran[0]):
-    out.append('the Ran line is %r, should be "Ran %d tests in N s, 1 problem outside them, 1 warning"'
-               % (ran[0] if ran else None, tests))
+    out.append('the Ran line is %r, should be "Ran %d tests in N s, 1 problem outside them%s"'
+               % (ran[0] if ran else None, tests, warned))
   lines = [line for line in text.split('\n') if line.strip()]
   if not lines or lines[-1] != LAST_LINE:
     out.append('the last line is %r, should be %r' % (lines[-1] if lines else None, LAST_LINE))
@@ -175,10 +187,14 @@ def check(text: str) -> list:
 
 
 def main(*args: str) -> int:
+  args = list(args)
+  python = '--python' in args
+  if python:
+    args.remove('--python')
   path = args[0] if args else os.path.join(ROOT, 'unittas-results', 'latest', 'report.txt')
   with open(path, encoding='utf-8') as f:
     text = f.read()
-  differences = check(text)
+  differences = check(text, python)
   for difference in differences:
     print('- ' + difference)
   print('self-red: %s (%s)' % ('as it should be' if not differences else '%d differences' % len(differences), path))

@@ -15,6 +15,10 @@ authors = [{ name = "Asger Jon Vistisen" }]
 # the one list of what the package needs: the root's environment.yml installs the package, so it installs these too
 dependencies = ["worktoy>=1.0,<2"]
 
+[project.scripts]
+# the command (unittas.cli); 'python -m unittas' is the same without it
+unittas = "unittas.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/AsgerJon/unitTAS"
 

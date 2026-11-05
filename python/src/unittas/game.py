@@ -108,7 +108,15 @@ class LaunchedGame(BaseObject):
     return self.outputName()
 
   def prepare(self) -> None:
-    """What the game needs before it starts; nothing by default."""
+    """What the game needs before it starts, after its folder's own files are kept aside; nothing by default."""
+
+  def workingDir(self) -> str:
+    """Where the command runs: the repository, by default."""
+    return self.__root__
+
+  def environment(self) -> dict:
+    """The command's environment: this process's, by default."""
+    return dict(os.environ)
 
   def terminate(self) -> None:
     """Asks a game that can't be asked over its connection to stop (SIGTERM)."""
@@ -125,17 +133,19 @@ class LaunchedGame(BaseObject):
     'beforeLaunch' sees the start file first (a test that spoils it).
     """
     os.makedirs(self.results, exist_ok=True)
-    self.prepare()
+    os.makedirs(self.gameDir, exist_ok=True)
+    #  the game folder's own files aside first: what prepare writes there for the run (options, config) is then undone
     self.__files__ = GameFiles(self.gameDir)
     self.__files__.keep()
+    self.prepare()
     self.__listener__ = Listener()
     expected = self.__listener__.prepare(self.gameDir, self.name, Role.CLIENT)
     if beforeLaunch is not None:
       beforeLaunch(expected)
     output = open(os.path.join(self.results, self.launchName()), 'ab')
-    environment = dict(os.environ, UNITTAS_RESULTS=self.results)
+    environment = dict(self.environment(), UNITTAS_RESULTS=self.results)
     self.__process__ = subprocess.Popen(
-      self.command(), cwd=self.__root__, env=environment,
+      self.command(), cwd=self.workingDir(), env=environment,
       stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
     output.close()
     return expected

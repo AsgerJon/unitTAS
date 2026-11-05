@@ -72,7 +72,7 @@ public abstract class TasTestCase {
 		return game.worldNumber();
 	}
 
-	/** How long one test may take before it is stopped as an error. */
+	/** How long one test may take, by the clock, before it is stopped: NO RESULT, never a verdict (SPEC.md 9.8). */
 	protected int timeoutSeconds() {
 		return 60;
 	}

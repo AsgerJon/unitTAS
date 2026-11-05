@@ -126,6 +126,44 @@ class FakeProbe:
     message.update(fields)
     self.send(message)
 
+  def serve(self, handlers: dict) -> list:
+    """
+    Answers requests on a thread of its own until the orchestrator hangs
+    up: each by its op's handler, a function of (args, side) that returns
+    the value, or raises FakeError(type, message, **fields) for an error.
+    An op with no handler is Unsupported. Returns the list the requests are
+    recorded in, as they come.
+    """
+    asked = []
+
+    def run() -> None:
+      while True:
+        try:
+          request = self.read(30)
+        except (OSError, ValueError):
+          return
+        if request is None:
+          return
+        asked.append(request)
+        handler = handlers.get(request.get('op'))
+        try:
+          if handler is None:
+            self.answer(request, error={'type': 'Unsupported', 'message': 'no operation %s' % request.get('op')})
+            continue
+          try:
+            self.answer(request, handler(request.get('args') or {}, request.get('side')))
+          except FakeError as failure:
+            self.answer(request, error=dict(failure.fields, type=failure.kind, message=failure.message))
+          except OSError:
+            raise
+          except Exception as failure:  # a handler's own bug answers, so a test never waits for a fake that died
+            self.answer(request, error={'type': 'ProbeError', 'message': 'the fake\'s handler failed: %r' % failure})
+        except OSError:  # the fake hung up (a handler closed it, as a game that crashed): nothing more to serve
+          return
+
+    threading.Thread(target=run, daemon=True).start()
+    return asked
+
   def close(self) -> None:
     if self.sock is not None:
       try:
@@ -133,6 +171,16 @@ class FakeProbe:
       except OSError:
         pass
       self.sock.close()
+
+
+class FakeError(Exception):
+  """An error a served handler answers with: its type, message and fields, as PROTOCOL.md 6 has them."""
+
+  def __init__(self, kind: str, message: str, **fields: Any) -> None:
+    Exception.__init__(self, message)
+    self.kind = kind
+    self.message = message
+    self.fields = fields
 
 
 def inThread(target, *args) -> tuple:
