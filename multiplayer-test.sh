@@ -134,13 +134,16 @@ if ! grep -q '^eula=true' "$SERVER_DIR/eula.txt" 2>/dev/null; then
     [[ "$answer" =~ ^[Yy]$ ]] || { echo "      Not accepted, stopping."; exit 0; }
     echo "eula=true" > "$SERVER_DIR/eula.txt"
 fi
-# Dev clients aren't logged in to Mojang, so the server must not check accounts.
-if [[ -f "$SERVER_DIR/server.properties" ]]; then
-    sed -i 's/^online-mode=.*/online-mode=false/' "$SERVER_DIR/server.properties"
-    grep -q '^online-mode=' "$SERVER_DIR/server.properties" || echo "online-mode=false" >> "$SERVER_DIR/server.properties"
-else
-    echo "online-mode=false" > "$SERVER_DIR/server.properties"
-fi
+# Sets a key in server.properties, whatever it held before.
+set_property() {
+    touch "$SERVER_DIR/server.properties"
+    sed -i "/^$1=/d" "$SERVER_DIR/server.properties"
+    echo "$1=$2" >> "$SERVER_DIR/server.properties"
+}
+# Dev clients aren't logged in to Mojang, so the server must not check accounts. An offline server lets anyone who
+# reaches it join under any name, and the two players below are operators: so it listens on this computer only.
+set_property online-mode false
+set_property server-ip 127.0.0.1
 # Both players are operators (/gamemode, /give, /tp work): ops.json is rewritten with the two names, keeping any
 # others it holds. The server reads it at startup. Offline servers use name-based UUIDs.
 python3 - "$SERVER_DIR/ops.json" "$NAME1" "$NAME2" <<'PY'
@@ -160,12 +163,17 @@ ops += [{"uuid": offline_uuid(n), "name": n, "level": 4} for n in names]
 with open(path, "w") as f:
     json.dump(ops, f, indent=2)
 PY
-echo "      ✓ eula.txt, online-mode=false, ops.json ($NAME1 and $NAME2 are operators)"
+echo "      ✓ eula.txt, online-mode=false, server-ip=127.0.0.1, ops.json ($NAME1 and $NAME2 are operators)"
 
 step 2 "Starting the server (builds first if needed)"
 (cd "$ROOT" && exec ./gradlew runServer) > "$LOGS/server.log" 2>&1 &
 PIDS+=($!)
 wait_for "${PIDS[0]}" "$LOGS/server.log" 'Done (' "server" 900
+# The server says where it listens ("Starting Minecraft server on 127.0.0.1:25565"): anywhere else, it stops here.
+if ! grep -q 'Starting Minecraft server on 127\.0\.0\.1:' "$LOGS/server.log"; then
+    echo "      ! The server isn't listening on 127.0.0.1 only (see $LOGS/server.log): stopping it, offline with operators."
+    stop_all
+fi
 if [[ ! -f "$SERVER_DIR/server.properties" ]] || ! grep -q '^online-mode=false' "$SERVER_DIR/server.properties"; then
     echo "      ! The server didn't use $SERVER_DIR: set online-mode=false in its server.properties and restart."
 fi

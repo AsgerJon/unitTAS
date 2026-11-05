@@ -37,7 +37,7 @@ jobs:
           git config user.email "asgerjon2@gmail.com"
           git add bin/release_tooling/*.safety
           git diff --cached --quiet || git commit -m "lts-major: safeties locked, verdict ${SAFETY_VERDICT}"
-          git push origin HEAD:${{ github.ref }}
+          git push origin "HEAD:$GITHUB_REF"
       - name: Enforce the verdict
         run: test "$SAFETY_VERDICT" = "ALLOW"
 
@@ -125,7 +125,7 @@ jobs:
             src/main/java/io/github/asgerjon/unittas/UnitTasMod.java
           git commit -m "LTS $VERSION_INFO"
           git tag "$VERSION_INFO"
-          git push --atomic origin "HEAD:${{ github.ref }}" "refs/tags/$VERSION_INFO"
+          git push --atomic origin "HEAD:$GITHUB_REF" "refs/tags/$VERSION_INFO"
 
       - name: Keep the jars for the release job
         uses: actions/upload-artifact@v4
@@ -155,5 +155,5 @@ jobs:
         run: |
           gh release create "$VERSION_INFO" \
             "jars/unittas-$VERSION_INFO.jar" "jars/unittas-$VERSION_INFO-dev.jar" \
-            --repo "${{ github.repository }}" --verify-tag \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "$VERSION_INFO" --latest --generate-notes

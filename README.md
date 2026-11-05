@@ -139,6 +139,48 @@ between a class's tests: blocks, the time, game rules, entities in chunks that a
 is the plugin's `resetPlayer`). Tests that build use their own spot. Undead burn at noon: give zombies and skeletons
 a helmet when a test needs them to last.
 
+### A new class, or a new method?
+
+A class is a world, and a method is a turn in it. Before a new test, ask what the test before it may have left
+behind, and whether the reset puts that back:
+
+| What a test changes | Put back before the next test? | So |
+|---|---|---|
+| the player: where it is, its inventory, health, food, effects, game mode, experience | yes, by the reset | a new method |
+| entities in loaded chunks, the weather, the screen, keys held, the difficulty | yes, by the reset | a new method |
+| blocks in its own spot, which no other test reads | no, but nobody looks | a new method |
+| blocks that other tests use (near the start, 0.5 4 0.5), the time, game rules, the world's spawn point, scoreboards | no | a new class, or put it back in `tearDown` |
+| the End or the Nether (the dragon, the exit portal and gateways, shulkers), entities in far chunks that unload | no | a new class |
+| a mod's own world data (what it saves with the world) | no; a fresh world does | a new class |
+| options, key bindings, `config/`, a mod's static or client state | no, not even by a new class | put it back in `tearDown`, or in the plugin |
+
+**The last row is the one to watch.** A new class gives a new world, not a new game, so what a test leaves in the game
+outlasts every class after it. A test that changes an option puts it back itself.
+
+**A new method** is right for most tests:
+
+- one feature looked at from several sides: the same setup, many checks;
+- tests that read what setUpClass made (a structure, a game rule, a killed dragon) without changing it;
+- tests that build, each in its own spot.
+
+**A new class** is right when:
+
+- a test changes the world in a way that the reset doesn't put back, and another test could see it;
+- a test needs the world as made, untouched, from its very first tick: a class of its own, even with one test in it.
+
+**`@SharedWorld`** is for a class whose tests don't care what the world looks like: commands, the chat, the player's
+own inventory. It saves the class's reopen, a few seconds. It is never a way to hand state from one class to the
+next: a class that needs what another left fails when it runs alone. Make that state in its own setUpClass instead.
+
+**Signs that two tests should be apart:**
+
+- a test passes alone and fails in its class, or the other way round;
+- a test passes or fails with the order of the methods (they run in name order);
+- a test's setUp undoes what another test did. That is a class boundary, written by hand.
+
+**What a class costs:** its fresh world, about 4 to 5 s. So a class isn't made for each test by reflex. Group the
+tests that share a setup, and split where the table above says to.
+
 ## Writing tests
 
 A test class extends `io.github.asgerjon.unittas.TasTestCase` and is marked `@TasSuite("name")` with the suite it
