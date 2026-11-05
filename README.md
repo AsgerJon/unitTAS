@@ -280,7 +280,7 @@ build = "./gradlew --console=plain remapJar"   # run first, without a shell
 mods = ["build/libs/mymod-*.jar"]              # each matching exactly one file
 libraries = ["maven:com.example:alib:1.0", "libs/unimixins-1.7.10-0.3.1.jar"]
 repositories = ["https://maven.example.com/"]  # where maven: libraries come from (https only)
-probe = "libs/unittas-0.1.0-dev7.jar"          # unitTAS's jar, the probe
+probe = "libs/unittas-0.1.0-dev8.jar"          # unitTAS's jar, the probe
 config = "test-config"                         # copied into the game's config/ for the run
 options = { autoJump = false }                 # set in options.txt for the run
 game = "run/unittas"                           # the real client's game folder
@@ -447,7 +447,7 @@ ran in that mod's development client and passed. Four pieces:
    ```
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev7'))
+   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev8'))
    ```
 
    A jar on your own machine (unitTAS's `.local-maven/`, `~/.m2`) goes **as a file**: by module name from a local
@@ -455,7 +455,7 @@ ran in that mod's development client and passed. Four pieces:
    `group-name-version.jar`), so the build compiles and the game fails at the first renamed call.
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev7.jar')))
+   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev8.jar')))
    ```
 
 3. **`gradle.properties`:** Mixin on: `forceEnableMixins = true` (a mod with `usesMixins = true` has it already).
