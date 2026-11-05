@@ -2,6 +2,7 @@ package io.github.asgerjon.unittas;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.discovery.ASMDataTable;
+import io.github.asgerjon.unittas.probe.Probe;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.LogManager;
@@ -97,6 +98,14 @@ public final class UnitTas {
 		if (!request.isFile()) {
 			return;
 		}
+		if (Probe.active()) {
+			// the probe drives this game; a Java run is its java.run (PROTOCOL.md 8.14), never a request beside it
+			LOG.warn("unitTAS: the probe drives this game, so {} is ignored and removed", request);
+			if (!request.delete()) {
+				LOG.warn("unitTAS: can't remove {}; delete it before the next ordinary run", request);
+			}
+			return;
+		}
 		TasSuites.find(table);
 		TasPlugins.find(table);
 		start(request);
@@ -115,17 +124,32 @@ public final class UnitTas {
 			}
 		}
 		UnitTasMode.running = true;
+		begin(properties, null);
+	}
+
+	/**
+	 * A Java run the probe asked for (java.run, PROTOCOL.md 8.14), on the client thread at the title screen: a run as
+	 * request.properties asks for one, from the same keys, but the game stays up at its end, and the listener hears each
+	 * line of the report and the end. The suites and plugins were found at preInit (ClientHooks).
+	 */
+	public static TasGame startForProbe(Properties properties, TasGame.Listener listener) {
+		return begin(properties, listener);
+	}
+
+	private static TasGame begin(Properties properties, TasGame.Listener listener) {
 		Request request = new Request(properties);
 		request.progress("unitTAS started: suites " + String.join(", ", request.suites)
 			+ (request.filter == null ? "" : ", only tests matching '" + request.filter + "'")
 			+ (request.saves.isEmpty() ? "" : ", in the saves " + String.join(", ", request.saves))
-			+ (request.watched ? "; watched: alarms in " + new File(request.results, "alarm.txt").getAbsolutePath() : ""));
+			+ (request.watched ? "; watched: alarms in " + new File(request.results, "alarm.txt").getAbsolutePath() : "")
+			+ (listener == null ? "" : " (the probe's java.run)"));
 		for (String problem : TasPlugins.problems()) {
 			request.progress(problem);
 		}
-		TasGame game = new TasGame(request);
+		TasGame game = new TasGame(request, listener);
 		FMLCommonHandler.instance().bus().register(game);
 		MinecraftForge.EVENT_BUS.register(game);
 		game.startWatch();
+		return game;
 	}
 }

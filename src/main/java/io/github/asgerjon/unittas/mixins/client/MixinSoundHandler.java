@@ -32,11 +32,18 @@ public abstract class MixinSoundHandler {
 				// sound is "" (EntityOcelot.getLivingSound): no sound, on purpose
 				return;
 			}
-			if (getSound(location) != null) {
+			boolean known = getSound(location) != null;
+			String from = known ? null : unittas$caller();
+			if (known) {
 				UnitTasMode.SOUNDS_HEARD.add(location.toString());
 			} else {
 				UnitTasMode.SOUNDS_UNKNOWN.add(location.toString());
-				UnitTasMode.SOUNDS_UNKNOWN_FROM.add(location + " from " + unittas$caller());
+				UnitTasMode.SOUNDS_UNKNOWN_FROM.add(location + " from " + from);
+			}
+			UnitTasMode.SoundListener listener = UnitTasMode.soundListener;
+			if (listener != null) {
+				listener.played(location.toString(), known, from, sound.getVolume(), sound.getPitch(), sound.getXPosF(),
+					sound.getYPosF(), sound.getZPosF());
 			}
 		}
 	}

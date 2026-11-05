@@ -1,0 +1,13 @@
+#  unitTAS's conda environment, for its Python side (python/):
+#    mamba env create -f environment.yml            makes it
+#    mamba env update -f environment.yml --prune    brings it up to date
+#  What the package needs is listed once, in python/pyproject.toml; the package is installed from there, editable, so
+#  a change to its code needs nothing here. Run from this folder (the path below is from here).
+name: unittas_env
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.11
+  - pip
+  - pip:
+      - -e ./python

@@ -33,6 +33,9 @@ replay_pid*
 
 # Python's own, from the release tooling's tests (bin/release_tooling/tests)
 __pycache__/
+# what building the Python package (python/) leaves in its folder
+/python/build/
+*.egg-info/
 
 # IntelliJ's project settings, and the EFR session's notes to this one
 /.idea/

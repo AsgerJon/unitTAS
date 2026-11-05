@@ -5,6 +5,9 @@
 #   ./unittas.sh commands Give       only the tests whose Class.method name contains "Give"
 #   UNITTAS_TASK=runClient17 ./unittas.sh    another Gradle run task
 #   ./unittas.sh oldsaves [dev]      vanilla 1.7.10's worlds through the release jar (./unittas-oldsaves.sh)
+#   ./unittas.sh probe               only the game, for the probe's own tests (python -m unittas.selftest): they have
+#                                    written its start file, so no request; they judge the game, so no limits here;
+#                                    a TERM stops the game. UNITTAS_RESULTS names the folder for gradle.log.
 #   ./unittas.sh @<folder> "<suites> [filter]"    another project's game (a folder relative to here, or absolute):
 #                                    its runClient and run/client; the results, the helpers and the Gradle cache stay
 #                                    here. The watcher passes a request line "@<folder> <suites> [filter]" so.
@@ -40,26 +43,33 @@ if [ "$SUITES" = "oldsaves" ] && [ -z "${UNITTAS_EXTRA:-}" ]; then
 	exec ./unittas-oldsaves.sh ${FILTER:+"$FILTER"}
 fi
 TASK=${UNITTAS_TASK:-runClient}
+# The game's Gradle daemon is one started here, on the desktop. A daemon a sandboxed session started (to build) can't
+# reach the display or the GPU, and a game it forks crashes making its window ("Couldn't set pixel format"); Gradle
+# reuses any daemon with the same JVM options, so these runs ask for one option more than the project's own.
+DAEMON_OPTS="-Dorg.gradle.jvmargs=$(sed -n 's/^org.gradle.jvmargs=//p' "$PROJECT/gradle.properties" 2>/dev/null) -Dunittas.daemon=desktop"
 STAMP=${UNITTAS_STAMP:-$(date +%Y-%m-%d_%H-%M-%S)}
 RESULTS="$ROOT/unittas-results/$STAMP"
+[ "$SUITES" = probe ] && RESULTS=${UNITTAS_RESULTS:-$RESULTS}
 REQUEST_DIR="$PROJECT/run/client/unittas"
 REQUEST="$REQUEST_DIR/request.properties"
 STALL=${UNITTAS_STALL_SECONDS:-600}
 QUIT_SECONDS=60
 
 mkdir -p "$RESULTS" "$REQUEST_DIR"
-ln -sfn "$STAMP" "$ROOT/unittas-results/latest"
-{
-	echo "suites=$SUITES"
-	echo "filter=$FILTER"
-	echo "results=$RESULTS"
-	[ "${UNITTAS_WATCHED:-0}" = 1 ] && echo "watched=true"
-	echo "watch.pictures=${UNITTAS_PICTURE_SECONDS:-10}"
-	echo "watch.decide=${UNITTAS_DECIDE_SECONDS:-300}"
-	[ -n "${UNITTAS_EXTRA:-}" ] && printf '%s\n' "$UNITTAS_EXTRA"
-} > "$REQUEST"
-# the game uses the request up when it starts; this is for a run that never got that far
-trap 'rm -f "$REQUEST"' EXIT
+if [ "$SUITES" != probe ]; then
+	ln -sfn "$STAMP" "$ROOT/unittas-results/latest"
+	{
+		echo "suites=$SUITES"
+		echo "filter=$FILTER"
+		echo "results=$RESULTS"
+		[ "${UNITTAS_WATCHED:-0}" = 1 ] && echo "watched=true"
+		echo "watch.pictures=${UNITTAS_PICTURE_SECONDS:-10}"
+		echo "watch.decide=${UNITTAS_DECIDE_SECONDS:-300}"
+		[ -n "${UNITTAS_EXTRA:-}" ] && printf '%s\n' "$UNITTAS_EXTRA"
+	} > "$REQUEST"
+	# the game uses the request up when it starts; this is for a run that never got that far
+	trap 'rm -f "$REQUEST"' EXIT
+fi
 
 START=$(date +%s)
 clock() {
@@ -108,6 +118,16 @@ if [ -n "$open_games" ]; then
 	exit 1
 fi
 
+# the probe's own tests: only the game, as long as they want it; their TERM (or Ctrl+C) stops it
+if [ "$SUITES" = probe ]; then
+	echo "unitTAS: the game for the probe's tests; gradle.log in $RESULTS"
+	(cd "$PROJECT" && exec "$ROOT/unittas-display.sh" ./gradlew --console=plain "$DAEMON_OPTS" "$TASK") > "$RESULTS/gradle.log" 2>&1 &
+	GRADLE=$!
+	trap 'stop_game "asked to stop"; wait "$GRADLE"; exit 143' TERM INT
+	wait "$GRADLE"
+	exit $?
+fi
+
 echo "unitTAS: suites ${SUITES:-all}${FILTER:+, only '$FILTER'}$([ "$PROJECT" != "$ROOT" ] && echo " in $PROJECT"); results in unittas-results/$STAMP"
 # the game's window (unittas-display.sh): by default in gamescope's own window, which never takes focus; only a game
 # straight on the desktop (UNITTAS_DISPLAY=plain) gets the desktop script that moves it to desktop 2
@@ -116,7 +136,7 @@ if [ "${UNITTAS_DISPLAY:-nested}" = plain ]; then
 else
 	echo "test window: in gamescope (UNITTAS_DISPLAY=${UNITTAS_DISPLAY:-nested}), never focused" | tee "$RESULTS/desktop.txt"
 fi
-(cd "$PROJECT" && exec "$ROOT/unittas-display.sh" ./gradlew --console=plain "$TASK") > "$RESULTS/gradle.log" 2>&1 &
+(cd "$PROJECT" && exec "$ROOT/unittas-display.sh" ./gradlew --console=plain "$DAEMON_OPTS" "$TASK") > "$RESULTS/gradle.log" 2>&1 &
 GRADLE=$!
 
 SPIN='|/-\'

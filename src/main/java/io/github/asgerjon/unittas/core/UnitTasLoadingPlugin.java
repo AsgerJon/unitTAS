@@ -1,8 +1,10 @@
 package io.github.asgerjon.unittas.core;
 
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
+import io.github.asgerjon.unittas.probe.Probe;
 import net.minecraft.launchwrapper.Launch;
 
+import java.io.File;
 import java.util.Map;
 
 /**
@@ -48,6 +50,9 @@ public final class UnitTasLoadingPlugin implements IFMLLoadingPlugin {
 				+ " (UniMixins) in the game?");
 		}
 		UnitTasMixins.addConfig();
+		// the probe, if an orchestrator left its start file (PROTOCOL.md 2.1): before any mod loads, so it hears them load
+		Object gameDir = data.get("mcLocation");
+		Probe.early(gameDir instanceof File ? (File) gameDir : null, Boolean.TRUE.equals(data.get("runtimeDeobfuscationEnabled")));
 	}
 
 	@Override

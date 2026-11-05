@@ -42,13 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # the Python package's floor (python/pyproject.toml), so nothing newer slips in
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.11'
       - name: The release tooling's tests
         run: python -m unittest discover -s bin/release_tooling/tests
       - name: The other tools' tests
         run: python -m unittest discover -s bin/tests
+      - name: The Python package, with what it needs
+        run: python -m pip install ./python
+      - name: The Python package's tests that need no game
+        run: python -m unittest discover -s python/tests/unit
       - name: The stamped files agree on the version
         run: python bin/release_tooling/version_stamp.py --check
       # Java 21 runs Gradle and Unimined; Java 8 is the game's own (the development run's toolchain)

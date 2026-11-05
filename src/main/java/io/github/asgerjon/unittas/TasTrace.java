@@ -35,7 +35,7 @@ public final class TasTrace {
 		return recording;
 	}
 
-	static void start() {
+	public static void start() {
 		EVENTS.clear();
 		ONCE.clear();
 		for (AtomicInteger count : PACKETS) {
@@ -46,7 +46,7 @@ public final class TasTrace {
 		note("launching the integrated server");
 	}
 
-	static void stop() {
+	public static void stop() {
 		note("the test world is loaded");
 		recording = false;
 	}

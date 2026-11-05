@@ -1,5 +1,7 @@
 package io.github.asgerjon.unittas;
 
+import io.github.asgerjon.unittas.probe.Reset;
+import io.github.asgerjon.unittas.probe.Worlds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiDownloadTerrain;
 import net.minecraft.client.gui.GuiMainMenu;
@@ -10,7 +12,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.EnumDifficulty;
-import net.minecraft.world.GameRules;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.WorldSettings;
 
@@ -32,8 +33,10 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -46,21 +49,25 @@ import java.util.function.Consumer;
 final class TasRunner implements Runnable {
 
 	/** The spawn point every test starts from, on the flat world's grass. */
-	static final double START_X = 0.5;
-	static final double START_Y = 4.0;
-	static final double START_Z = 0.5;
+	static final double START_X = Reset.START_X;
+	static final double START_Y = Reset.START_Y;
+	static final double START_Z = Reset.START_Z;
 
 	private enum Outcome {
-		OK("ok"), FAIL("FAIL"), ERROR("ERROR"), SKIP("skipped"),
+		OK("ok", "ok"), FAIL("FAIL", "fail"), ERROR("ERROR", "error"), SKIP("skipped", "skipped"),
 		/** @ExpectedFailure: failed as marked; and passed although marked, which fails the run. */
-		EXPECTED_FAILURE("expected failure"), UNEXPECTED_SUCCESS("unexpected success"),
+		EXPECTED_FAILURE("expected failure", "expected_failure"), UNEXPECTED_SUCCESS("unexpected success", "unexpected_success"),
 		/** unitTAS's own, not a test: a suite that doesn't exist, a class that can't run, a stop, a world that didn't load. */
-		PROBLEM("problem");
+		PROBLEM("problem", "problem");
 
+		/** As the report says it. */
 		final String word;
+		/** As java.result says it (PROTOCOL.md 8.14). */
+		final String wire;
 
-		Outcome(String word) {
+		Outcome(String word, String wire) {
 			this.word = word;
+			this.wire = wire;
 		}
 	}
 
@@ -125,7 +132,7 @@ final class TasRunner implements Runnable {
 	/** A report for a run that never got to its tests (the world didn't load, say): the problem as its one error. */
 	static void reportUnstarted(TasGame game, String name, String problem) {
 		TasRunner runner = new TasRunner(game);
-		runner.results.add(Result.problem(name, problem));
+		runner.record(Result.problem(name, problem));
 		runner.writeReport(0.0);
 	}
 
@@ -134,7 +141,7 @@ final class TasRunner implements Runnable {
 		long start = System.currentTimeMillis();
 		try {
 			for (String problem : TasPlugins.problems()) {
-				results.add(Result.problem("unitTAS.plugins", problem));
+				record(Result.problem("unitTAS.plugins", problem));
 			}
 			pluginProblemsSeen = TasPlugins.problems().size();
 			List<Test> tests = allTests();
@@ -152,7 +159,7 @@ final class TasRunner implements Runnable {
 				}
 				if (problem != null) {
 					problem = "couldn't keep the test world aside for the classes' fresh worlds: " + problem + "; " + notRun(total);
-					results.add(Result.problem("unitTAS.world", problem));
+					record(Result.problem("unitTAS.world", problem));
 					request.progress(problem);
 				} else {
 					worldHooks("setUpWorld");
@@ -161,7 +168,7 @@ final class TasRunner implements Runnable {
 				}
 			}
 		} catch (Throwable t) {
-			results.add(Result.problem("unitTAS", stackTrace(t)));
+			record(Result.problem("unitTAS", stackTrace(t)));
 			request.progress("unitTAS itself failed: " + t);
 		}
 		game.activity("writing the report");
@@ -184,7 +191,7 @@ final class TasRunner implements Runnable {
 				Collection<String> names = TasSuites.names();
 				String problem = "no suite called '" + suite + "' (there are: "
 					+ (names.isEmpty() ? "none, no class is marked @TasSuite" : String.join(", ", names)) + ")";
-				results.add(Result.problem("unitTAS.suites", problem));
+				record(Result.problem("unitTAS.suites", problem));
 				request.progress(problem);
 				continue;
 			}
@@ -203,16 +210,16 @@ final class TasRunner implements Runnable {
 		try {
 			Class<?> type = Class.forName(className, true, TasRunner.class.getClassLoader());
 			if (!TasTestCase.class.isAssignableFrom(type)) {
-				results.add(Result.problem(className, "marked @TasSuite, but it doesn't extend TasTestCase"));
+				record(Result.problem(className, "marked @TasSuite, but it doesn't extend TasTestCase"));
 				return null;
 			}
 			if (Modifier.isAbstract(type.getModifiers())) {
-				results.add(Result.problem(className, "marked @TasSuite, but abstract: mark the classes that extend it instead"));
+				record(Result.problem(className, "marked @TasSuite, but abstract: mark the classes that extend it instead"));
 				return null;
 			}
 			return type.asSubclass(TasTestCase.class);
 		} catch (ClassNotFoundException | LinkageError e) {
-			results.add(Result.problem(className, "can't load it: " + stackTrace(e)));
+			record(Result.problem(className, "can't load it: " + stackTrace(e)));
 			return null;
 		}
 	}
@@ -249,7 +256,7 @@ final class TasRunner implements Runnable {
 				TasSave.current = save;
 				String suffix = " [" + folder + ", load " + pass + "]";
 				if (problem != null) {
-					results.add(Result.problem("TasRunner.openSave" + suffix, problem));
+					record(Result.problem("TasRunner.openSave" + suffix, problem));
 					request.progress(problem);
 				} else {
 					request.progress(String.format(Locale.ROOT, "%s loaded in %.0f s", folder, save.loadSeconds));
@@ -265,7 +272,7 @@ final class TasRunner implements Runnable {
 				game.activity("closing " + folder + ", load " + pass);
 				String quit = quitAndWait();
 				if (quit != null) {
-					results.add(Result.problem("TasRunner.quitSave" + suffix, quit));
+					record(Result.problem("TasRunner.quitSave" + suffix, quit));
 					request.progress(quit);
 					return;
 				}
@@ -385,17 +392,15 @@ final class TasRunner implements Runnable {
 
 	/** Steady conditions: no day and night, no weather, no mobs spawning on their own, no fire spread. */
 	private void prepareWorld() {
+		Map<String, String> rules = new LinkedHashMap<>();
+		rules.put("doDaylightCycle", "false");
+		rules.put("doMobSpawning", "false");
+		rules.put("doFireTick", "false");
+		rules.put("mobGriefing", "false");
 		game.server(() -> {
-			for (WorldServer world : MinecraftServer.getServer().worldServers) {
-				GameRules rules = world.getGameRules();
-				rules.setOrCreateGameRule("doDaylightCycle", "false");
-				rules.setOrCreateGameRule("doMobSpawning", "false");
-				rules.setOrCreateGameRule("doFireTick", "false");
-				rules.setOrCreateGameRule("mobGriefing", "false");
-				world.setWorldTime(6000);
-				world.getWorldInfo().setRaining(false);
-				world.getWorldInfo().setThundering(false);
-			}
+			Worlds.setRules(rules);
+			Worlds.setTime(6000, null);
+			Worlds.setWeather(false, false, false);
 			return null;
 		});
 	}
@@ -475,7 +480,7 @@ final class TasRunner implements Runnable {
 		});
 		List<String> problems = TasPlugins.problems();
 		for (int i = pluginProblemsSeen; i < problems.size(); i++) {
-			results.add(Result.problem("unitTAS.plugins", problems.get(i)));
+			record(Result.problem("unitTAS.plugins", problems.get(i)));
 		}
 		pluginProblemsSeen = problems.size();
 	}
@@ -506,7 +511,7 @@ final class TasRunner implements Runnable {
 					String problem = freshWorld();
 					if (problem != null) {
 						problem = "couldn't give " + name + " a fresh world: " + problem + "; " + notRun(total - number);
-						results.add(Result.problem("unitTAS.world", problem));
+						record(Result.problem("unitTAS.world", problem));
 						request.progress(problem);
 						return false;
 					}
@@ -524,13 +529,19 @@ final class TasRunner implements Runnable {
 		return true;
 	}
 
+	/** A line of the report, as it comes: a java.run's probe hears it at once (TasGame.resultLine). */
+	private void record(Result result) {
+		results.add(result);
+		game.resultLine(result.name, result.outcome.wire, result.seconds, result.detail);
+	}
+
 	/** A result of the running class, in the report and the progress; the class's first takes its world line. */
 	private void addResult(Result result) {
 		if (worldNote != null && result.outcome != Outcome.PROBLEM) {
 			result.worldNote = worldNote;
 			worldNote = null;
 		}
-		results.add(result);
+		record(result);
 		request.progress(String.format(Locale.ROOT, "test %d/%d %s ... %s", number, total, result.name, result.outcome.word));
 	}
 
@@ -840,7 +851,7 @@ final class TasRunner implements Runnable {
 				case ABORT: {
 					String problem = "the watcher stopped the run (alarm " + decision.alarm + ") after " + result.name + ": "
 						+ decision.why + "; " + left + " test" + (left == 1 ? "" : "s") + " not run";
-					results.add(Result.problem("unitTAS.aborted", problem));
+					record(Result.problem("unitTAS.aborted", problem));
 					request.progress(problem);
 					return true;
 				}
@@ -861,7 +872,7 @@ final class TasRunner implements Runnable {
 		}
 		String problem = why + " after " + result.name + "; the run stops here, " + left + " test" + (left == 1 ? "" : "s")
 			+ " not run (threads in " + dump + ")";
-		results.add(Result.problem("unitTAS.stopped", problem));
+		record(Result.problem("unitTAS.stopped", problem));
 		request.progress(problem);
 		return true;
 	}
@@ -873,7 +884,7 @@ final class TasRunner implements Runnable {
 			return false;
 		}
 		String problem = reason + "; " + left + " test" + (left == 1 ? "" : "s") + " not run";
-		results.add(Result.problem("unitTAS.aborted", problem));
+		record(Result.problem("unitTAS.aborted", problem));
 		request.progress(problem);
 		return true;
 	}
@@ -914,30 +925,11 @@ final class TasRunner implements Runnable {
 	 */
 	private void reset() {
 		game.client(() -> {
-			Minecraft mc = Minecraft.getMinecraft();
-			if (mc.currentScreen != null) {
-				mc.displayGuiScreen((GuiScreen) null);
-			}
-			KeyBinding.unPressAllKeys();
-			// the first hotbar slot, so a given item is the held one
-			mc.thePlayer.inventory.currentItem = 0;
-			mc.gameSettings.difficulty = EnumDifficulty.EASY;
-			mc.gameSettings.thirdPersonView = 0;
-			mc.gameSettings.hideGUI = false;
+			Reset.client(Minecraft.getMinecraft());
 			return null;
 		});
-		// a test that left the player in another dimension: back to the overworld as the End's exit does (the only way
-		// out of the End), which makes a new player entity
-		boolean respawned = game.server(() -> {
-			EntityPlayerMP player = TasGame.serverPlayer();
-			if (player.dimension == 0) {
-				return false;
-			}
-			// the connection must take the new entity, as vanilla's respawn request does; otherwise the client's packets
-			// keep going to the removed one
-			player.playerNetServerHandler.playerEntity = MinecraftServer.getServer().getConfigurationManager().recreatePlayerEntity(player, 0, true);
-			return true;
-		});
+		// a test that left the player in another dimension: back to the overworld as the End's exit does
+		boolean respawned = game.server(() -> Reset.respawnIfAway(TasGame.serverPlayer()));
 		for (int tick = 0; respawned && tick < 200; tick++) {
 			if (game.client(() -> {
 				Minecraft mc = Minecraft.getMinecraft();
@@ -947,70 +939,16 @@ final class TasRunner implements Runnable {
 			}
 			game.clientTicks(1);
 		}
+		// the server's part in one step, as the probe's batch does it: the player, every dimension, the mods' own part
 		game.server(() -> {
 			EntityPlayerMP player = TasGame.serverPlayer();
-			// the client's container, not only its screen (closed above): a creative inventory left open keeps window 0,
-			// and the player's own slot updates would land in its grid; the close packet makes the client close it, as
-			// Esc does
-			player.closeScreen();
-			// out of a bed an earlier test left the player in, and no bed of its to respawn at
-			if (player.isPlayerSleeping()) {
-				player.wakeUpPlayer(true, true, false);
-			}
-			player.setSpawnChunk(null, false, 0);
-			player.inventory.clearInventory(null, -1);
-			player.clearItemInUse();
-			player.inventoryContainer.detectAndSendChanges();
-			// the player's slots whole, after the close above: what was sent while the client had another window 0 open
-			// went astray
-			player.sendContainerToPlayer(player.inventoryContainer);
-			player.clearActivePotions();
-			// arrows from earlier tests stay drawn stuck in the player, over what the next test's shots show
-			player.setArrowCountInEntity(0);
-			player.setGameType(WorldSettings.GameType.CREATIVE);
-			// creative keeps the player flying if it was (1.7.10's game types stop flying only outside creative)
-			player.capabilities.isFlying = false;
-			player.sendPlayerAbilities();
-			// no experience: below level 0 clears all of it, and the player's own addExperienceLevel sends it
-			player.addExperienceLevel(-(player.experienceLevel + 1));
-			player.extinguish();
-			player.setHealth(player.getMaxHealth());
-			player.getFoodStats().addStats(20, 20.0F);
-			player.fallDistance = 0.0F;
-			if (player.ridingEntity != null) {
-				player.mountEntity(null);
-			}
-			player.playerNetServerHandler.setPlayerLocation(START_X, START_Y, START_Z, 0.0F, 0.0F);
-			for (WorldServer world : MinecraftServer.getServer().worldServers) {
-				world.difficultySetting = EnumDifficulty.EASY;
-				world.setAllowedSpawnTypes(true, true);
-				for (Object loaded : new ArrayList<Object>(world.loadedEntityList)) {
-					if (!(loaded instanceof EntityPlayer)) {
-						((Entity) loaded).setDead();
-					}
-				}
-				world.weatherEffects.clear();
-				// clear weather held: 1.7.10 has no weather-cycle rule, so its timers would turn rain on mid-run (a
-				// `/weather clear 10s` left 200 ticks on them, and a long run reaches the natural turn), and rain darkens
-				// the day and puts out fire; tests that want weather set it themselves
-				world.getWorldInfo().setRaining(false);
-				world.getWorldInfo().setThundering(false);
-				world.getWorldInfo().setRainTime(1000000);
-				world.getWorldInfo().setThunderTime(1000000);
-				world.rainingStrength = world.prevRainingStrength = 0.0F;
-				world.thunderingStrength = world.prevThunderingStrength = 0.0F;
-			}
-			// the mods' own part of the player (an off-hand slot, say)
+			Reset.player(player, START_X, START_Y, START_Z, 0.0F, 0.0F);
+			Reset.world();
 			TasPlugins.resetPlayer(player);
 			return null;
 		});
-		// the client's own rain too (code on the client may ask it)
 		game.client(() -> {
-			Minecraft mc = Minecraft.getMinecraft();
-			if (mc.theWorld != null) {
-				mc.theWorld.rainingStrength = mc.theWorld.prevRainingStrength = 0.0F;
-				mc.theWorld.thunderingStrength = mc.theWorld.prevThunderingStrength = 0.0F;
-			}
+			Reset.clientWeather(Minecraft.getMinecraft());
 			return null;
 		});
 		game.clientTicks(3);
@@ -1109,14 +1047,24 @@ final class TasRunner implements Runnable {
 			}
 		}
 		boolean ok = failures + errors + unexpectedSuccesses + problems == 0;
+		Map<String, Integer> summary = new LinkedHashMap<>();
+		summary.put("ran", tests);
+		summary.put("failures", failures);
+		summary.put("errors", errors);
+		summary.put("skipped", skipped);
+		summary.put("expected_failures", expectedFailures);
+		summary.put("unexpected_successes", unexpectedSuccesses);
+		summary.put("problems", problems);
 		String within = counts.isEmpty() ? "" : " (" + String.join(", ", counts) + ")";
 		report.append(ok ? "OK" + within : "FAILED" + within).append('\n');
 		File folder = request.results;
 		if (!folder.isDirectory() && !folder.mkdirs()) {
 			UnitTas.LOG.error("Can't make {}", folder);
 		}
-		try (Writer out = new OutputStreamWriter(new FileOutputStream(new File(folder, "report.txt")), StandardCharsets.UTF_8)) {
+		File written = new File(folder, "report.txt");
+		try (Writer out = new OutputStreamWriter(new FileOutputStream(written), StandardCharsets.UTF_8)) {
 			out.write(report.toString());
+			game.reported(written, ok, summary);
 		} catch (IOException e) {
 			UnitTas.LOG.error("Can't write the report", e);
 		}

@@ -26,6 +26,13 @@ public final class UnitTasMode {
 	/** For each unknown sound, its name and where it was played from (the first calls outside the sound system). */
 	public static final List<String> SOUNDS_UNKNOWN_FROM = Collections.synchronizedList(new ArrayList<>());
 
+	/** Told of every sound the client is asked to play during a run (the probe's sound events). */
+	public interface SoundListener {
+		void played(String id, boolean known, String from, float volume, float pitch, double x, double y, double z);
+	}
+
+	public static volatile SoundListener soundListener;
+
 	private UnitTasMode() {
 	}
 

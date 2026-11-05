@@ -1,8 +1,9 @@
 package io.github.asgerjon.unittas;
 
+import io.github.asgerjon.unittas.probe.Input;
+import io.github.asgerjon.unittas.probe.Pictures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiChat;
-import net.minecraft.client.gui.GuiNewChat;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
@@ -10,14 +11,11 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.ScreenShotHelper;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 
 import java.io.File;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -286,31 +284,7 @@ public abstract class TasTestCase {
 	 * comes out as itself: it is the screen's failure, not unitTAS's.
 	 */
 	protected static void keyTyped(GuiScreen screen, char character, int keyCode) {
-		Method keyTyped;
-		try {
-			try {
-				keyTyped = GuiScreen.class.getDeclaredMethod("keyTyped", char.class, int.class);
-			} catch (NoSuchMethodException e) {
-				keyTyped = GuiScreen.class.getDeclaredMethod("func_73869_a", char.class, int.class);
-			}
-			keyTyped.setAccessible(true);
-		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("Can't find GuiScreen.keyTyped to type into " + screen, e);
-		}
-		try {
-			keyTyped.invoke(screen, character, keyCode);
-		} catch (InvocationTargetException e) {
-			Throwable thrown = e.getCause();
-			if (thrown instanceof RuntimeException) {
-				throw (RuntimeException) thrown;
-			}
-			if (thrown instanceof Error) {
-				throw (Error) thrown;
-			}
-			throw new IllegalStateException(screen.getClass().getName() + ".keyTyped threw", thrown);
-		} catch (IllegalAccessException e) {
-			throw new IllegalStateException("Can't type into " + screen, e);
-		}
+		Input.keyTyped(screen, character, keyCode);
 	}
 
 	// ---------------------------------------------------------------- items and entities
@@ -373,10 +347,7 @@ public abstract class TasTestCase {
 	/** Turns the player to look this way (degrees; yaw 0 is south, pitch 90 down). */
 	protected final void look(float yaw, float pitch) {
 		onClient(() -> {
-			mc().thePlayer.rotationYaw = yaw;
-			mc().thePlayer.rotationPitch = pitch;
-			mc().thePlayer.prevRotationYaw = yaw;
-			mc().thePlayer.prevRotationPitch = pitch;
+			Input.look(mc(), yaw, pitch);
 		});
 		ticks(1);
 	}
@@ -384,12 +355,11 @@ public abstract class TasTestCase {
 	/** Holds the key down for this many ticks, then lets go. */
 	protected final void hold(KeyBinding key, int ticks) {
 		onClient(() -> {
-			KeyBinding.setKeyBindState(key.getKeyCode(), true);
-			KeyBinding.onTick(key.getKeyCode());
+			Input.down(key.getKeyCode());
 		});
 		ticks(ticks);
 		onClient(() -> {
-			KeyBinding.setKeyBindState(key.getKeyCode(), false);
+			Input.up(key.getKeyCode());
 		});
 		ticks(1);
 	}
@@ -397,21 +367,20 @@ public abstract class TasTestCase {
 	/** Puts the key down and leaves it down (as holding right click to keep a shield raised) until {@link #keyUp}. */
 	protected final void keyDown(KeyBinding key) {
 		onClient(() -> {
-			KeyBinding.setKeyBindState(key.getKeyCode(), true);
-			KeyBinding.onTick(key.getKeyCode());
+			Input.down(key.getKeyCode());
 		});
 	}
 
 	protected final void keyUp(KeyBinding key) {
 		onClient(() -> {
-			KeyBinding.setKeyBindState(key.getKeyCode(), false);
+			Input.up(key.getKeyCode());
 		});
 	}
 
 	/** The camera: 0 first person, 1 third person from behind, 2 from the front (each test starts in first person). */
 	protected final void cameraView(int view) {
 		onClient(() -> {
-			mc().gameSettings.thirdPersonView = view;
+			Input.camera(mc(), view);
 		});
 		ticks(2);
 	}
@@ -443,7 +412,7 @@ public abstract class TasTestCase {
 		String file = name.replaceAll("[^A-Za-z0-9_.-]", "_") + ".png";
 		game.client(() -> {
 			Minecraft mc = Minecraft.getMinecraft();
-			ScreenShotHelper.saveScreenshot(game.request().results, file, mc.displayWidth, mc.displayHeight, mc.getFramebuffer());
+			Pictures.save(mc, game.request().results, file);
 			return null;
 		});
 		return "screenshots/" + file;
@@ -455,19 +424,7 @@ public abstract class TasTestCase {
 	 */
 	@SuppressWarnings("rawtypes")
 	static void clearChat() {
-		GuiNewChat chat = Minecraft.getMinecraft().ingameGUI.getChatGUI();
-		for (String[] names : new String[][]{{"chatLines", "field_146252_h"}, {"field_146253_i"}}) {
-			for (String name : names) {
-				try {
-					java.lang.reflect.Field field = GuiNewChat.class.getDeclaredField(name);
-					field.setAccessible(true);
-					((List) field.get(chat)).clear();
-					break;
-				} catch (ReflectiveOperationException e) {
-					// the other name, in an obfuscated game
-				}
-			}
-		}
+		Pictures.clearChat(Minecraft.getMinecraft());
 	}
 
 	// ---------------------------------------------------------------- asserts, as unittest's

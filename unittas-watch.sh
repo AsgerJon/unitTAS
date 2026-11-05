@@ -2,6 +2,8 @@
 # unitTAS watcher: runs the test runs Claude asks for, here in your own session (your display, your Gradle).
 # Start it once in a terminal:  ./unittas-watch.sh      Stop it with Ctrl+C.
 # Claude asks for a run by writing unittas-queue/request: one line, "<suites> [filter]", as ./unittas.sh takes them.
+# The line "probe [filter]" runs the probe's own tests instead (python -m unittas.selftest, in the conda environment
+# unittas_env through ./unittas-python.sh); they start the games they need themselves.
 # As the run starts, unittas-queue/run holds its results folder; when it ends, unittas-queue/done holds its exit
 # code. The runs are watched (UNITTAS_WATCHED=1): where one would go by a fixed limit, it raises an alarm in its
 # results folder (alarm.txt, with pictures) and waits for Claude's answer there (decision.txt); see README.md,
@@ -44,7 +46,11 @@ while true; do
 		# the run's folder, named here so Claude knows where its alarms will be before the game starts
 		STAMP=$(date +%Y-%m-%d_%H-%M-%S)
 		echo "$PWD/unittas-results/$STAMP" > "$QUEUE/run.tmp" && mv "$QUEUE/run.tmp" "$QUEUE/run"
-		UNITTAS_WATCHED=1 UNITTAS_STAMP="$STAMP" ./unittas.sh "${SUITES:-}" "${FILTER:-}"
+		if [ "${SUITES:-}" = probe ]; then
+			UNITTAS_STAMP="$STAMP" ./unittas-python.sh -m unittas.selftest "${FILTER:-}"
+		else
+			UNITTAS_WATCHED=1 UNITTAS_STAMP="$STAMP" ./unittas.sh "${SUITES:-}" "${FILTER:-}"
+		fi
 		code=$?
 		echo "$code" > "$QUEUE/done.tmp" && mv "$QUEUE/done.tmp" "$QUEUE/done"
 		echo "[$(date +%H:%M:%S)] finished (exit $code); waiting for the next request"

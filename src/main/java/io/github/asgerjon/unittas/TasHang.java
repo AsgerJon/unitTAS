@@ -1,5 +1,6 @@
 package io.github.asgerjon.unittas;
 
+import io.github.asgerjon.unittas.probe.Threads;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.NetworkSystem;
@@ -7,10 +8,6 @@ import net.minecraft.server.integrated.IntegratedServer;
 import net.minecraft.util.ScreenShotHelper;
 
 import java.io.File;
-import java.lang.management.LockInfo;
-import java.lang.management.ManagementFactory;
-import java.lang.management.MonitorInfo;
-import java.lang.management.ThreadInfo;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,7 +19,7 @@ import java.util.List;
  * both ends of the local connection. Written into the results folder, so it is there whoever watches (the sandbox the
  * runs are watched from can neither see the window nor attach to the game).
  */
-final class TasHang {
+public final class TasHang {
 
 	private TasHang() {
 	}
@@ -42,8 +39,11 @@ final class TasHang {
 		}
 	}
 
-	/** Threads, screen and connection into hang-threads.txt; returns its name. */
-	static String dump(Minecraft mc, File results) {
+	/**
+	 * The game's part of hang-threads.txt, as debug.threads gives it too: the screen, the worlds, both ends of the local
+	 * connection, and its steps so far.
+	 */
+	public static String state(Minecraft mc) {
 		StringBuilder out = new StringBuilder();
 		out.append("screen: ").append(mc.currentScreen == null ? "none" : mc.currentScreen.getClass().getName()).append('\n');
 		out.append("client world: ").append(mc.theWorld != null).append(", client player: ").append(mc.thePlayer != null).append('\n');
@@ -67,32 +67,15 @@ final class TasHang {
 			out.append("connection state unreadable: ").append(e).append('\n');
 		}
 		out.append("\nthe connection's steps so far (TasTrace, also in loading-trace.txt):\n").append(TasTrace.text());
-		out.append('\n');
-		for (ThreadInfo thread : ManagementFactory.getThreadMXBean().dumpAllThreads(true, true)) {
-			out.append('"').append(thread.getThreadName()).append("\" ").append(thread.getThreadState());
-			LockInfo lock = thread.getLockInfo();
-			if (lock != null) {
-				out.append(" on ").append(lock);
-				if (thread.getLockOwnerName() != null) {
-					out.append(" owned by \"").append(thread.getLockOwnerName()).append('"');
-				}
-			}
-			out.append('\n');
-			StackTraceElement[] stack = thread.getStackTrace();
-			MonitorInfo[] monitors = thread.getLockedMonitors();
-			for (int i = 0; i < stack.length; i++) {
-				out.append("\tat ").append(stack[i]).append('\n');
-				for (MonitorInfo monitor : monitors) {
-					if (monitor.getLockedStackDepth() == i) {
-						out.append("\t- locked ").append(monitor).append('\n');
-					}
-				}
-			}
-			out.append('\n');
-		}
+		return out.toString();
+	}
+
+	/** The game's state and every thread's stack (Threads) into hang-threads.txt; returns its name. */
+	static String dump(Minecraft mc, File results) {
+		String text = state(mc) + "\n" + Threads.dump();
 		File file = new File(results, "hang-threads.txt");
 		try {
-			Files.write(file.toPath(), out.toString().getBytes(StandardCharsets.UTF_8));
+			Files.write(file.toPath(), text.getBytes(StandardCharsets.UTF_8));
 		} catch (Exception e) {
 			return "nowhere (" + e + ")";
 		}

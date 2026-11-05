@@ -13,7 +13,7 @@ import java.util.TreeSet;
  * The suites a run can ask for: every test class marked {@link TasSuite}, by suite, as Forge's annotation table lists
  * them. Only the names are kept here; the runner loads the classes when it runs them.
  */
-final class TasSuites {
+public final class TasSuites {
 
 	/** Each suite's classes, by name; the suites and their classes in name order. */
 	private static final Map<String, Set<String>> SUITES = new TreeMap<>();
@@ -21,8 +21,8 @@ final class TasSuites {
 	private TasSuites() {
 	}
 
-	/** At start-up, before the run begins. */
-	static void find(ASMDataTable table) {
+	/** At start-up, before the run begins (the probe's preInit too, for java.run). Twice changes nothing. */
+	public static void find(ASMDataTable table) {
 		for (ASMDataTable.ASMData data : table.getAll(TasSuite.class.getName())) {
 			Object suite = data.getAnnotationInfo().get("value");
 			if (suite != null) {

@@ -121,16 +121,24 @@ mkdir -p "$RESULTS"
 ln -sfn "$STAMP" "$ROOT/unittas-results/latest"
 
 # ---------------------------------------------------------------- the release jar
-say "building the release jar (./gradlew assemble; its log: unittas-results/$STAMP/build.log)"
-if ! ./gradlew --console=plain assemble > "$RESULTS/build.log" 2>&1; then
+# remapJar makes the release jar (Searge names) from the dev jar; assemble makes only the dev jar, and a release jar
+# beside it would be an earlier build's
+say "building the release jar (./gradlew remapJar; its log: unittas-results/$STAMP/build.log)"
+if ! ./gradlew --console=plain remapJar > "$RESULTS/build.log" 2>&1; then
 	echo "The build failed. The end of its log:"
 	tail -n 25 "$RESULTS/build.log"
 	exit 1
 fi
-# the newest jar the build made, but not its dev, sources, API or javadoc jars
-JAR=$(ls -t build/libs/*.jar 2>/dev/null | grep -v -E -- '-(dev|sources|api|javadoc|preshadow)\.jar$' | head -n 1)
-if [ -z "$JAR" ]; then
-	echo "The build made no release jar in build/libs."
+# the jar by its name, and this build's: no older than the dev jar it is remapped from
+VERSION=$(sed -n 's/^mod_version=//p' gradle.properties)
+JAR="build/libs/unittas-$VERSION.jar"
+DEV_JAR="build/libs/unittas-$VERSION-dev.jar"
+if [ ! -f "$JAR" ]; then
+	echo "The build made no release jar $JAR."
+	exit 1
+fi
+if [ -f "$DEV_JAR" ] && [ "$JAR" -ot "$DEV_JAR" ]; then
+	echo "$JAR is older than $DEV_JAR, the dev jar it is remapped from: an earlier build's, so it isn't used."
 	exit 1
 fi
 say "the jar: $JAR"

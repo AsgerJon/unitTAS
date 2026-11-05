@@ -1,9 +1,9 @@
 package io.github.asgerjon.unittas;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiDownloadTerrain;
 import net.minecraft.client.gui.GuiMainMenu;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -11,10 +11,12 @@ import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.WorldSettings;
 import net.minecraft.world.WorldType;
 import net.minecraft.world.storage.ISaveFormat;
-import net.minecraft.world.storage.WorldInfo;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
+import net.minecraftforge.common.MinecraftForge;
+import io.github.asgerjon.unittas.probe.Side;
+import io.github.asgerjon.unittas.probe.Sides;
+import io.github.asgerjon.unittas.probe.Window;
+import io.github.asgerjon.unittas.probe.Worlds;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,13 +28,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Queue;
+import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -43,10 +40,10 @@ import java.util.stream.Stream;
  */
 public final class TasGame {
 
-	static final String WORLD_FOLDER = "unittas";
+	static final String WORLD_FOLDER = Worlds.FOLDER;
 	/** Bedrock, two dirt, grass: the surface is y 3, a player stands at y 4. The empty last field: no structures. */
-	static final String FLAT_LAYERS = "2;7,2x3,2;1;";
-	static final long SEED = 20261029L;
+	static final String FLAT_LAYERS = Worlds.FLAT_LAYERS;
+	static final long SEED = Worlds.SEED;
 	private static final int SETTLE_TICKS = 40;
 	private static final int WORLD_TIMEOUT_TICKS = 20 * 180;
 	/**
@@ -80,20 +77,30 @@ public final class TasGame {
 
 	enum Stage {MENU, LOADING, RUNNING, DONE}
 
+	/**
+	 * Who started a run from the probe (java.run, PROTOCOL.md 8.14), told of each line of the report as it comes and of
+	 * the run's end. Such a run leaves the game up: the probe closes the runner's world itself.
+	 */
+	public interface Listener {
+		/** A line of the report: the test's name (or the problem's), java.result's outcome, its seconds, the text under it. */
+		void result(String name, String outcome, double seconds, String detail);
+
+		/** The run is over, on the client thread: its report (null if none was written), whether it passed, its counts. */
+		void done(File report, boolean ok, Map<String, Integer> counts);
+	}
+
 	private final UnitTas.Request request;
 	private final TasWatch watch;
-	private final Queue<Runnable> clientSteps = new ConcurrentLinkedQueue<>();
-	private final Queue<Runnable> serverSteps = new ConcurrentLinkedQueue<>();
-	private final Object tickLock = new Object();
+	/** The probe's java.run, or null for a run of its own (request.properties), which quits the game at its end. */
+	private final Listener listener;
+	/** The report as written, for the listener. */
+	private volatile File reportFile;
+	private volatile boolean reportOk;
+	private volatile Map<String, Integer> reportCounts;
+	/** The game's ticks and the steps run on them, the probe's own (one for the game, shared). */
+	private final Sides sides = Sides.get();
 	private final List<ChatLine> chat = new ArrayList<>();
-	private volatile long clientTicks;
-	private volatile long serverTicks;
-	/** The threads that tick, as last seen: a step asked for from its own thread runs at once. */
-	private volatile Thread clientThread;
-	private volatile Thread serverThread;
-	/** When each side last ticked, and when the test world began loading (System.currentTimeMillis()). */
-	private volatile long clientTickedAt;
-	private volatile long serverTickedAt;
+	/** When the test world began loading (System.currentTimeMillis()). */
 	private volatile long loadingSince;
 	private volatile Stage stage = Stage.MENU;
 	private int stageTicks;
@@ -132,9 +139,48 @@ public final class TasGame {
 	private final List<Throwable> warnings = new ArrayList<>();
 
 	TasGame(UnitTas.Request request) {
+		this(request, null);
+	}
+
+	TasGame(UnitTas.Request request, Listener listener) {
 		this.request = request;
+		this.listener = listener;
 		this.watch = new TasWatch(this);
 		current = this;
+	}
+
+	/** Under the probe, its own tick handlers count the ticks (ClientHooks): counted here too, each would count twice. */
+	private boolean countsTicks() {
+		return listener == null;
+	}
+
+	/** A line of the report, as it is added: the listener hears it. */
+	void resultLine(String name, String outcome, double seconds, String detail) {
+		if (listener != null) {
+			try {
+				listener.result(name, outcome, seconds, detail);
+			} catch (RuntimeException e) {
+				UnitTas.LOG.error("unitTAS: the java.run's listener failed on {}", name, e);
+			}
+		}
+	}
+
+	/** The report as it was written: where, whether it passed, its counts. */
+	void reported(File file, boolean ok, Map<String, Integer> counts) {
+		reportFile = file;
+		reportOk = ok;
+		reportCounts = counts;
+	}
+
+	/**
+	 * Stops the run as the watch's stop does (java.run's cancel): the running test now, and no test after it. A run
+	 * still making its world gives that up at the client's next tick.
+	 */
+	public void cancel(String reason) {
+		abort(reason);
+		if (stage != Stage.RUNNING) {
+			giveUpLoading(reason);
+		}
 	}
 
 	UnitTas.Request request() {
@@ -152,8 +198,9 @@ public final class TasGame {
 
 	@SubscribeEvent
 	public void onClientTick(TickEvent.ClientTickEvent event) {
-		clientThread = Thread.currentThread();
-		clientTickedAt = System.currentTimeMillis();
+		if (countsTicks()) {
+			sides.noteThread(Side.CLIENT);
+		}
 		Minecraft mc = Minecraft.getMinecraft();
 		if (event.phase == TickEvent.Phase.START) {
 			ignoreRealInput(mc);
@@ -223,25 +270,21 @@ public final class TasGame {
 			default:
 				break;
 		}
-		runAll(clientSteps);
-		synchronized (tickLock) {
-			clientTicks++;
-			tickLock.notifyAll();
+		if (countsTicks()) {
+			sides.ticked(Side.CLIENT);
 		}
 	}
 
 	@SubscribeEvent
 	public void onServerTick(TickEvent.ServerTickEvent event) {
-		serverThread = Thread.currentThread();
-		serverTickedAt = System.currentTimeMillis();
+		if (!countsTicks()) {
+			return;
+		}
+		sides.noteThread(Side.SERVER);
 		if (event.phase != TickEvent.Phase.END) {
 			return;
 		}
-		runAll(serverSteps);
-		synchronized (tickLock) {
-			serverTicks++;
-			tickLock.notifyAll();
-		}
+		sides.ticked(Side.SERVER);
 	}
 
 	@SubscribeEvent
@@ -269,22 +312,7 @@ public final class TasGame {
 		if (stage == Stage.DONE) {
 			return;
 		}
-		while (Mouse.next()) {
-			// dropped
-		}
-		while (Keyboard.next()) {
-			// dropped
-		}
-		if (mc.theWorld != null && mc.currentScreen == null) {
-			mc.inGameHasFocus = true;
-		}
-	}
-
-	private static void runAll(Queue<Runnable> steps) {
-		Runnable step;
-		while ((step = steps.poll()) != null) {
-			step.run();
-		}
+		Window.ignoreRealInput(mc);
 	}
 
 	/** A fresh world each run: the old test world goes first (only that folder), then creative, cheats, flat, a fixed seed. */
@@ -295,13 +323,8 @@ public final class TasGame {
 		ISaveFormat saves = mc.getSaveLoader();
 		saves.flushCache();
 		saves.deleteWorldDirectory(WORLD_FOLDER);
-		// map features on, as in a new world: structures that other generators add (a mod's, the Nether's) are made;
-		// the flat layers themselves name none
-		WorldSettings settings = new WorldSettings(SEED, WorldSettings.GameType.CREATIVE, true, false, WorldType.FLAT).enableCommands();
-		// the generator's options (the flat layers): MCP stable_12 names this setter setWorldName
-		settings.setWorldName(FLAT_LAYERS);
 		TasTrace.start();
-		mc.launchIntegratedServer(WORLD_FOLDER, "unitTAS", settings);
+		Worlds.create(mc, WORLD_FOLDER, Worlds.NAME, SEED, WorldType.FLAT, FLAT_LAYERS, WorldSettings.GameType.CREATIVE, true, true);
 	}
 
 	/**
@@ -325,21 +348,12 @@ public final class TasGame {
 
 	/** Opens a save from the game's saves folder, as the world list's Play does. */
 	void openSave(String folder) {
-		Minecraft mc = Minecraft.getMinecraft();
-		ISaveFormat saves = mc.getSaveLoader();
-		saves.flushCache();
-		WorldInfo info = saves.getWorldInfo(folder);
-		if (info == null) {
-			throw new IllegalStateException("no save called " + folder + " in " + new File(mc.mcDataDir, "saves"));
-		}
-		mc.launchIntegratedServer(folder, info.getWorldName(), null);
+		Worlds.open(Minecraft.getMinecraft(), folder);
 	}
 
 	/** The player is in the world on both sides, past the terrain screen. */
 	boolean inWorld() {
-		Minecraft mc = Minecraft.getMinecraft();
-		return mc.thePlayer != null && mc.theWorld != null && serverPlayerOrNull() != null
-			&& !(mc.currentScreen instanceof GuiDownloadTerrain);
+		return Worlds.inWorld(Minecraft.getMinecraft());
 	}
 
 	/** inWorld, read from another thread: a guess good enough for the watch (false when the read goes wrong). */
@@ -353,12 +367,7 @@ public final class TasGame {
 
 	/** Save and quit to the title screen, as the pause menu's button does. */
 	void quitToMenu() {
-		Minecraft mc = Minecraft.getMinecraft();
-		if (mc.theWorld != null) {
-			mc.theWorld.sendQuittingDisconnectingPacket();
-		}
-		mc.loadWorld(null);
-		mc.displayGuiScreen(new GuiMainMenu());
+		Worlds.close(Minecraft.getMinecraft());
 	}
 
 	/**
@@ -483,11 +492,16 @@ public final class TasGame {
 		}
 	}
 
-	/** Puts the player's settings back and quits the game (on the client thread). */
+	/**
+	 * Puts the player's settings back and quits the game (on the client thread). A java.run's game stays up instead:
+	 * the run lets go of the game's events, and the probe hears that it is over.
+	 */
 	void finish(Minecraft mc) {
 		stage = Stage.DONE;
-		activity = "quitting";
-		UnitTasMode.running = false;
+		activity = listener == null ? "quitting" : "done";
+		if (listener == null) {
+			UnitTasMode.running = false;
+		}
 		if (prepared) {
 			TasPlugins.each("afterRun", request, TasHooks::afterRun);
 			mc.gameSettings.pauseOnLostFocus = pauseOnLostFocus;
@@ -498,7 +512,16 @@ public final class TasGame {
 		restoreOptions(mc);
 		restoreConfig(mc);
 		dropPristine();
-		mc.shutdown();
+		if (listener == null) {
+			mc.shutdown();
+			return;
+		}
+		FMLCommonHandler.instance().bus().unregister(this);
+		MinecraftForge.EVENT_BUS.unregister(this);
+		if (current == this) {
+			current = null;
+		}
+		listener.done(reportFile, reportOk, reportCounts);
 	}
 
 	// ---------------------------------------------------------------- the test clock, and stopping
@@ -509,7 +532,7 @@ public final class TasGame {
 			testNumber++;
 			testLimitSeconds = seconds;
 			stopReason = null;
-			deadline = clientTicks + seconds * 20L;
+			deadline = sides.ticks(Side.CLIENT) + seconds * 20L;
 		}
 	}
 
@@ -522,14 +545,14 @@ public final class TasGame {
 
 	boolean testOverTime() {
 		long until = deadline;
-		return until > 0 && clientTicks > until;
+		return until > 0 && sides.ticks(Side.CLIENT) > until;
 	}
 
 	/** More time for the running test (the watcher's "wait"), counted from now if it is already past its limit. */
 	void extendClock(int test, int seconds) {
 		synchronized (clockLock) {
 			if (deadline > 0 && test == testNumber) {
-				deadline = Math.max(deadline, clientTicks) + seconds * 20L;
+				deadline = Math.max(deadline, sides.ticks(Side.CLIENT)) + seconds * 20L;
 			}
 		}
 	}
@@ -610,10 +633,10 @@ public final class TasGame {
 		if (game == null || !game.inTest) {
 			return;
 		}
-		Thread server = game.serverThread;
+		Thread server = game.sides.thread(Side.SERVER);
 		Thread here = Thread.currentThread();
 		if (server != null && here != server) {
-			String from = here == game.clientThread ? "the client thread" : "the test's thread";
+			String from = here == game.sides.thread(Side.CLIENT) ? "the client thread" : "the test's thread";
 			synchronized (game.warnings) {
 				game.warnings.add(new Throwable(what + " outside a server step (onServer): it reads the server's objects from " + from));
 			}
@@ -701,71 +724,56 @@ public final class TasGame {
 	}
 
 	long clientTickedAt() {
-		return clientTickedAt;
+		return sides.tickedAt(Side.CLIENT);
 	}
 
 	long serverTickedAt() {
-		return serverTickedAt;
+		return sides.tickedAt(Side.SERVER);
 	}
 
 	boolean clientTickedWithin(int seconds) {
-		return System.currentTimeMillis() - clientTickedAt < seconds * 1000L;
+		return System.currentTimeMillis() - clientTickedAt() < seconds * 1000L;
 	}
 
 	/** An integrated server is up (it may be paused, then it doesn't tick). */
 	boolean serverExpected() {
 		MinecraftServer server = MinecraftServer.getServer();
-		return server != null && !server.isServerStopped() && serverTickedAt > 0;
+		return server != null && !server.isServerStopped() && serverTickedAt() > 0;
 	}
 
 	/** Both sides ticked within the time (the server only if one is up). */
 	boolean tickingLately(int seconds) {
 		long now = System.currentTimeMillis();
-		return clientTickedWithin(seconds) && (!serverExpected() || now - serverTickedAt < seconds * 1000L);
+		return clientTickedWithin(seconds) && (!serverExpected() || now - serverTickedAt() < seconds * 1000L);
 	}
 
 	// ---------------------------------------------------------------- steps and ticks
 
 	/** Runs a step on the client thread at its next tick and returns its result; at once if already on that thread. */
 	<T> T client(Callable<T> step) {
-		return await(clientSteps, step, "the client", clientThread);
+		return await(Side.CLIENT, step);
 	}
 
 	/** Runs a step on the server thread at its next tick and returns its result; at once if already on that thread. */
 	<T> T server(Callable<T> step) {
-		return await(serverSteps, step, "the server", serverThread);
+		return await(Side.SERVER, step);
 	}
 
-	private <T> T await(Queue<Runnable> steps, Callable<T> step, String side, Thread sideThread) {
-		if (Thread.currentThread() == sideThread) {
-			// a step inside a step on the same thread: queued, it would wait for the thread that is waiting for it
-			try {
-				return step.call();
-			} catch (RuntimeException | Error e) {
-				throw e;
-			} catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		}
-		FutureTask<T> task = new FutureTask<>(step);
-		steps.add(task);
+	/**
+	 * The step on that side's thread (Sides), with this run's own failures: Timeout when the side stopped ticking (stuck)
+	 * or the test was stopped meanwhile (not stuck).
+	 */
+	private <T> T await(Side side, Callable<T> step) {
 		try {
-			return task.get(STEP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-		} catch (ExecutionException e) {
-			Throwable cause = e.getCause();
-			if (cause instanceof RuntimeException) {
-				throw (RuntimeException) cause;
-			}
-			if (cause instanceof Error) {
-				throw (Error) cause;
-			}
-			throw new RuntimeException(cause);
-		} catch (TimeoutException e) {
-			task.cancel(false);
-			throw new Timeout(side + " didn't run a step within " + STEP_TIMEOUT_SECONDS + " s (paused or stuck?)", true);
+			return sides.run(side, step, STEP_TIMEOUT_SECONDS, null);
+		} catch (Sides.Stalled e) {
+			throw new Timeout("the " + side.wire + " stopped ticking: no tick in " + STEP_TIMEOUT_SECONDS + " s (paused or stuck?)", true);
 		} catch (InterruptedException e) {
-			task.cancel(false);
 			throw new Timeout(stoppedBecause(), false);
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
 		}
 	}
 
@@ -783,34 +791,17 @@ public final class TasGame {
 	 * there however long it takes; the test's own time limit still applies.
 	 */
 	private void waitTicks(int ticks, boolean client) {
-		String side = client ? "client" : "server";
-		if (Thread.currentThread() == (client ? clientThread : serverThread)) {
-			throw new IllegalStateException("can't wait for " + side + " ticks inside a " + side + " step: that thread doesn't tick while it runs the step");
+		Side side = client ? Side.CLIENT : Side.SERVER;
+		if (sides.onThread(side)) {
+			throw new IllegalStateException("can't wait for " + side.wire + " ticks inside a " + side.wire
+				+ " step: that thread doesn't tick while it runs the step");
 		}
-		synchronized (tickLock) {
-			long seen = client ? clientTicks : serverTicks;
-			long target = seen + ticks;
-			long giveUp = System.currentTimeMillis() + STEP_TIMEOUT_SECONDS * 1000L;
-			while (true) {
-				long count = client ? clientTicks : serverTicks;
-				if (count >= target) {
-					return;
-				}
-				long now = System.currentTimeMillis();
-				if (count != seen) {
-					seen = count;
-					giveUp = now + STEP_TIMEOUT_SECONDS * 1000L;
-				}
-				long left = giveUp - now;
-				if (left <= 0) {
-					throw new Timeout("the " + side + " stopped ticking: no tick in " + STEP_TIMEOUT_SECONDS + " s (paused or stuck?)", true);
-				}
-				try {
-					tickLock.wait(left);
-				} catch (InterruptedException e) {
-					throw new Timeout(stoppedBecause(), false);
-				}
-			}
+		try {
+			sides.waitTicks(side, ticks, STEP_TIMEOUT_SECONDS);
+		} catch (Sides.Stalled e) {
+			throw new Timeout("the " + side.wire + " stopped ticking: no tick in " + STEP_TIMEOUT_SECONDS + " s (paused or stuck?)", true);
+		} catch (InterruptedException e) {
+			throw new Timeout(stoppedBecause(), false);
 		}
 	}
 
@@ -825,7 +816,7 @@ public final class TasGame {
 	}
 
 	long clientTickCount() {
-		return clientTicks;
+		return sides.ticks(Side.CLIENT);
 	}
 
 	/** Where the chat stands now; {@link #chatSince} gives what came after. */
@@ -851,10 +842,6 @@ public final class TasGame {
 	}
 
 	private static EntityPlayerMP serverPlayerOrNull() {
-		MinecraftServer server = MinecraftServer.getServer();
-		if (server == null || server.getConfigurationManager() == null || server.getConfigurationManager().playerEntityList.isEmpty()) {
-			return null;
-		}
-		return (EntityPlayerMP) server.getConfigurationManager().playerEntityList.get(0);
+		return Worlds.serverPlayerOrNull();
 	}
 }

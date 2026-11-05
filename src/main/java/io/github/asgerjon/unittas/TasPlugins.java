@@ -12,7 +12,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** The mods' {@link TasHooks} (the classes marked {@link TasPlugin}), made at start-up, called in their names' order. */
-final class TasPlugins {
+public final class TasPlugins {
 
 	private static final List<TasHooks> HOOKS = new ArrayList<>();
 	/** Hooks that couldn't be made, or that threw: the report lists each as an error. */
@@ -21,8 +21,14 @@ final class TasPlugins {
 	private TasPlugins() {
 	}
 
-	/** At start-up, before the run begins. */
-	static void find(ASMDataTable table) {
+	private static boolean found;
+
+	/** At start-up, before the run begins (the probe's or the Java runner's: once, whichever comes first). */
+	public static synchronized void find(ASMDataTable table) {
+		if (found) {
+			return;
+		}
+		found = true;
 		Set<String> names = new TreeSet<>();
 		for (ASMDataTable.ASMData data : table.getAll(TasPlugin.class.getName())) {
 			names.add(data.getClassName());
@@ -61,8 +67,25 @@ final class TasPlugins {
 		}
 	}
 
+	/**
+	 * Calls each hook and says how each went, for the probe's hooks.run: the class, and what it threw or null. One that
+	 * throws doesn't stop the others.
+	 */
+	public static List<Object[]> run(Consumer<TasHooks> call) {
+		List<Object[]> outcomes = new ArrayList<>();
+		for (TasHooks hooks : HOOKS) {
+			try {
+				call.accept(hooks);
+				outcomes.add(new Object[]{hooks.getClass().getName(), null});
+			} catch (RuntimeException | Error e) {
+				outcomes.add(new Object[]{hooks.getClass().getName(), e});
+			}
+		}
+		return outcomes;
+	}
+
 	/** The first hook's answer that isn't null, or null when no hook answers. */
-	static <T> T first(Function<TasHooks, T> ask) {
+	public static <T> T first(Function<TasHooks, T> ask) {
 		for (TasHooks hooks : HOOKS) {
 			T answer = ask.apply(hooks);
 			if (answer != null) {
