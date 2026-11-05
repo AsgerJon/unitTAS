@@ -11,7 +11,7 @@ import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 public final class UnitTasMod {
 
 	public static final String MODID = "unittas";
-	public static final String VERSION = "0.1.0-dev4";
+	public static final String VERSION = "0.1.0-dev5";
 
 	@Mod.EventHandler
 	public void preInit(FMLPreInitializationEvent event) {
