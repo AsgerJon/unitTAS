@@ -280,7 +280,7 @@ build = "./gradlew --console=plain remapJar"   # run first, without a shell
 mods = ["build/libs/mymod-*.jar"]              # each matching exactly one file
 libraries = ["maven:com.example:alib:1.0", "libs/unimixins-1.7.10-0.3.1.jar"]
 repositories = ["https://maven.example.com/"]  # where maven: libraries come from (https only)
-probe = "libs/unittas-0.1.0.jar"               # unitTAS's jar, the probe
+probe = "libs/unittas-0.1.0-dev7.jar"          # unitTAS's jar, the probe
 config = "test-config"                         # copied into the game's config/ for the run
 options = { autoJump = false }                 # set in options.txt for the run
 game = "run/unittas"                           # the real client's game folder
