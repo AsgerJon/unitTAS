@@ -338,7 +338,7 @@ ran in that mod's development client and passed. Four pieces:
    ```
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev6'))
+   devOnlyNonPublishable(rfg.deobf('com.github.AsgerJon:unitTAS:0.1.0-dev7'))
    ```
 
    A jar on your own machine (unitTAS's `.local-maven/`, `~/.m2`) goes **as a file**: by module name from a local
@@ -346,7 +346,7 @@ ran in that mod's development client and passed. Four pieces:
    `group-name-version.jar`), so the build compiles and the game fails at the first renamed call.
 
    ```groovy
-   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev6.jar')))
+   devOnlyNonPublishable(rfg.deobf(files('/path/to/unittas-0.1.0-dev7.jar')))
    ```
 
 3. **`gradle.properties`:** Mixin on: `forceEnableMixins = true` (a mod with `usesMixins = true` has it already).
