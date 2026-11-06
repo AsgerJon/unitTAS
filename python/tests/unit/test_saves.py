@@ -102,6 +102,37 @@ class JavaSuitesTests(CliCase):
     self.assertIn('--java', said)
 
 
+class PythonSaveModeCliTests(CliCase):
+  """
+  9b by the command: the saves are copied in before the game starts, so a big save's copy never stands between the
+  game's ready and its first world (the no-world guard, SPEC.md after 9.8), and out again after, started or not.
+  """
+
+  def test_in_before_the_game_starts_and_out_after(self) -> None:
+    pristine = os.path.join(self.scratch, 'pristine')
+    makeSaves(pristine, ('a-save', 'b-save'))
+    code, said = self.main('run', 'clisuite_ok', '--saves', pristine, '--instance', self.spec, '--results',
+                           self.results)
+    self.assertEqual(0, code, said)
+    self.assertEqual(['a-save', 'b-save'], self.factory.game.savesAtStart)
+    self.assertEqual(['a-save', 'b-save'], sorted(os.listdir(os.path.join(self.results, 'saves-after'))))
+    self.assertIn('test 8/8 AOkTests.test_b [b-save, load 2] ... ok', said)
+
+  def test_a_game_that_cannot_start_gives_them_back(self) -> None:
+    from fakegame import Factory
+    from unittas.errors import LinkTimeout
+
+    pristine = os.path.join(self.scratch, 'pristine')
+    makeSaves(pristine, ('a-save', 'b-save'))
+    factory = Factory(os.path.join(self.scratch, 'game'), failing=LinkTimeout('alice: no hello within 1 s'))
+    code, said = self.main('run', 'clisuite_ok', '--saves', pristine, '--instance', self.spec, '--results',
+                           self.results, factory=factory)
+    self.assertEqual(1, code, said)
+    self.assertEqual([], os.listdir(os.path.join(self.scratch, 'game', 'saves')))
+    self.assertEqual(['a-save', 'b-save'], sorted(os.listdir(os.path.join(self.results, 'saves-after'))))
+    self.assertIn('AOkTests.test_a [a-save, load 1] ... NO RESULT', '\n'.join(self.report()))
+
+
 class PythonSaveModeTests(FakeRun, unittest.TestCase):
   """9b: the Python Run's own save loop."""
 
@@ -157,6 +188,32 @@ class PythonSaveModeTests(FakeRun, unittest.TestCase):
     for said in ('opening a-save as it was found', 'opening a-save again, as this game saved it',
                  'test 8/8 SaveCaseTests.test_b_passes [b-save, load 2] ... ok'):
       self.assertIn(said, progress)
+
+  def test_stopped_as_it_begins_the_why_is_kept(self) -> None:
+    """The run stopped (the no-world guard) while beforeRun ran: a problem line, nothing raised, the why its own."""
+    why = 'no world began loading 1200 client ticks after the game was ready'
+    self.run.stopped = why
+    self.run.game.stop(why)
+    runSaves(self.run, ['gamecases.SaveCaseTests'], ['a-save'], self.pristine, stream=io.StringIO())
+    self.assertEqual(why, self.run.stopped)
+    self.assertEqual([("the run couldn't begin: %s" % why)],
+                     [line.detail for line in self.run.lines if line.outcome == 'problem'])
+
+  def test_stopped_before_its_first_save_opens_the_why_is_kept(self) -> None:
+    why = 'no world began loading 1200 client ticks after the game was ready'
+
+    def stopping(args, side):
+      self.run.stopped = why
+      return {'plugins': []}
+
+    self.handlers['hooks.run'] = stopping
+    runSaves(self.run, ['gamecases.SaveCaseTests'], ['a-save', 'b-save'], self.pristine, stream=io.StringIO())
+    self.assertEqual(why, self.run.stopped, 'the why replaced by what came after it')
+    ops = [request['op'] for request in self.asked]
+    self.assertNotIn('world.open', ops)
+    self.assertNotIn('world.close', ops)
+    self.assertEqual([], [line.detail for line in self.run.lines if line.outcome == 'problem'],
+                     "the run's own why is the not-run tests' (session.runTests)")
 
   def test_the_save_open_and_its_pristine_copy(self) -> None:
     self.run.saveMode = True

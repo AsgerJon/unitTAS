@@ -297,6 +297,55 @@ class RunTests(CliCase):
     self.assertEqual(['test %d/4' % n for n in range(1, 5)], [line.split('] ')[1].split(' ')[0] + ' ' +
                                                               line.split('] ')[1].split(' ')[1] for line in numbered])
 
+  def test_no_world_asked_for_after_ready_stops_the_run(self) -> None:
+    """
+    The run's first world is never asked for (here its beforeRun hook holds) while the game ticks at its title
+    screen: said, then the run stopped by the watch's own thread, the hook cancelled, every test NO RESULT, the game
+    quit (SPEC.md, after 9.8).
+    """
+    import select
+
+    from fakeprobe import FakeError
+    from unittas.watch import NO_WORLD_TICKS
+
+    class Held(Factory):
+      def __call__(self, spec, results, name='game', **_):
+        game = Factory.__call__(self, spec, results, name)
+
+        def held(args, side):
+          if args.get('hook') != 'beforeRun':
+            return {'plugins': []}
+          tick = 0
+          deadline = time.monotonic() + 20
+          while time.monotonic() < deadline:
+            game.fake.event('tick', client=tick, server=tick, client_ago_ms=10, server_ago_ms=10,
+                            screen='net.minecraft.client.gui.GuiMainMenu', state='menu', paused=False)
+            tick += 100
+            #  the orchestrator's next line is its cancel of this request: answered as the probe answers one
+            if select.select([game.fake.sock], [], [], 0.05)[0]:
+              raise FakeError('Cancelled', 'the request was cancelled')
+          raise FakeError('TimedOut', 'held 20 s: the watch never stopped the run', seconds=20)
+
+        game.handlers['hooks.run'] = held
+        game.handlers['cancel'] = lambda args, side: {'cancelled': True}
+        return game
+
+    factory = Held(os.path.join(self.scratch, 'game'))
+    code, said = self.main('run', 'clisuite_ok', '--instance', self.spec, '--results', self.results, factory=factory)
+    self.assertEqual(1, code, said)
+    why = 'no world began loading %d client ticks after the game was ready' % NO_WORLD_TICKS
+    self.assertIn('NO WORLD: %s: the run stops, and no test has a result' % why, said)
+    lines = self.report()
+    self.assertIn(why, lines[1])
+    text = '\n'.join(lines)
+    self.assertIn('unitTAS.run ... problem', text)
+    self.assertIn('AOkTests.test_a ... NO RESULT', text)
+    self.assertIn('AOkTests.test_b ... NO RESULT', text)
+    self.assertNotIn('NO TEST RESULT: ', text, 'the why said twice')
+    self.assertNotIn('world.create', factory.game.ops())
+    self.assertIn('quit', factory.game.ops())
+    self.assertEqual(1, factory.game.stops)
+
   def test_ctrl_c_ends_the_run_properly(self) -> None:
     code, said = self.main('run', 'clisuite_stop', '--instance', self.spec, '--results', self.results)
     self.assertEqual(130, code, said)
@@ -332,6 +381,44 @@ class RunTests(CliCase):
     self.assertEqual(0, code, said)
     self.assertIn('AOkTests.test_a ... ok',
                   '\n'.join(self.report(os.path.join(self.scratch, 'unittas-results', '2026-11-05_20-00-01'))))
+
+
+class ReadyTests(CliCase):
+  """
+  The wait for the game's ready, its log watched meanwhile (SPEC.md, after 9.8): quiet for a while, the terminal says
+  so; quiet for longer, the game didn't start, and every test is NO RESULT. The limits made small here.
+  """
+
+  def setUp(self) -> None:
+    CliCase.setUp(self)
+    for name, value in (('LOG_QUIET_SAY_SECONDS', 0.3), ('LOG_QUIET_SECONDS', 0.8), ('READY_POLL_SECONDS', 0.05)):
+      self.addCleanup(setattr, session, name, getattr(session, name))
+      setattr(session, name, value)
+
+  def test_a_log_gone_quiet_while_it_loads_is_given_up(self) -> None:
+    factory = Factory(os.path.join(self.scratch, 'game'), ready=False)
+    code, said = self.main('run', 'clisuite_ok', '--instance', self.spec, '--results', self.results, factory=factory)
+    self.assertEqual(1, code, said)
+    log = os.path.join(self.results, 'game.log')
+    self.assertEqual(1, said.count("the game's log has had nothing new for 0.3 s while it loads its mods (%s); at "
+                                   "0.8 s it is given up" % log), said)
+    lines = self.report()
+    self.assertEqual("NO TEST RESULT could be obtained for 2 tests: not run: the game didn't start: nothing new in its "
+                     "log for 0.8 s while it loaded (%s)" % log, lines[1])
+    self.assertIn('unitTAS.game ... problem', '\n'.join(lines))
+    self.assertEqual(1, factory.game.stops)
+
+  def test_a_log_that_grows_is_waited_for(self) -> None:
+    def loading(game):
+      for n in range(12):
+        time.sleep(0.1)
+        game.log('[main/INFO] [FML]: loading mod %d' % n)
+      game.sendReady()
+
+    factory = Factory(os.path.join(self.scratch, 'game'), ready=loading)
+    code, said = self.main('run', 'clisuite_ok', '--instance', self.spec, '--results', self.results, factory=factory)
+    self.assertEqual(0, code, said)
+    self.assertNotIn('nothing new', said)
 
 
 class LaunchTests(CliCase):

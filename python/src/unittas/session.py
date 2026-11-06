@@ -47,6 +47,11 @@ if TYPE_CHECKING:  # pragma: no cover
 SPEC_NAME = 'unittas.toml'
 #  From the game's hello to its first tick at the title screen: every mod loaded (a modpack takes its time).
 READY_SECONDS = float(os.environ.get('UNITTAS_READY_SECONDS', '600'))
+#  Meanwhile its log is watched (SPEC.md, after 9.8): a game loading its mods writes to it all along. Nothing new in
+#  it for the first, the terminal says so; for the second, the game is given up as hung while it loaded.
+LOG_QUIET_SAY_SECONDS = 120.0
+LOG_QUIET_SECONDS = float(os.environ.get('UNITTAS_LOG_QUIET_SECONDS', '300'))
+READY_POLL_SECONDS = 1.0
 NO_RUN = ('no unitTAS run: start the tests with "unittas run", or give plain unittest an instance spec to start one '
           'from: UNITTAS_INSTANCE, or %s in the current folder (%s)')
 CTRL_C = 'the run was stopped by Ctrl+C'
@@ -112,6 +117,8 @@ def readSpec(path: str) -> InstanceSpec:
 
 def _why(error: BaseException) -> str:
   """What went wrong, in words: the package's own errors as they say it, anything else with its type."""
+  if isinstance(error, NoResult):
+    return error.why
   if isinstance(error, NO_RESULT_ERRORS):
     return whyNoResult(error)
   return _said(error)
@@ -140,15 +147,83 @@ def mappingsFor(connection: Connection, launched: LaunchedGame, environ: dict) -
   return Mappings.load(Sources(gradleHome=gradleHome, cache=getattr(launched, 'cache', None) or Cache()))
 
 
-def _ready(launched: LaunchedGame, results: Optional[str] = None) -> Connection:
+def _span(seconds: float) -> str:
+  """'5 minutes', '2 minutes', '90 s', '0.3 s'."""
+  if seconds >= 60 and seconds % 60 == 0:
+    minutes = int(seconds // 60)
+    return '%d minute%s' % (minutes, '' if minutes == 1 else 's')
+  return '%g s' % seconds
+
+
+def _logOf(launched: LaunchedGame) -> Optional[str]:
+  """The file the game's output is in (gradle.log, client.log), where a loading game writes; None if it has none."""
+  name = getattr(launched, 'outputName', None)
+  return None if name is None else os.path.join(launched.results, name())
+
+
+def _size(path: Optional[str]) -> int:
+  try:
+    return os.path.getsize(path) if path is not None else -1
+  except OSError:
+    return -1
+
+
+def _awaitReady(connection: Connection, launched: LaunchedGame, say: Callable[[str], Any]) -> None:
   """
-  The game started and at its title screen ('ready'); stopped again if it
-  doesn't get there. The opening guard's first picture: the game as it came
-  up (screenshots/opened.png in the results), evidence that it did.
+  'ready' waited for, the game's log watched meanwhile: nothing new in it
+  for LOG_QUIET_SAY_SECONDS, said; for LOG_QUIET_SECONDS, LinkTimeout (a
+  game hung while it loaded its mods). READY_SECONDS is the outer bound.
+  The game's own end (LinkClosed) comes through as it is.
+  """
+  log = _logOf(launched)
+  started = time.monotonic()
+  size, grewAt, said = _size(log), started, False
+  while True:
+    try:
+      connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_POLL_SECONDS)
+      return
+    except LinkTimeout:
+      pass
+    now = time.monotonic()
+    if now - started >= READY_SECONDS:
+      raise LinkTimeout('it never came to its title screen within %s (its log: %s)' % (_span(READY_SECONDS), log))
+    if log is None:
+      continue
+    grown = _size(log)
+    if grown != size:
+      size, grewAt, said = grown, now, False
+      continue
+    quiet = now - grewAt
+    if quiet >= LOG_QUIET_SECONDS:
+      raise LinkTimeout('nothing new in its log for %s while it loaded (%s)' % (_span(LOG_QUIET_SECONDS), log))
+    if quiet >= LOG_QUIET_SAY_SECONDS and not said:
+      said = True
+      say("the game's log has had nothing new for %s while it loads its mods (%s); at %s it is given up" % (
+        _span(LOG_QUIET_SAY_SECONDS), log, _span(LOG_QUIET_SECONDS)))
+
+
+def _stderr(line: str) -> None:
+  print('unitTAS: %s' % line, file=sys.stderr)
+  sys.stderr.flush()
+
+
+def _ready(launched: LaunchedGame, results: Optional[str] = None, say: Optional[Callable[[str], Any]] = None,
+           meanwhile: Optional[Callable[[Connection], Any]] = None) -> Connection:
+  """
+  The game started and at its title screen ('ready'), its log watched
+  while it loads (_awaitReady; 'say' for what the terminal is told,
+  stderr by default); stopped again if it doesn't get there. 'meanwhile'
+  is given the connection after the hello, while the game loads its mods:
+  work of the run's own that then never stands between the ready and the
+  run's first world (the no-world guard). The opening guard's first
+  picture: the game as it came up (screenshots/opened.png in the results),
+  evidence that it did.
   """
   connection = launched.start()
   try:
-    connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
+    if meanwhile is not None:
+      meanwhile(connection)
+    _awaitReady(connection, launched, say or _stderr)
   except BaseException:
     launched.stop()
     raise
@@ -160,6 +235,20 @@ def _ready(launched: LaunchedGame, results: Optional[str] = None) -> Connection:
     except UnitTasError:  # a picture is evidence, not the run: its absence says it
       pass
   return connection
+
+
+def _mappingsMeanwhile(launched: LaunchedGame, environ: dict, box: dict) -> Callable[[Connection], None]:
+  """
+  For _ready: the mappings loaded while the game loads its mods (a real
+  client's may be downloaded first), into box['mappings'], or what kept
+  them into box['problem'].
+  """
+  def load(connection: Connection) -> None:
+    try:
+      box['mappings'] = mappingsFor(connection, launched, environ)
+    except Exception as error:  # reflection by readable names won't work: unitTAS's own trouble, said in the report
+      box['problem'] = "a real client's readable names can't be had: %s" % _why(error)
+  return load
 
 
 def _unstarted(results: str, problems: list, names: list, why: str) -> str:
@@ -260,7 +349,7 @@ def runJava(spec: InstanceSpec, suites: list, results: str, out: TextIO, environ
 
   launched = (gameFor or globals()['gameFor'])(spec, results, 'game')
   try:
-    connection = _ready(launched, results)
+    connection = _ready(launched, results, say=say)
   except Exception as error:  # whatever kept the game from starting: no test has a result
     run = Run(None, '', results, say=say)
     run.problem('unitTAS.game', "the game didn't start: %s" % _said(error))
@@ -357,34 +446,38 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
     _show(out, run.writeReport())
     return 1
   launched = start(spec, results, 'game')
+  #  the saves in before the game starts: a big save's copy never stands between its ready and its first world
+  copied = savesIn(pristine, launched.gameDir, results) if saveNames else []
+  mapped = {}
   try:
-    connection = _ready(launched, results)
+    connection = _ready(launched, results, say=say, meanwhile=_mappingsMeanwhile(launched, environ, mapped))
   except Exception as error:  # whatever kept the game from starting: no test has a result
+    if copied:
+      savesOut(copied, launched.gameDir, results)
     _show(out, _unstarted(results, problems, wanted, _said(error)))
     return 1
   run = Run(Game(connection), launched.gameDir, results, stop=launched.stop, say=say)
   run.total = len(wanted)
+  run.game.mappings = mapped.get('mappings')
   watch = watchFor(run, environ, watched)
-  try:
-    run.game.mappings = mappingsFor(connection, launched, environ)
-  except Exception as error:  # reflection by readable names won't work: unitTAS's own trouble, said
-    run.problem('unitTAS.mappings', "a real client's readable names can't be had: %s" % _why(error))
+  if 'problem' in mapped:
+    run.problem('unitTAS.mappings', mapped['problem'])
   for name, detail in problems:
     run.problem(name, detail)
   interrupted = False
   passedUnittest = True
-  copied = []
   try:
     if saveNames:
-      copied = savesIn(pristine, launched.gameDir, results)
       with open(os.path.join(results, 'unittest.txt'), 'w', encoding='utf-8') as log:
         runSaves(run, names, copied, os.path.abspath(pristine), stream=log, verbosity=2, start=cwd)
     else:
       try:
         run.begin()
       except Exception as error:  # the run's world or its plugins' beforeRun: nothing after it has a result
-        run.problem('unitTAS.run', "the run couldn't begin: %s" % _why(error))
-        run.stopped = "the run couldn't begin: %s" % _why(error)
+        why = "the run couldn't begin: %s" % run.whyText(error)
+        run.problem('unitTAS.run', why)
+        if run.stopped is None:
+          run.stopped = why
       with open(os.path.join(results, 'unittest.txt'), 'w', encoding='utf-8') as log:
         passedUnittest = runSuite(run, suite, stream=log, verbosity=2).wasSuccessful()
   except KeyboardInterrupt:
@@ -421,7 +514,7 @@ def launchGame(spec: InstanceSpec, results: str, out: TextIO, world: bool = Fals
         'so it can\'t be played. Close its window, or press Ctrl+C here, to end it.' % spec.path, file=out)
   out.flush()
   try:
-    connection = _ready(launched, results)
+    connection = _ready(launched, results, say=lambda line: print(line, file=out, flush=True))
     if world:
       game = Game(connection)
       folder = os.path.join(launched.gameDir, 'saves', FOLDER)
@@ -470,24 +563,26 @@ def autoRun(environ: Optional[dict] = None, cwd: Optional[str] = None, gameFor: 
     raise RuntimeError(NO_RUN % (SPEC_NAME, error)) from None
   results = resultsFolder(spec, None, environ)
   launched = (gameFor or globals()['gameFor'])(spec, results, 'game')
+  mapped = {}
   try:
-    connection = _ready(launched, results)
+    connection = _ready(launched, results, meanwhile=_mappingsMeanwhile(launched, environ, mapped))
   except Exception as error:  # whatever kept the game from starting
     _auto['failed'] = "the game didn't start: %s (its output: %s)" % (_said(error), results)
     raise NoResult(_auto['failed']) from error
   run = Run(Game(connection), launched.gameDir, results, stop=launched.stop)
+  run.game.mappings = mapped.get('mappings')
   _auto.update(run=run, launched=launched, watch=watchFor(run, environ))
   Run.current = run
   atexit.register(_atExit)
-  try:
-    run.game.mappings = mappingsFor(connection, launched, environ)
-  except Exception as error:  # reflection by readable names won't work
-    run.problem('unitTAS.mappings', "a real client's readable names can't be had: %s" % _why(error))
+  if 'problem' in mapped:
+    run.problem('unitTAS.mappings', mapped['problem'])
   try:
     run.begin()
   except Exception as error:  # nothing after it has a result
-    run.problem('unitTAS.run', "the run couldn't begin: %s" % _why(error))
-    run.stopped = "the run couldn't begin: %s" % _why(error)
+    why = "the run couldn't begin: %s" % run.whyText(error)
+    run.problem('unitTAS.run', why)
+    if run.stopped is None:
+      run.stopped = why
   return run
 
 

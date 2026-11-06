@@ -9,6 +9,10 @@ runner's TasWatch has them, with the same files and words:
   while the client ticks;
 - a test's time limit (GameTestCase.timeout_seconds): past it, the test is
   stopped, with no result;
+- the no-world guard: a run that has asked for no world NO_WORLD_SAY_TICKS
+  client ticks after the game was ready says so, and at NO_WORLD_TICKS it
+  stops, every test with no result (the game stands at its title screen,
+  and nothing is coming);
 - in a watched run, where a fixed limit would decide (a test past its time
   limit, a test world that doesn't load), an alarm asks instead: alarm.txt
   says what it sees, with two pictures a few seconds apart (the threads,
@@ -52,6 +56,12 @@ SILENT_SECONDS = 5
 TICKING_SECONDS = 3
 #  A malformed decision gets this long to be finished being written before it is taken as said.
 WRITING_SECONDS = 2
+#  The no-world guard (SPEC.md, after 9.8): client ticks from the game's ready (the first heartbeat the watch hears) with
+#  no world asked for by the run, before it says so, and before the run stops with no results. Ticks, not seconds:
+#  a slow machine ticks slower, so it is given the more time.
+NO_WORLD_SAY_TICKS = 600
+NO_WORLD_TICKS = 1200
+NO_WORLD = 'no world began loading %d client ticks after the game was ready'
 DECISION = re.compile(r'^\s*#?(\d+)?\s*(wait|fail|abort)\b\s*(.*)$', re.IGNORECASE)
 WAIT, FAIL, ABORT, CLEARED, NO_ANSWER = 'wait', 'fail', 'abort', 'cleared', 'no answer'
 
@@ -96,6 +106,10 @@ class Watch:
     #  the last heartbeat (the probe's tick event) and when it came, by this watch's clock
     self.beat = None
     self.heardAt = None
+    #  the client's tick count in the first heartbeat heard, the game ready by then: the no-world guard counts from it
+    self.readyClient = None
+    self.noWorldSaid = False
+    self.noWorldDone = False
     #  the test running: {'number', 'name', 'began', 'limit', 'deadline'}, or None
     self.test = None
     #  what is loading, and since when, or None
@@ -127,6 +141,8 @@ class Watch:
   def heard(self, event: dict) -> None:
     """An event from the game: the heartbeat kept."""
     if event.get('event') == 'tick':
+      if self.readyClient is None and event.get('client') is not None:
+        self.readyClient = event['client']
       self.beat = event
       self.heardAt = self.clock()
 
@@ -149,8 +165,12 @@ class Watch:
       self.ended.wait(1.0)
 
   def round(self) -> None:
-    """One round: watch.txt and the live picture when due; a test past its time limit stopped, or asked about."""
+    """
+    One round: watch.txt and the live picture when due; no world yet, said
+    or the run stopped; a test past its time limit stopped, or asked about.
+    """
     self.housekeeping()
+    self._noWorld()
     test = self.test
     if test is not None and test['deadline'] is not None and self.clock() >= test['deadline']:
       self._overTime(test)
@@ -163,6 +183,35 @@ class Watch:
     if now >= self.nextStatus:
       self.nextStatus = now + STATUS_SECONDS
       self._writeStatus()
+
+  def _ticksWithNoWorld(self) -> Optional[int]:
+    """The client ticks since the game was ready, while the run has asked for no world yet; None otherwise."""
+    if self.run.worldAsked or self.readyClient is None or self.beat is None:
+      return None
+    client = self.beat.get('client')
+    return None if client is None else client - self.readyClient
+
+  def _noWorld(self) -> None:
+    """
+    The no-world guard, from the watch's own thread, so a run held up
+    anywhere can't hide it: said at NO_WORLD_SAY_TICKS; at NO_WORLD_TICKS
+    the run stops, what it waits on in the game cancelled, its requests
+    refused from then on (Game.stop), so no world is asked for after it.
+    """
+    ticks = self._ticksWithNoWorld()
+    if ticks is None or self.noWorldDone or self.run.stopped is not None:
+      return
+    if ticks >= NO_WORLD_TICKS:
+      self.noWorldDone = True
+      why = NO_WORLD % NO_WORLD_TICKS
+      self._log('no world: %s' % why)
+      self.run.shout('NO WORLD: %s: the run stops, and no test has a result' % why)
+      self.run.abort(why)
+      self.run.game.stop(why)
+    elif ticks >= NO_WORLD_SAY_TICKS and not self.noWorldSaid:
+      self.noWorldSaid = True
+      self.run.shout('NO WORLD YET: %d client ticks since the game was ready, and the run has asked for no world: at '
+                     '%d it stops, with no results' % (ticks, NO_WORLD_TICKS))
 
   def _overTime(self, test: dict) -> None:
     limit = test['limit']
@@ -355,6 +404,9 @@ class Watch:
       return 'loading %s, %d s in' % (self.loading, now - self.loadingSince)
     if self.run.stopped is not None:
       return 'stopped: %s' % self.run.stopped
+    ticks = self._ticksWithNoWorld()
+    if ticks is not None:
+      return 'waiting for its first world: none asked for yet, %d client ticks after the game was ready' % ticks
     return 'between tests'
 
   def _ticking(self, side: str) -> str:

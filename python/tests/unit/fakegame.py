@@ -72,29 +72,50 @@ def javaRun(args, side):
 class FakeLaunched:
   """
   A LaunchedGame's face for a run: 'start' (the fake probe connects, its
-  hello welcomed, then 'ready'), 'stop', 'gameDir', 'results'. 'failing'
-  is raised by start instead, for a game that can't start. 'asked' holds
-  the requests, 'stops' how often stop was called.
+  hello welcomed, then 'ready'), 'stop', 'gameDir', 'results', and its
+  log (outputName, in the results), a line written to it as it starts.
+  'failing' is raised by start instead, for a game that can't start.
+  'ready': True sends ready at once, False never, a function is run with
+  this game on a thread of its own after the hello (it loads, as it
+  likes: 'log' and 'sendReady'). 'asked' holds the requests, 'stops' how
+  often stop was called, 'savesAtStart' the saves there as it started.
   """
 
   def __init__(self, gameDir: str, results: str, failing: Optional[BaseException] = None,
-               handlers: Optional[dict] = None) -> None:
+               handlers: Optional[dict] = None, ready: Any = True) -> None:
     self.gameDir = gameDir
     self.results = results
     self.failing = failing
     self.handlers = fakeHandlers(gameDir) if handlers is None else handlers
+    self.ready = ready
     self.asked = []
     self.stops = 0
     self.starts = 0
+    self.savesAtStart = None
     self.fake = None
     self.connection = None
     self.listener = None
     os.makedirs(gameDir, exist_ok=True)
 
+  def outputName(self) -> str:
+    return 'game.log'
+
+  def log(self, line: str) -> None:
+    os.makedirs(self.results, exist_ok=True)
+    with open(os.path.join(self.results, self.outputName()), 'a', encoding='utf-8') as file:
+      file.write(line + '\n')
+
+  def sendReady(self) -> None:
+    self.fake.event('ready', screen='net.minecraft.client.gui.GuiMainMenu', load_ms=10, mods=[], mixins=[],
+                    window={'title': 'unitTAS', 'width': 854, 'height': 480, 'pointer_grabbed': False})
+
   def start(self) -> Any:
     self.starts += 1
+    saves = os.path.join(self.gameDir, 'saves')
+    self.savesAtStart = sorted(os.listdir(saves)) if os.path.isdir(saves) else []
     if self.failing is not None:
       raise self.failing
+    self.log('[main/INFO] [FML]: Forge Mod Loader is loading its mods')
     self.listener = Listener()
     expected = self.listener.prepare(self.gameDir, 'alice', Role.CLIENT)
     self.fake = FakeProbe(expected.startFile)
@@ -102,8 +123,10 @@ class FakeLaunched:
     self.connection = self.listener.accept(timeout=10)
     thread.join(10)
     self.asked = self.fake.serve(self.handlers)
-    self.fake.event('ready', screen='net.minecraft.client.gui.GuiMainMenu', load_ms=10, mods=[], mixins=[],
-                    window={'title': 'unitTAS', 'width': 854, 'height': 480, 'pointer_grabbed': False})
+    if self.ready is True:
+      self.sendReady()
+    elif callable(self.ready):
+      inThread(self.ready, self)
     return self.connection
 
   def stop(self) -> None:
@@ -122,13 +145,14 @@ class FakeLaunched:
 class Factory:
   """A gameFor for the command line: hands out one FakeLaunched (made on first use), and records each call."""
 
-  def __init__(self, gameDir: str, failing: Optional[BaseException] = None) -> None:
+  def __init__(self, gameDir: str, failing: Optional[BaseException] = None, ready: Any = True) -> None:
     self.gameDir = gameDir
     self.failing = failing
+    self.ready = ready
     self.calls = []
     self.game = None
 
   def __call__(self, spec: Any, results: str, name: str = 'game', **_: Any) -> FakeLaunched:
     self.calls.append((spec.path, results, name))
-    self.game = FakeLaunched(self.gameDir, results, failing=self.failing)
+    self.game = FakeLaunched(self.gameDir, results, failing=self.failing, ready=self.ready)
     return self.game

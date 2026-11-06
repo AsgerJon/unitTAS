@@ -139,6 +139,8 @@ class Run:
     self.lastClass = None
     self.started = time.monotonic()
     self.begun = False
+    #  whether a world has been asked for yet (world.create or world.open sent): the watch's no-world guard waits on it
+    self.worldAsked = False
     self.finished = False
     #  why no more test results can be had, or None while they can
     self.stopped = None
@@ -160,6 +162,16 @@ class Run:
     if crash is not None and isinstance(error, LinkError):
       return 'the game crashed: %s (its crash report: %s)' % (crash['summary'], crash['report'] or 'none was saved')
     return whyNoResult(error)
+
+  def whyText(self, error: BaseException) -> str:
+    """What went wrong, in words, once: a NoResult's reason, a no-result error's why, anything else as it says it."""
+    if isinstance(error, NoResult):
+      return error.why
+    if isinstance(error, NO_RESULT_ERRORS):
+      return self.whyNoResult(error)
+    if isinstance(error, UnitTasError):
+      return str(error)
+    return '%s: %s' % (type(error).__name__, error)
 
   # ---------------------------------------------------------------- the run
 
@@ -211,7 +223,11 @@ class Run:
     guard pictures a dropped login into the run's screenshots/ and opens it
     again; its warning goes into the progress. A world that doesn't open is
     no result (NoResult), whatever the game said: it is no test's verdict.
+    A run already stopped (the watch's no-world guard) asks for none.
     """
+    if self.stopped is not None:
+      raise NoResult(self.stopped)
+    self.worldAsked = True
     pictures = os.path.join(self.results, 'screenshots')
     os.makedirs(pictures, exist_ok=True)
     args = dict(args, pictures=pictures)
@@ -342,6 +358,13 @@ class Run:
     if self.say is not None:
       self.say(line)
 
+  def shout(self, line: str) -> None:
+    """A line nobody may miss: the progress, and the terminal even when the run has none (plain unittest's: stderr)."""
+    self.progress(line)
+    if self.say is None:
+      print('unitTAS: %s' % line, file=sys.stderr)
+      sys.stderr.flush()
+
   def picture(self, name: str) -> Optional[str]:
     """A screenshot of the game as it is now, for a test that didn't pass: its path in the results, or None."""
     path = os.path.join(self.results, 'screenshots', name + '.png')
@@ -425,7 +448,9 @@ class Run:
             self.game.request('hooks.run', {'hook': 'afterRun'})
           self.game.request('quit', {'reason': 'the run is done'})
         else:
-          #  a game that stopped ticking, or went: asked to quit if it still can be, nothing more
+          #  a game that stopped ticking, or went: asked to quit if it still can be, nothing more (a game the run
+          #  stopped refuses requests: the quit is the run's own)
+          self.game.resume()
           try:
             self.game.request('quit', {'reason': 'no test result could be had: %s' % self.stopped}, timeout=10)
           except Exception:  # it is stuck or gone: the stop below ends it
@@ -668,14 +693,24 @@ def runSaves(run: Run, names: list, saves: list, pristine: Optional[str] = None,
   loaded afresh each time, with no resets and no world hooks (they would
   change the save), each line named 'Class.test [folder, load N]'; then
   the save closed. A save that doesn't open is a problem line, and the run
-  goes on with the next; one that doesn't close stops the run.
+  goes on with the next; one that doesn't close stops the run. A run that
+  can't begin, or is stopped (the watch), ends here with its own why: the
+  tests it never reached are the caller's to give their lines
+  (Run.notRun).
   """
   suite, problems = loadSuites(names, start)
   for name, detail in problems:
     run.problem(name, detail)
   if not run.total:
     run.total = len(reportNames(suite)) * len(saves) * 2
-  run.beginSaves()
+  try:
+    run.beginSaves()
+  except Exception as error:  # beforeRun failed, or the run was stopped meanwhile: nothing after it has a result
+    why = "the run couldn't begin: %s" % run.whyText(error)
+    run.problem('unitTAS.run', why)
+    if run.stopped is None:
+      run.stopped = why
+    return
   try:
     for load in (1, 2):
       for folder in saves:
@@ -685,6 +720,9 @@ def runSaves(run: Run, names: list, saves: list, pristine: Optional[str] = None,
         problem = run.openSave(folder, load, pristine)
         if problem is not None:
           run.problem('unitTAS.openSave' + run.suffix, problem)
+          if run.stopped is not None:
+            #  stopped as it opened: no world to close, and the why stays the run's own
+            return
         else:
           runSuite(run, loadSuites(names, start)[0], stream=stream, verbosity=verbosity)
         problem = run.closeSave()

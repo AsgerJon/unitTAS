@@ -6,6 +6,7 @@ moves time on at once and runs what was planned for each moment (a decision writ
 - An alarm: its text and files, each decision, one for another alarm dropped, a malformed one asked again, no answer
   at the decision time exactly, cleared by itself, the reminders.
 - A world that doesn't load, in a watched run: the alarm, a wait, and a give-up.
+- No world asked for after the game was ready: said, then the run stopped, by client ticks.
 - In a GameTestCase, by the real clock: a test past its timeout_seconds is NO RESULT, and the next runs.
 """
 #  Apache-2.0 license
@@ -19,7 +20,7 @@ import unittest
 import gamecases
 from unittas.errors import LinkTimeout, NoResult
 from unittas.run import Run
-from unittas.watch import LOAD_SECONDS, Watch
+from unittas.watch import LOAD_SECONDS, NO_WORLD_SAY_TICKS, NO_WORLD_TICKS, Watch
 from test_run import FakeRun
 
 
@@ -268,6 +269,69 @@ class LoadingTests(WatchCase):
       watch.guardLoad(stuck, 'the test world')
     self.assertEqual('the watcher gave up on the test world (alarm 2): it is stuck', raised.exception.why)
     self.assertIn({'id': 100}, [request.get('args') for request in self.asked if request['op'] == 'cancel'])
+
+
+class NoWorldTests(WatchCase):
+  """
+  No world asked for after the game was ready (SPEC.md, after 9.8), in the game's client ticks from the first heartbeat
+  on: said at NO_WORLD_SAY_TICKS, the run stopped at NO_WORLD_TICKS, its requests refused from then on.
+  """
+
+  WHY = 'no world began loading %d client ticks after the game was ready' % NO_WORLD_TICKS
+
+  def progress(self) -> str:
+    return self.read('progress.txt') if os.path.isfile(self.path('progress.txt')) else ''
+
+  def test_said_then_the_run_stopped(self) -> None:
+    watch = self.watch(False)
+    self.beat(watch, client=500)
+    self.beat(watch, client=500 + NO_WORLD_SAY_TICKS - 1)
+    watch.round()
+    self.assertNotIn('NO WORLD', self.progress())
+    self.assertIn('run: waiting for its first world: none asked for yet, %d client ticks after the game was ready'
+                  % (NO_WORLD_SAY_TICKS - 1), self.read('watch.txt'))
+    self.beat(watch, client=500 + NO_WORLD_SAY_TICKS)
+    watch.round()
+    watch.round()
+    self.assertEqual(1, self.progress().count('NO WORLD YET: %d client ticks since the game was ready' %
+                                              NO_WORLD_SAY_TICKS), self.progress())
+    self.beat(watch, client=500 + NO_WORLD_TICKS - 1)
+    watch.round()
+    self.assertIsNone(self.run.stopped)
+    self.beat(watch, client=500 + NO_WORLD_TICKS)
+    watch.round()
+    self.assertEqual(self.WHY, self.run.stopped)
+    self.assertIn('NO WORLD: %s: the run stops, and no test has a result' % self.WHY, self.progress())
+    with self.assertRaises(NoResult) as raised:
+      self.run.begin()
+    self.assertEqual(self.WHY, raised.exception.why)
+    self.assertNotIn('world.create', [request['op'] for request in self.asked], 'a world asked for after the stop')
+
+  def test_a_world_asked_for_in_time_ends_it(self) -> None:
+    watch = self.watch(False)
+    self.beat(watch, client=500)
+    self.run.begin()
+    self.beat(watch, client=500 + 10 * NO_WORLD_TICKS)
+    watch.round()
+    self.assertIsNone(self.run.stopped)
+    self.assertNotIn('NO WORLD', self.progress())
+
+  def test_no_world_is_asked_for_once_the_run_stopped(self) -> None:
+    """Stopped just after its beforeRun was answered: the world it would have asked for next is refused."""
+    self.run.stopped = self.WHY
+    with self.assertRaises(NoResult) as raised:
+      self.run.begin()
+    self.assertEqual(self.WHY, raised.exception.why)
+    self.assertNotIn('world.create', [request['op'] for request in self.asked])
+
+  def test_counted_in_ticks_never_in_time(self) -> None:
+    watch = self.watch(False)
+    self.beat(watch, client=500)
+    self.clock.now += 3600
+    self.beat(watch, client=600)
+    watch.round()
+    self.assertIsNone(self.run.stopped, 'stopped by the clock, with the client 100 ticks on')
+    self.assertNotIn('NO WORLD', self.progress())
 
 
 class GameTestCaseTimeLimitTests(WatchCase):
