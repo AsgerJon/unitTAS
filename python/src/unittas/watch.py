@@ -110,6 +110,8 @@ class Watch:
     self.readyClient = None
     self.noWorldSaid = False
     self.noWorldDone = False
+    #  a multiplayer run's other games, by name: their last heartbeat and when it came (SPEC.md 11.3, step 5)
+    self.games = {}
     #  the test running: {'number', 'name', 'began', 'limit', 'deadline'}, or None
     self.test = None
     #  what is loading, and since when, or None
@@ -137,6 +139,32 @@ class Watch:
     self.ended.set()
     if self.thread is not None and self.thread is not threading.current_thread():
       self.thread.join(30)
+
+  def addGame(self, name: str, connection: Any) -> None:
+    """Another game of the run (a multiplayer class's server or further client): watched by its heartbeat too."""
+    self.games[name] = {'beat': None, 'at': None}
+    connection.events.subscribe(lambda event: self._heardFrom(name, event))
+
+  def _heardFrom(self, name: str, event: dict) -> None:
+    if event.get('event') == 'tick' and name in self.games:
+      self.games[name] = {'beat': event, 'at': self.clock()}
+
+  def _gameLine(self, name: str) -> str:
+    """'game bob: ticking', from that game's own heartbeat: its client side, or a server's own."""
+    seen = self.games[name]
+    beat, at = seen['beat'], seen['at']
+    now = self.clock()
+    if beat is None:
+      return 'game %s: not heard from yet' % name
+    if now - at >= SILENT_SECONDS:
+      return 'game %s: silent for %d s (no heartbeat: gone, or its whole JVM held up)' % (name, now - at)
+    server = beat.get('client') is None
+    field = 'server_ago_ms' if server else 'client_ago_ms'
+    if beat.get(field) is None:
+      return "game %s: hasn't ticked yet" % name
+    ago = beat[field] / 1000.0 + (now - at)
+    said = 'ticking' if ago < 2 else 'last ticked %d s ago' % ago
+    return 'game %s: %s%s' % (name, said, ' (its server side)' if server else '')
 
   def heard(self, event: dict) -> None:
     """An event from the game: the heartbeat kept."""
@@ -440,6 +468,8 @@ class Watch:
     ]
     if crashed is not None:
       lines.append('crash: %s (its crash report: %s)' % (crashed['summary'], crashed['report']))
+    for name in sorted(self.games):
+      lines.append(self._gameLine(name))
     _writeWhole(os.path.join(self.results, 'watch.txt'), '\n'.join(lines) + '\n')
 
   def _picture(self, name: str) -> Optional[str]:

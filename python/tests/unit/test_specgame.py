@@ -95,6 +95,23 @@ class SpecGameTests(unittest.TestCase):
                       '--java', '/opt/jdk8'], game.command())
     self.assertEqual('client.log', game.outputName())
 
+  def test_a_client_of_its_own_for_a_multiplayer_run(self) -> None:
+    """Several real clients at once (SPEC.md 11.3, step 5): each its own folder and player; the server's mods."""
+    spec = self.realSpec('''
+      [server]
+      exclude = ["unimix*.jar"]
+    ''')
+    bob = RealGame(spec, self.results, 'client-bob', cache=self.cache, folder=os.path.join(self.results, 'bob-game'),
+                   username='bob')
+    self.assertEqual(os.path.join(self.results, 'bob-game'), bob.gameDir)
+    self.assertEqual(['--username', 'bob'], bob.command()[-2:])
+    jars = [os.path.basename(jar) for jar in bob.modJars()]
+    self.assertEqual(['lib-1.0.jar', 'mod-1.0.jar', 'unimixins.jar', 'unittas-probe.jar'], sorted(jars))
+    self.assertEqual(['lib-1.0.jar', 'mod-1.0.jar', 'unittas-probe.jar'],
+                     sorted(os.path.basename(jar) for jar in bob.serverMods()), 'the spec\'s [server] exclude left out')
+    with self.assertRaises(ValueError):
+      RealGame(spec, self.results, 'x', cache=self.cache, username='bob smith')
+
   def test_a_mod_jar_older_than_its_sources_is_refused(self) -> None:
     touch(os.path.join(self.folder, 'src', 'main', 'java', 'Mod.java'), b'class Mod { int changed; }')
     game = RealGame(self.realSpec(), self.results, 'real', cache=self.cache)
@@ -111,6 +128,18 @@ class SpecGameTests(unittest.TestCase):
     game.prepare()
     self.assertIn('mod-1.0.jar', os.listdir(os.path.join(game.gameDir, 'mods')))
     self.assertTrue(os.path.isfile(os.path.join(self.results, 'real', 'build.log')))
+
+  def test_a_further_client_doesnt_build_again(self) -> None:
+    """A multiplayer run's further client (built=True) takes the mods the run's own client built, as they are."""
+    marker = os.path.join(self.results, 'builds.txt')
+    spec = self.realSpec('build = "%s -c \\"open(%r, \'a\').write(\'b\')\\""\n' % (sys.executable, marker))
+    RealGame(spec, self.results, 'real', cache=self.cache).prepare()
+    bob = RealGame(spec, self.results, 'client-bob', cache=self.cache, folder=os.path.join(self.results, 'bob-game'),
+                   username='bob', built=True)
+    bob.prepare()
+    with open(marker, encoding='ascii') as file:
+      self.assertEqual('b', file.read(), 'built once, for the run\'s own client')
+    self.assertIn('mod-1.0.jar', os.listdir(os.path.join(bob.gameDir, 'mods')))
 
   def test_a_build_that_fails_stops_the_launch(self) -> None:
     game = RealGame(self.realSpec('build = "%s -c \\"raise SystemExit(3)\\""\n' % sys.executable), self.results,

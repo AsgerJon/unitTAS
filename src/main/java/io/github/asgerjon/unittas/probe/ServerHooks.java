@@ -42,11 +42,16 @@ public final class ServerHooks {
 		this.probe = probe;
 	}
 
-	/** From the mod's preInit on a dedicated server, when the probe is awake. */
-	public static void register(Probe probe) {
+	/** From the mod's preInit on a dedicated server, when the probe is awake; the table finds the mods' hooks. */
+	public static void register(Probe probe, cpw.mods.fml.common.discovery.ASMDataTable table) {
 		// the server's constructor started the link already, unless MixinDedicatedServer didn't apply
 		Probe.launched("preInit");
+		// the mods' hooks run on the server too (setUpWorld, tearDownWorld, resetPlayer); one that can't load on a
+		// server (it reaches a client class) is a problem said, not a server stopped
+		io.github.asgerjon.unittas.TasPlugins.find(table);
 		ServerOps.bind(probe);
+		// reflection on a server: a request's player is the one named, or the only one in
+		Reflect.players = call -> ServerOps.player(call.string("player", null));
 		probe.gameState = ServerHooks::state;
 		FMLCommonHandler.instance().bus().register(new ServerHooks(probe));
 		probe.leaveBy(ServerHooks::leave);

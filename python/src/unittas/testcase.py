@@ -23,6 +23,8 @@ from the instance spec (UNITTAS_INSTANCE, or unittas.toml in the current
 folder), ended at exit (unittas.session.autoRun).
 
 - GameTestCase: the base of a mod's test classes.
+- MultiplayerTestCase: one whose tests have a dedicated server and
+  several clients (SPEC.md 11.3, step 5).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -186,6 +188,8 @@ class GameTestCase(unittest.TestCase):
       run.noResult('%s.%s%s' % (cls.__name__, name, run.suffix), why)
     raise NoResult(why)
 
+  # (MultiplayerTestCase is below, after the helpers it shares)
+
   def reportName(self) -> str:
     """The test as the report names it: Class.method, and in save mode its save ('Class.method [folder, load N]')."""
     run = Run.current
@@ -274,3 +278,64 @@ class GameTestCase(unittest.TestCase):
   def sounds(self) -> tuple:
     """The sounds the client was asked to play during this test."""
     return self.game.sounds(self.mark)
+
+
+#  Why a multiplayer class didn't run, for its skipped lines (SPEC.md 11.6, D4 and D1).
+MULTIPLAYER_ASK = ('a multiplayer class runs only when the run is asked for multiplayer: unittas run --multiplayer (or '
+                   'UNITTAS_MULTIPLAYER=1). It starts a dedicated server and more clients, about 2 GB each')
+MULTIPLAYER_REAL = ('a multiplayer class needs real clients, each with a folder of its own: its run\'s instance spec '
+                    'says client = "real" for that (a development run\'s runClient has one folder)')
+
+
+class MultiplayerTestCase(GameTestCase):
+  """
+  A test class whose fixture is several games (SPEC.md 11.3, step 5;
+  PROTOCOL.md 9): 'clients' names them ('alice', 'bob'), the first the
+  run's own client. 'self.server' is the dedicated server's Game, and
+  each name is its client's ('self.alice', 'self.bob'); 'self.game' is the
+  first. Each client's player has the name its game has
+  (self.bob.playerName()). A fresh server world for each class unless
+  'shared_world = True' (after another multiplayer class). Before each
+  test the player is reset across the games. It runs only in a run asked
+  for multiplayer, with real clients; otherwise its tests are skipped,
+  saying why. Short of memory for the other games, its tests are NO
+  RESULT, and the run goes on.
+  """
+
+  clients = ('alice', 'bob')
+  server: Game = None
+
+  @classmethod
+  def setUpClass(cls) -> None:
+    from .multiplayer import MemoryShort
+    run = _theRun()
+    cls.game = run.game
+    if run.stopped is not None:
+      cls._notRun(run, 'not run: no test result could be obtained after %s' % run.stopped)
+    if not run.multiplayerAllowed:
+      raise unittest.SkipTest(MULTIPLAYER_ASK)
+    if run.multiplayer is None:
+      raise unittest.SkipTest(MULTIPLAYER_REAL)
+    names = tuple(cls.clients)
+    taken = set(dir(MultiplayerTestCase))
+    for name in names:
+      if not isinstance(name, str) or not name.isidentifier() or name.startswith('_') or name in taken:
+        raise TypeError('%s.clients names its games: %r is no name a game can have here' % (cls.__name__, name))
+    if not names or len(set(names)) != len(names):
+      raise TypeError('%s.clients names one game or more, each once: %r' % (cls.__name__, names))
+    try:
+      games = run.enterMultiplayer(cls.__name__, names, shared=bool(cls.shared_world))
+    except MemoryShort as error:
+      #  this class's tests only: the run goes on with its others
+      cls._notRun(run, 'not run: %s' % error)
+    except NoResult as error:
+      if run.stopped is None:
+        run.stopped = error.why
+      cls._notRun(run, 'not run: no test result could be obtained after %s' % run.stopped)
+    except NO_RESULT_ERRORS as error:
+      run.stopped = run.whyNoResult(error)
+      cls._notRun(run, 'not run: no test result could be obtained after %s' % run.stopped)
+    cls.server = games['server']
+    for name in names:
+      setattr(cls, name, games[name])
+    cls.game = games[names[0]]

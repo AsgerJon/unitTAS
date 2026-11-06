@@ -197,6 +197,10 @@ class ServerGame(LaunchedGame):
     serverFiles(self.folder, self.port, self.players, self.eula)
     putMods(self.folder, self.mods, os.path.join(self.results, 'mods-before-this-run'))
 
+  def worldFolder(self) -> str:
+    """The server's world (level-name unittas): removed for a fresh one, which the next start makes again."""
+    return os.path.join(self.folder, 'unittas')
+
   def ready(self, seconds: float = READY_SECONDS) -> tuple:
     """Started, its hello welcomed and its ready let through (awaitServerReady): (the connection, the ready event)."""
     connection = self.start()

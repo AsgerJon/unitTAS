@@ -273,7 +273,8 @@ def _show(out: TextIO, report: str) -> bool:
   for line in headline:
     print(line, file=out)
   print(lines[-1], file=out)
-  return lines[-1] == 'OK'
+  #  OK, or OK with its counts ('OK (skipped=1)'): skipped tests and expected failures are no failure
+  return lines[-1] == 'OK' or lines[-1].startswith('OK (')
 
 
 def watchFor(run: Run, environ: dict, watched: bool = False) -> Watch:
@@ -417,8 +418,40 @@ def runJava(spec: InstanceSpec, suites: list, results: str, out: TextIO, environ
   return 130 if interrupted else (0 if passed else 1)
 
 
+def multiplayerFor(spec: InstanceSpec, run: Run, results: str, launched: LaunchedGame, environ: dict) -> Any:
+  """
+  The run's other games for its multiplayer classes (SPEC.md 11.3, step
+  5), or None where a run can't hold them: real clients only (D1), each
+  in a folder of its own in the results. The server gets the clients'
+  mods but those the spec's [server] exclude names, the spec's EULA
+  acceptance and memory, and the Gradle cache and the download cache.
+  """
+  if spec.client != 'real':
+    return None
+  from .launcher import Sources, findJava
+  from .multiplayer import Multiplayer, megabytes
+  from .servergame import ServerGame
+  from .specgame import RealGame
+  cache = getattr(launched, 'cache', None)
+  gradleHome = (environ.get('UNITTAS_GRADLE_HOME') or environ.get('GRADLE_USER_HOME')
+                or os.path.join(os.path.expanduser('~'), '.gradle'))
+
+  def clientFor(name: str) -> Any:
+    #  the run's own client built the spec's mods already: this one takes them as they are
+    return RealGame(spec, results, 'client-' + name, cache=cache, folder=os.path.join(results, 'client-%s-game' % name),
+                    username=name, built=True)
+
+  def serverFor(players: tuple) -> Any:
+    return ServerGame(spec.folder, results, 'server', folder=os.path.join(results, 'server-world'),
+                      mods=launched.serverMods(), players=players, eula=spec.serverEula, memory=spec.serverMemory,
+                      java=findJava(spec.java), sources=Sources(gradleHome=gradleHome, cache=cache))
+
+  return Multiplayer(run, serverFor, clientFor, serverMb=megabytes(spec.serverMemory))
+
+
 def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: str, environ: dict,
-             gameFor: Optional[Callable] = None, watched: bool = False, pristine: Optional[str] = None) -> int:
+             gameFor: Optional[Callable] = None, watched: bool = False, pristine: Optional[str] = None,
+             multiplayer: bool = False) -> int:
   """
   'unittas run': the tests on the spec's game, watched (watchFor), the
   report shown; with 'pristine', in save mode on its saves (runSaves). 0
@@ -426,6 +459,16 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
   same).
   """
   start = gameFor or globals()['gameFor']
+  #  asked for by the flag or the variable alike (D4)
+  multiplayer = bool(multiplayer) or environ.get('UNITTAS_MULTIPLAYER') == '1'
+  if multiplayer:
+    #  refused before anything starts (SPEC.md 11.6): real clients (D1), and the EULA the user accepted themselves
+    if spec.client != 'real':
+      raise UsageError('--multiplayer needs real clients, each with a folder of its own: %s says client = "%s", and '
+                       'a multiplayer run needs client = "real"' % (spec.path, spec.client))
+    if not spec.serverEula:
+      raise UsageError("--multiplayer starts a dedicated server, which needs Mojang's EULA (https://aka.ms/MinecraftEULA)"
+                       ' accepted, by you: say eula = true in the [server] table of %s' % spec.path)
   saveNames = findSaves(pristine) if pristine else []
   suite, problems = loadSuites(names, cwd)
   wanted = reportNames(suite)
@@ -460,6 +503,9 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
   run.total = len(wanted)
   run.game.mappings = mapped.get('mappings')
   watch = watchFor(run, environ, watched)
+  #  its multiplayer classes run only when asked for (D4), in a run that can hold them (D1)
+  run.multiplayerAllowed = multiplayer
+  run.multiplayer = globals()['multiplayerFor'](spec, run, results, launched, environ)
   if 'problem' in mapped:
     run.problem('unitTAS.mappings', mapped['problem'])
   for name, detail in problems:
@@ -572,6 +618,8 @@ def autoRun(environ: Optional[dict] = None, cwd: Optional[str] = None, gameFor: 
   run = Run(Game(connection), launched.gameDir, results, stop=launched.stop)
   run.game.mappings = mapped.get('mappings')
   _auto.update(run=run, launched=launched, watch=watchFor(run, environ))
+  run.multiplayerAllowed = environ.get('UNITTAS_MULTIPLAYER') == '1'
+  run.multiplayer = globals()['multiplayerFor'](spec, run, results, launched, environ)
   Run.current = run
   atexit.register(_atExit)
   if 'problem' in mapped:

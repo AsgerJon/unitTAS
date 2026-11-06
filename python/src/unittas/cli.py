@@ -1,7 +1,7 @@
 """
 The 'cli' module is the 'unittas' command (SPEC.md 9.3, step 8a):
 
-  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR]
+  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR] [--multiplayer]
   unittas run --java SUITE,... [--instance FILE] [--results DIR] [--watched] [--saves DIR]
   unittas launch [--instance FILE] [--results DIR] [--world]
   unittas watch [--queue DIR]
@@ -19,6 +19,9 @@ The 'cli' module is the 'unittas' command (SPEC.md 9.3, step 8a):
   twice, as found and as this game saved it, the tests run in each).
   --java SUITE,...: the mod's Java suites instead, by java.run, with
   Java's own save mode when --saves is given.
+  --multiplayer (or UNITTAS_MULTIPLAYER=1): the multiplayer classes run
+  too (a dedicated server and more clients, about 2 GB each); without
+  it they are skipped, saying so.
 - launch: the spec's game as a run has it, nothing run, for looking at;
   --world opens the test world in it.
 - watch: the runs a session that can't open windows asks for, in the
@@ -49,7 +52,7 @@ if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional, TextIO
 
 USAGE = '''usage:
-  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR]
+  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR] [--multiplayer]
   unittas run --java SUITE,... [--instance FILE] [--results DIR] [--watched] [--saves DIR]
   unittas launch [--instance FILE] [--results DIR] [--world]
   unittas watch [--queue DIR]
@@ -73,6 +76,7 @@ def _parser() -> _Parser:
   run.add_argument('--watched', action='store_true')
   run.add_argument('--java')
   run.add_argument('--saves')
+  run.add_argument('--multiplayer', action='store_true')
   launch = commands.add_parser('launch', usage=USAGE, add_help=False)
   launch.add_argument('--instance')
   launch.add_argument('--results')
@@ -113,6 +117,8 @@ def main(argv: Optional[list] = None, out: Optional[TextIO] = None, environ: Opt
       return QueueWatcher(cwd, queue=args.queue, out=out, environ=environ).serve()
     if args.command == 'run' and args.java and args.tests:
       raise session.UsageError('--java runs Java suites: name either Python tests or --java suites, not both')
+    if args.command == 'run' and args.java and args.multiplayer:
+      raise session.UsageError('--multiplayer is for Python tests: the Java runner runs in singleplayer only')
     if args.command == 'run' and args.saves:
       session.findSaves(args.saves)
     spec = session.readSpec(session.findSpec(args.instance, environ, cwd))
@@ -127,7 +133,7 @@ def main(argv: Optional[list] = None, out: Optional[TextIO] = None, environ: Opt
         return session.runJava(spec, [each for each in args.java.split(',') if each], results, out, environ,
                                pristine=args.saves, gameFor=gameFor, watched=args.watched)
       return session.runTests(spec, args.tests, results, out, cwd, environ, gameFor=gameFor, watched=args.watched,
-                              pristine=args.saves)
+                              pristine=args.saves, multiplayer=args.multiplayer)
     finally:
       if mainThread:
         signal.signal(signal.SIGTERM, before)

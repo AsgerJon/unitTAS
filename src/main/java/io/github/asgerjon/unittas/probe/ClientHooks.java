@@ -69,6 +69,9 @@ public final class ClientHooks {
 		ResetOps.bind(probe);
 		ThingOps.bind(probe);
 		JoinOps.bind(probe);
+		// reflection's side-specific parts: the client's player (or the named one on its server) and its Minecraft
+		Reflect.players = GameOps::player;
+		Reflect.clientGame = Minecraft::getMinecraft;
 		io.github.asgerjon.unittas.UnitTasMode.soundListener = (id, known, from, volume, pitch, x, y, z) -> {
 			if (probe.events.sound) {
 				probe.event("sound", Json.object("id", id, "known", known, "from", from, "volume", (double) volume,
@@ -140,6 +143,7 @@ public final class ClientHooks {
 		}
 		if (!readySent) {
 			readySent = true;
+			snapshot.player = mc.getSession().getUsername();
 			// the window never has focus: a game that paused for that would stop the tests
 			mc.gameSettings.pauseOnLostFocus = false;
 			snapshot.ready = true;

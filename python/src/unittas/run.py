@@ -10,7 +10,8 @@ levels owned in Python, in PROTOCOL.md section 13's order:
   it; then a reset, for its setUpClass;
 - each test: a reset and an event mark before it, refs.clear after it, and
   its line in the report;
-- the end: tearDownWorld, afterRun, quit.
+- the end: tearDownWorld (for a world that had its setUpWorld), afterRun,
+  quit.
 
 The report is report.txt in the Java report's shape (SPEC.md 9.6, decision
 9): a line per test, the world line before each class's first, the text
@@ -141,6 +142,13 @@ class Run:
     self.begun = False
     #  whether a world has been asked for yet (world.create or world.open sent): the watch's no-world guard waits on it
     self.worldAsked = False
+    #  the run's other games for its multiplayer classes (unittas.multiplayer; None: this run can't hold any), whether
+    #  it was asked for them (--multiplayer), and whether the run's own client has its singleplayer world open
+    self.multiplayer = None
+    self.multiplayerAllowed = False
+    self.singleplayerOpen = False
+    #  whether that world has had its setUpWorld (the first class's, or a fresh one's): its tearDownWorld only then
+    self.worldSetUp = False
     self.finished = False
     #  why no more test results can be had, or None while they can
     self.stopped = None
@@ -161,6 +169,15 @@ class Run:
     crash = None if self.game is None else getattr(self.game, 'crashed', None)
     if crash is not None and isinstance(error, LinkError):
       return 'the game crashed: %s (its crash report: %s)' % (crash['summary'], crash['report'] or 'none was saved')
+    if self.multiplayer is not None and isinstance(error, NO_RESULT_ERRORS):
+      #  a multiplayer class's other games: the one that went is named, not the run's own client
+      for name, game in self.multiplayer.otherGames():
+        crash = getattr(game, 'crashed', None)
+        if crash is not None:
+          return "%s's game crashed: %s (its crash report: %s)" % (name, crash['summary'],
+                                                                   crash['report'] or 'none was saved')
+        if game.connection.closed:
+          return "%s's game is gone: %s" % (name, game.connection.closedBecause)
     return whyNoResult(error)
 
   def whyText(self, error: BaseException) -> str:
@@ -187,6 +204,7 @@ class Run:
     self.game.request('world.close', timeout=240)
     copyExactly(self.worldFolder(), self.keptFolder())
     self._load('world.open', {'folder': FOLDER})
+    self.singleplayerOpen = True
     self.worldNumber = 1
 
   def enterClass(self, name: str, shared: bool = False) -> None:
@@ -197,23 +215,64 @@ class Run:
     if self.saveMode:
       self.lastClass = name
       return
-    if self.lastClass is None:
+    afterServer = self.multiplayer is not None and self.multiplayer.joined
+    if afterServer:
+      #  after a multiplayer class: off the server, and a world of its own again (there is none to share)
+      self.multiplayer.leave()
+    if self.lastClass is None and self.singleplayerOpen:
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
+      self.worldSetUp = True
       self.worldNote = 'world 1: the run\'s first, for %s' % name
-    elif shared:
+    elif shared and self.singleplayerOpen:
       self.worldNote = 'world %d, shared: %s runs in it as %s left it' % (self.worldNumber, name, self.lastClass)
     else:
       started = time.monotonic()
-      self.game.request('hooks.run', {'hook': 'tearDownWorld'})
-      self.game.request('world.close', timeout=240)
+      if self.singleplayerOpen:
+        self._closeOwnWorld()
       copyExactly(self.keptFolder(), self.worldFolder())
       self._load('world.open', {'folder': FOLDER})
+      self.singleplayerOpen = True
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
+      self.worldSetUp = True
       self.worldNumber += 1
       self.worldNote = 'world %d: fresh for %s (the kept world put back, opened in %.1f s)' % (
         self.worldNumber, name, time.monotonic() - started)
     self.lastClass = name
     reset(self.game.connection)
+
+  def enterMultiplayer(self, name: str, names: tuple, shared: bool = False) -> dict:
+    """
+    A multiplayer class's games (SPEC.md 11.3, step 5): the memory checked
+    before anything changes (MemoryShort), the run's own client out of its
+    singleplayer world, then the server and the other clients started (or
+    restarted, for a fresh world) and joined; then a reset across them.
+    The games by the class's names, and 'server'. 'shared' runs on in the
+    server's world only after another multiplayer class.
+    """
+    multiplayer = self.multiplayer
+    sharedHere = bool(shared) and multiplayer.joined
+    multiplayer.check(tuple(names))
+    started = time.monotonic()
+    if self.singleplayerOpen:
+      self._closeOwnWorld()
+    previous = self.lastClass
+    if multiplayer.enter(tuple(names), sharedHere):
+      self.worldNumber += 1
+      self.worldNote = 'world %d: the server\'s, fresh for %s (%s; ready in %.1f s)' % (
+        self.worldNumber, name, ', '.join(names), time.monotonic() - started)
+    else:
+      self.worldNote = 'world %d, shared: %s runs in it as %s left it' % (self.worldNumber, name, previous)
+    self.lastClass = name
+    reset(multiplayer.serverGame.connection, multiplayer.connections())
+    return multiplayer.games()
+
+  def _closeOwnWorld(self) -> None:
+    """The run's own client's singleplayer world closed: its tearDownWorld first, if it had its setUpWorld."""
+    if self.worldSetUp:
+      self.game.request('hooks.run', {'hook': 'tearDownWorld'})
+      self.worldSetUp = False
+    self.game.request('world.close', timeout=240)
+    self.singleplayerOpen = False
 
   def _load(self, op: str, args: dict, what: str = 'the test world') -> Any:
     """
@@ -319,7 +378,12 @@ class Run:
         self.stopped = self.suspect if then == self.suspect else '%s; and then: %s' % (self.suspect, then)
         raise NoResult('not run: no test result could be obtained after %s' % self.stopped) from error
       self.suspect = None
-    if not self.saveMode:
+    if self.multiplayer is not None and self.multiplayer.joined:
+      #  across the games: a client a test put out back in first, then one batch on the server for every player, each
+      #  client's own part (PROTOCOL.md 9.5)
+      self.multiplayer.rejoin()
+      reset(self.multiplayer.serverGame.connection, self.multiplayer.connections())
+    elif not self.saveMode:
       reset(self.game.connection)
     mark = self.game.mark()
     self.inTest = True
@@ -441,10 +505,17 @@ class Run:
     if not self.finished:
       self.finished = True
       try:
+        if self.multiplayer is not None:
+          try:
+            #  the other games first: the clients leave, the others and the server stop
+            self.multiplayer.stop()
+          except Exception:  # they are stopped as far as they can be; the run's own game goes on to its quit
+            pass
         if self.stopped is None:
           if self.begun:
-            if not self.saveMode:
+            if not self.saveMode and self.singleplayerOpen and self.worldSetUp:
               self.game.request('hooks.run', {'hook': 'tearDownWorld'})
+              self.worldSetUp = False
             self.game.request('hooks.run', {'hook': 'afterRun'})
           self.game.request('quit', {'reason': 'the run is done'})
         else:

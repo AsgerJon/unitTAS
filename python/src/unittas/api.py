@@ -180,6 +180,16 @@ class Game:
     """The player: the client's own, or on a server the one named (the only one in, unnamed)."""
     return fromJson(Player, self.request('player.get', None if name is None else {'player': name}, side))
 
+  def playerName(self) -> str:
+    """
+    A client's own player's name, as its game has it (offline: the name it
+    was launched as): its status says it from the title screen on, before
+    any world (an older probe's status doesn't: then its player's, in a
+    world).
+    """
+    name = self.request('status').get('player')
+    return name if name else self.request('player.get', None, 'client')['name']
+
   # ---------------------------------------------------------------- players by name, on a server (PROTOCOL.md 9.4)
 
   def players(self) -> tuple:

@@ -89,6 +89,15 @@ SUITES['clisuite_unbegun'] = '''
       def test_c(self):
         pass
     '''
+SUITES['clisuite_mp'] = '''
+    from unittas.testcase import MultiplayerTestCase
+
+    class AMpTests(MultiplayerTestCase):
+      clients = ('alice', 'bob')
+
+      def test_a(self):
+        self.assertEqual('bob', self.bob.playerName())
+    '''
 DISCOVERED = '''
   from unittas.testcase import GameTestCase
 
@@ -381,6 +390,64 @@ class RunTests(CliCase):
     self.assertEqual(0, code, said)
     self.assertIn('AOkTests.test_a ... ok',
                   '\n'.join(self.report(os.path.join(self.scratch, 'unittas-results', '2026-11-05_20-00-01'))))
+
+
+class MultiplayerRunTests(CliCase):
+  """--multiplayer (SPEC.md 11.6, D4): a multiplayer class runs only when the run is asked for it."""
+
+  def test_without_the_flag_it_is_skipped_saying_how(self) -> None:
+    code, said = self.main('run', 'clisuite_mp', '--instance', self.spec, '--results', self.results)
+    self.assertEqual(0, code, said)
+    text = '\n'.join(self.report())
+    self.assertIn('AMpTests.test_a ... skipped', text)
+    self.assertIn('--multiplayer', text)
+
+  def test_with_it_the_games_are_made(self) -> None:
+    from test_multiplayer import FakeClient, FakeServer
+    from unittas.multiplayer import Multiplayer
+    made = []
+
+    def fakeMultiplayer(spec, run, results, launched, environ):
+      ports = iter(range(41500, 41600))
+      return Multiplayer(run, lambda players: made.append(FakeServer(
+        os.path.join(self.scratch, 'server-%d' % len(made)), next(ports), players)) or made[-1],
+                         lambda name: FakeClient(os.path.join(self.scratch, 'client-' + name), name),
+                         serverMb=1024, available=lambda: 32000)
+
+    self.addCleanup(setattr, session, 'multiplayerFor', session.multiplayerFor)
+    session.multiplayerFor = fakeMultiplayer
+    spec = self.writeSpec('multiplayer.toml', SPEC + '[server]\neula = true\n')
+    code, said = self.main('run', 'clisuite_mp', '--multiplayer', '--instance', spec, '--results', self.results)
+    self.assertEqual(0, code, said + '\n'.join(self.report()))
+    text = '\n'.join(self.report())
+    self.assertIn('AMpTests.test_a ... ok', text)
+    self.assertIn("world 2: the server's, fresh for AMpTests", text)
+    self.assertEqual(1, len(made))
+    self.assertEqual(1, made[0].stops, "the server stopped at the run's end")
+
+  def test_refused_at_once_without_the_eula_or_with_a_development_client(self) -> None:
+    code, said = self.main('run', 'clisuite_mp', '--multiplayer', '--instance', self.spec, '--results', self.results)
+    self.assertEqual(2, code, said)
+    self.assertIn('eula = true', said)
+    self.assertEqual([], self.factory.calls, 'no game started')
+    gradle = self.writeSpec('gradle.toml', 'minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "gradle"\n'
+                            '[gradle]\ngame = "run/client"\n')
+    code, said = self.main('run', 'clisuite_mp', '--multiplayer', '--instance', gradle, '--results', self.results)
+    self.assertEqual(2, code, said)
+    self.assertIn('client = "real"', said)
+
+  def test_the_variable_is_refused_as_the_flag_is(self) -> None:
+    """UNITTAS_MULTIPLAYER=1 asks for multiplayer as --multiplayer does: refused at once the same way, not per class."""
+    code, said = self.main('run', 'clisuite_mp', '--instance', self.spec, '--results', self.results,
+                           environ={'UNITTAS_MULTIPLAYER': '1'})
+    self.assertEqual(2, code, said)
+    self.assertIn('eula = true', said)
+    self.assertEqual([], self.factory.calls, 'no game started')
+
+  def test_not_with_java_suites(self) -> None:
+    code, said = self.main('run', '--java', 'self', '--multiplayer', '--instance', self.spec)
+    self.assertEqual(2, code)
+    self.assertIn('--multiplayer', said)
 
 
 class ReadyTests(CliCase):

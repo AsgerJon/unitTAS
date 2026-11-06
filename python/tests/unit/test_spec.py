@@ -136,6 +136,32 @@ class SpecTests(unittest.TestCase):
 
   # ---------------------------------------------------------------- mistakes, each named
 
+  def test_the_server_table(self) -> None:
+    """[server] (SPEC.md 11.6, D3 and the EULA): its eula, its mods left out, its memory; real clients only."""
+    self.touch('build/libs/mod-1.0.jar')
+    spec = InstanceSpec.read(self.write(REAL))
+    self.assertEqual((False, (), '2G'), (spec.serverEula, spec.serverExclude, spec.serverMemory),
+                     'without one: no EULA accepted, nothing left out, 2G')
+    spec = InstanceSpec.read(self.write(REAL + '''
+      [server]
+      eula = true
+      exclude = ["client-only-*.jar"]
+      memory = "1536M"
+      '''))
+    self.assertEqual((True, ('client-only-*.jar',), '1536M'), (spec.serverEula, spec.serverExclude, spec.serverMemory))
+    self.refused(REAL + '[server]\neula = "yes"\n', '"server.eula"', 'true or false')
+    self.refused(REAL + '[server]\nmemory = "lots"\n', '"server.memory"')
+    self.refused(REAL + '[server]\neulaa = true\n', 'server.eulaa', 'server.eula')
+    self.refused('''
+      minecraft = "1.7.10"
+      loader = { forge = "10.13.4.1614" }
+      client = "gradle"
+      [gradle]
+      game = "run/client"
+      [server]
+      eula = true
+      ''', '"server"', 'client = "real"')
+
   def test_needed_keys(self) -> None:
     self.refused('loader = { forge = "10.13.4.1614" }\nclient = "real"\nmods = []\n', '"minecraft"')
     self.refused('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nmods = []\n', '"client"', 'real', 'gradle')

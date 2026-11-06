@@ -22,7 +22,7 @@ public final class UnitTasMod {
 		// which names no client class: none of ClientHooks' is loaded there)
 		if (event.getSide().isServer()) {
 			if (Probe.active()) {
-				ServerHooks.register(Probe.get());
+				ServerHooks.register(Probe.get(), event.getAsmData());
 			}
 			return;
 		}

@@ -25,6 +25,7 @@ gone (LaunchedGame keeps the folder's own aside first); the test display
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
+import fnmatch
 import glob
 import os
 import shutil
@@ -36,6 +37,7 @@ from typing import TYPE_CHECKING
 
 from .cache import Cache, CacheError
 from .display import environment, prefix
+from .launcher import PLAYER_NAME
 from .game import LaunchedGame
 from .release import gameJvms, putMods
 from .spec import MavenLibrary, SpecError
@@ -152,15 +154,23 @@ class RealGame(LaunchedGame):
   """A real client from a spec (client = "real"); 'cache' is the download cache, 'bundled' where the probes are."""
 
   def __init__(self, spec: InstanceSpec, results: str, name: str = 'game', cache: Optional[Cache] = None,
-               bundled: str = BUNDLED, which: Optional[Callable] = None) -> None:
+               bundled: str = BUNDLED, which: Optional[Callable] = None, folder: Optional[str] = None,
+               username: Optional[str] = None, built: bool = False) -> None:
+    if username is not None and not PLAYER_NAME.match(username):
+      raise ValueError('%r is no player name 1.7.10 takes (letters, digits and _, 1 to 16 of them)' % (username,))
     LaunchedGame.__init__(self, spec.folder, results, name)
     self.spec = spec
     self.cache = cache or Cache()
     self.bundled = bundled
     self.which = which or shutil.which
+    #  a folder and a player of its own, for a multiplayer run's further clients (SPEC.md 11.3, step 5)
+    self.folder = folder
+    self.username = username
+    #  the spec's build done already, by the run's own client (a further client's): not run again
+    self.built = built
 
   def gameFolder(self) -> str:
-    return self.spec.game
+    return self.folder or self.spec.game
 
   def outputName(self) -> str:
     return 'client.log'
@@ -194,13 +204,23 @@ class RealGame(LaunchedGame):
     raise SpecError('%s: "libraries": %s:%s:%s from none of the repositories: %s' % (
       self.spec.path, library.group, library.artifact, library.version, '; '.join(problems)))
 
-  def prepare(self) -> None:
-    _build(self.spec, os.path.join(self.results, 'build.log'))
+  def modJars(self) -> list:
+    """The jars its mods/ holds: the probe, the spec's mods (checked as built from their sources), its libraries."""
     jars = [self.probeJar()]
     for jar in list(_checkedJars(self.spec)) + [self.library(each) for each in self.spec.libraries]:
       if os.path.abspath(jar) not in [os.path.abspath(each) for each in jars]:
         jars.append(jar)
-    putMods(self.gameDir, jars, os.path.join(self.results, 'mods-before-this-run'))
+    return jars
+
+  def serverMods(self) -> list:
+    """A multiplayer run's server's mods: the clients', but those the spec's [server] exclude names."""
+    return [jar for jar in self.modJars()
+            if not any(fnmatch.fnmatch(os.path.basename(jar), pattern) for pattern in self.spec.serverExclude)]
+
+  def prepare(self) -> None:
+    if not self.built:
+      _build(self.spec, os.path.join(self.results, 'build.log'))
+    putMods(self.gameDir, self.modJars(), os.path.join(self.results, 'mods-before-this-run'))
     _copyConfig(self.spec, self.gameDir)
     _writeOptions(self.spec, self.gameDir)
 
@@ -210,6 +230,8 @@ class RealGame(LaunchedGame):
     launch = [sys.executable, '-I', '-m', 'unittas.launcher', '--game', self.gameDir, '--cache', self.cache.root]
     if self.spec.java:
       launch += ['--java', self.spec.java]
+    if self.username:
+      launch += ['--username', self.username]
     return words + launch
 
   def environment(self) -> dict:

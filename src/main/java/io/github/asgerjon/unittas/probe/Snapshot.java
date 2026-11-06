@@ -36,4 +36,6 @@ final class Snapshot {
 	volatile boolean remote;
 	/** What the disconnected screen said, when it last showed (a refused join, a kick), or null. */
 	volatile String disconnected;
+	/** The client's own player's name, from its session (the name it was launched as): there before any world is. */
+	volatile String player;
 }

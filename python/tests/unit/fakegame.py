@@ -19,6 +19,7 @@ from test_values import PLAYER
 def fakeHandlers(gameDir: str) -> dict:
   """A fake game's answers for a run's operations: the world made in gameDir's saves/unittas, a reset, quit."""
   world = os.path.join(gameDir, 'saves', 'unittas')
+  joined = {'where': None}
 
   def create(args, side):
     if os.path.exists(world):
@@ -45,6 +46,12 @@ def fakeHandlers(gameDir: str) -> dict:
     'screenshot': lambda args, side: {'file': args['file']},
     'quit': lambda args, side: {},
     'java.run': javaRun,
+    # a multiplayer class's: the run's own client joins and leaves a server, says in its status whether it is in, and
+    # its part of the reset
+    'server.join': lambda args, side: joined.update(where='127.0.0.1:%s' % args['port']) or {'load_ms': 40},
+    'server.leave': lambda args, side: joined.update(where=None) or {'leave_ms': 5},
+    'status': lambda args, side: {'joined': joined['where'], 'state': 'world', 'player': PLAYER['name']},
+    'client.reset': lambda args, side: {},
   }
 
 

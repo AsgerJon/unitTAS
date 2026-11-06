@@ -11,7 +11,7 @@ import time
 import unittest
 
 from unittas.run import Run
-from unittas.testcase import GameTestCase
+from unittas.testcase import GameTestCase, MultiplayerTestCase
 
 
 class ATests(GameTestCase):
@@ -101,3 +101,14 @@ class ModErrorTests(GameTestCase):
 
   def test_b_runs_after(self) -> None:
     self.assertEqual('Given', self.command('/say hi').lines[0])
+
+
+class MpCaseTests(MultiplayerTestCase):
+  """A multiplayer class: its test notes the games it was given (by the run: a class's state outlives a run)."""
+  clients = ('alice', 'bob')
+  seen = {}
+
+  def test_a_three_games(self) -> None:
+    self.assertIsNotNone(self.server)
+    MpCaseTests.seen[Run.current] = {'server': self.server, 'alice': self.alice, 'bob': self.bob,
+                                     'bobName': self.bob.playerName()}

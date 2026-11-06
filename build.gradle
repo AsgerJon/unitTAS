@@ -30,6 +30,12 @@ sourceSets {
         compileClasspath += sourceSets.main.output + files({ sourceSets.main.compileClasspath })
         runtimeClasspath += sourceSets.main.output + files({ sourceSets.main.runtimeClasspath })
     }
+    // unitTAS's own: the multiplayer test mod (SPEC.md 11.3, step 6), compiled against Minecraft as main is, in its own
+    // jar (mptestJar), never released. It names FML's and one client class only, so it needs no remapping: a real
+    // server finds both by those names (the client class not at all, which is the point)
+    mptest {
+        compileClasspath += files({ sourceSets.main.compileClasspath })
+    }
 }
 
 repositories {
@@ -103,6 +109,13 @@ jar {
             'FMLCorePluginContainsFMLMod': 'true'
         )
     }
+}
+
+// unitTAS's own: the multiplayer test mod's jar, build/mptest/unittas-mptest.jar; not part of `build`
+tasks.register('mptestJar', Jar) {
+    from sourceSets.mptest.output
+    archiveFileName = 'unittas-mptest.jar'
+    destinationDirectory = layout.buildDirectory.dir('mptest')
 }
 
 processResources {

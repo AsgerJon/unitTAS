@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTBase;
@@ -45,11 +44,31 @@ final class Reflect {
 	/** What a JSON value can't become. */
 	private static final Object NO = new Object();
 
+	/** The request's player: the client's own, or on a server the one named; given at preInit by the side's hooks. */
+	interface Players {
+		net.minecraft.entity.player.EntityPlayer of(Call call) throws ProbeException;
+	}
+
+	/** How a request's player is found (ClientHooks: GameOps.player; ServerHooks: by name), or null before preInit. */
+	static volatile Players players;
+	/** The client's Minecraft for "from": "minecraft" on its side (ClientHooks gives it); null on a dedicated server. */
+	static volatile java.util.function.Supplier<Object> clientGame;
+
 	private Reflect() {
 	}
 
+	/** The game's own class loader (LaunchClassLoader), which holds Minecraft's classes and the mods': both sides'. */
 	static ClassLoader loader() {
-		return Minecraft.class.getClassLoader();
+		return MinecraftServer.class.getClassLoader();
+	}
+
+	/** The request's player, by the side's hooks; NotReady before there are any. */
+	static net.minecraft.entity.player.EntityPlayer player(Call call) throws ProbeException {
+		Players found = players;
+		if (found == null) {
+			throw new ProbeException("NotReady", "no player can be found yet: the game is still loading", null);
+		}
+		return found.of(call);
 	}
 
 	// ---------------------------------------------------------------- where a path starts
@@ -63,11 +82,11 @@ final class Reflect {
 			String name = from.getAsString();
 			switch (name) {
 				case "player":
-					return GameOps.player(call);
+					return player(call);
 				case "world":
-					return GameOps.player(call).worldObj;
+					return player(call).worldObj;
 				case "minecraft":
-					return call.side == Side.CLIENT ? Minecraft.getMinecraft() : MinecraftServer.getServer();
+					return call.side == Side.CLIENT && clientGame != null ? clientGame.get() : MinecraftServer.getServer();
 				default:
 					throw ProbeException.badRequest("from", "from is \"player\", \"world\" or \"minecraft\", not " + name);
 			}
@@ -75,7 +94,7 @@ final class Reflect {
 		JsonObject object = from.getAsJsonObject();
 		if (object.has("entity")) {
 			int id = object.get("entity").getAsInt();
-			Entity found = GameOps.player(call).worldObj.getEntityByID(id);
+			Entity found = player(call).worldObj.getEntityByID(id);
 			if (found == null) {
 				throw new ProbeException("NotFound", "no entity " + id + " in the world", Json.object("what", id));
 			}
@@ -459,11 +478,11 @@ final class Reflect {
 					return held == null || boxed.isInstance(held) ? held : NO;
 				}
 				if (object.has("entity")) {
-					Entity found = GameOps.player(call).worldObj.getEntityByID(object.get("entity").getAsInt());
+					Entity found = player(call).worldObj.getEntityByID(object.get("entity").getAsInt());
 					return found != null && boxed.isInstance(found) ? found : NO;
 				}
 				if (object.has("id") && boxed.isAssignableFrom(ItemStack.class)) {
-					return ThingOps.stack(object);
+					return Values.stack(object);
 				}
 			} catch (ProbeException e) {
 				return NO;
@@ -518,7 +537,7 @@ final class Reflect {
 		}
 		if ("player".equals(text)) {
 			try {
-				Object player = GameOps.player(call);
+				Object player = player(call);
 				return boxed.isInstance(player) ? player : NO;
 			} catch (ProbeException e) {
 				return NO;

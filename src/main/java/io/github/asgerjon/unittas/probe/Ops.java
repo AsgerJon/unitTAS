@@ -74,6 +74,11 @@ final class Ops {
 			probe.register(Op.onSide("players.list", Side.SERVER).reading());
 			probe.register(Op.onSide("player.get", Side.SERVER).reading());
 			probe.register(Op.onSide("player.kick", Side.SERVER));
+			probe.register(Op.onSide("player.reset", Side.SERVER));
+			probe.register(Op.onSide("world.reset", Side.SERVER));
+			probe.register(Op.onSide("hooks.run", Side.SERVER));
+			probe.register(Op.onSide("reflect.get", Side.SERVER).reading().needingASide());
+			probe.register(Op.onSide("reflect.set", Side.SERVER).needingASide());
 			return;
 		}
 		// a dedicated server joined and left (9.3), given their bodies at preInit (JoinOps)
@@ -175,6 +180,7 @@ final class Ops {
 			"sides", dedicated ? Collections.singletonList("server")
 				: server ? Arrays.asList("client", "server") : Collections.singletonList("client"),
 			"joined", snapshot.joined,
+			"player", snapshot.player,
 			"players", dedicated ? probe.playerNames() : Collections.emptyList(),
 			"screen", snapshot.screen,
 			"paused", snapshot.paused,

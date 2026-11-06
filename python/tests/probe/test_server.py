@@ -24,7 +24,7 @@ import time
 import unittest
 
 from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
-from unittas.errors import NotReady, Unsupported
+from unittas.errors import BadRequest, NotReady, Unsupported
 from unittas.launcher import Sources, findJava, serverCommand
 from unittas.release import releaseJar
 from unittas.servergame import LOOPBACK_FORMS, ServerGame, freePort, serverFiles
@@ -131,7 +131,8 @@ class ServerProbeTests(unittest.TestCase):
     self.assertIs(Role.SERVER, hello.role)
     self.assertEqual('srg', hello.names, "a real server names Minecraft's members by Searge")
     for op in ('status', 'quit', 'ticks.wait', 'wait.until', 'batch', 'world.get', 'world.prepare', 'command.run',
-               'debug.threads', 'debug.drop_login'):
+               'debug.threads', 'debug.drop_login', 'players.list', 'player.get', 'player.kick', 'player.reset',
+               'world.reset', 'hooks.run'):
       self.assertIn(op, hello.ops)
     for op in ('screen.get', 'world.create', 'world.open', 'player.look', 'key.tap', 'screenshot', 'java.run',
                'client.reset', 'server.join'):
@@ -188,6 +189,18 @@ class ServerProbeTests(unittest.TestCase):
     for op, args in (('screen.get', None), ('player.look', {'yaw': 0, 'pitch': 0}), ('world.create', {})):
       with self.assertRaises(Unsupported, msg=op):
         self.connection.request(op, args, timeout=10)
+
+  def test_6b_its_reset_and_hooks(self) -> None:
+    """Step 5's server parts: world.reset; its own hooks (a client's are refused); player.reset with nobody in."""
+    self.assertEqual({}, self.connection.request('world.reset', timeout=10))
+    self.assertEqual([], self.connection.request('hooks.run', {'hook': 'setUpWorld'}, timeout=10)['plugins'])
+    with self.assertRaises(BadRequest):
+      self.connection.request('hooks.run', {'hook': 'beforeRun'}, timeout=10)
+    with self.assertRaises(NotReady):
+      self.connection.request('player.reset', timeout=10)
+    entries = self.connection.request('batch', {'ops': [{'op': 'world.reset'}, {'op': 'hooks.run', 'args': {
+      'hook': 'resetPlayer'}}]}, side='server', timeout=10)
+    self.assertTrue(all(entry['ok'] for entry in entries), entries)
 
   def test_7_its_quit_is_stop(self) -> None:
     self.connection.request('quit', {'reason': 'the step 2 check is done'}, timeout=10)

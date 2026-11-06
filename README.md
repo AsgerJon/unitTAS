@@ -83,6 +83,10 @@ time.
   - Once the game is at its title screen, the run asks for its first world at once. If it hasn't asked 600 client
     ticks later (about 30 s), the terminal and `progress.txt` say so (`NO WORLD YET`). At 1200 ticks the run stops,
     every test `NO RESULT`, and the game quits. It counts the game's ticks, so a slow machine gets more time.
+- A client joining a dedicated server (multiplayer, below) meets the same 1.7.10 race: the server drops the connection
+  before its login, and the client waits at "Connecting..." for ever. After 200 client ticks there, the join is
+  cancelled and tried once more, with a warning. Dropped twice, the join fails, naming the race. unitTAS leaves the
+  game as 1.7.10 has it: it notices, says so and tries again, but never patches the game.
 - Outside the game, `./unittas.sh` takes a run that writes nothing new to `progress.txt` for 10 minutes
   (`UNITTAS_STALL_SECONDS` to change it) to be stuck: `./hang-dump.sh` writes each game JVM's threads into the results
   (`hang-*.txt`) and the game is stopped. A game that doesn't quit within a minute of its report is stopped too.
@@ -353,6 +357,7 @@ unittas run tests.test_give.GiveTests.test_red_wool    # one test (or a class)
 unittas run --instance other.toml --results out/
 unittas run --watched                                  # alarms for a watcher where a limit would decide
 unittas run tests.test_saves --saves run/oldsaves/vanilla   # save mode: each save opened twice (below, "Old saves")
+unittas run tests.test_sync --multiplayer               # with its multiplayer classes (below, "Multiplayer tests")
 unittas run --java oldsaves --saves run/oldsaves/vanilla    # a mod's Java suites, by java.run, here in save mode
 unittas launch --world                                 # the game alone, in the test world, to look at
 unittas watch                                          # the watcher, for a session that can't open windows
@@ -374,6 +379,57 @@ python -m unittest discover                            # plain unittest: the fir
 - `launch` is for looking at the game, not playing it: the probe drops the real mouse and keyboard.
 - Under plain unittest the run's `report.txt` is written at exit, into the same results folder. The class fixtures
   are then in unittest's own output only.
+
+### Multiplayer tests
+
+A test that needs a dedicated server and more than one player: a block one player places that another sees, a packet
+a server must send, common code that reaches a client-only class (only a dedicated server shows that).
+
+```python
+from unittas.testcase import MultiplayerTestCase
+
+class SyncTests(MultiplayerTestCase):
+  clients = ('alice', 'bob')
+
+  def test_bob_sees_alices_block(self):
+    self.server.command('/setblock 2 3 2 minecraft:gold_block', as_='server')
+    seen = self.bob.waitUntil('block.get', {'pos': [2, 3, 2]}, {'path': ['id'], 'eq': 'minecraft:gold_block'},
+                              side='client', maxTicks=100)
+    self.assertTrue(seen['held'], seen['value'])
+```
+
+- **The games:**
+  - `self.server` is the dedicated server's game, and each name in `clients` is a client's: `self.alice`, `self.bob`.
+  - The first is the run's own client. Its player keeps the name it was launched with (`unitTAS`). The others play
+    under their own names: `self.bob.playerName()`.
+  - On the server, `self.server.players()`, `self.server.player(name=...)`, `self.server.kick(name, reason)`, and
+    `command(text, as_='server')` or `as_='bob'`.
+  - On a client, `join(port)` and `leave()`. A run joins and leaves for you.
+- **The levels:**
+  - Each class gets a fresh server world: the server is restarted and makes it again from the same seed, and the
+    clients join it. With `shared_world = True` a class runs on in the world the multiplayer class before it left.
+  - Before each test the players are reset across the games, and a client a test put out (kicked) joins again.
+  - A singleplayer class after a multiplayer one gets its own kept world back.
+- **What a run needs:**
+  - `unittas run --multiplayer` (or `UNITTAS_MULTIPLAYER=1`). Without it, multiplayer classes are skipped, saying
+    why.
+  - `client = "real"` in the spec: each client has a folder of its own, which a development `runClient` hasn't.
+  - The spec's `[server]` table:
+
+    ```toml
+    [server]
+    eula = true                        # you accept Mojang's EULA (https://aka.ms/MinecraftEULA): unitTAS never does
+    exclude = ["client-only-*.jar"]    # mods the server leaves out (the clients' mods otherwise)
+    memory = "2G"                      # the server's -Xmx
+    ```
+
+    Without `eula = true`, `--multiplayer` is refused before anything starts.
+- **What it costs:** three games at once, the server's memory plus about 2 GB per extra client. Before they start,
+  the machine's available memory is checked against that, plus 1 GB to spare. Short of it, that class's tests are
+  `NO RESULT`, saying the numbers, and the run goes on.
+- **Safety:** the server listens on 127.0.0.1 only. It reports every address it really listens on, and unitTAS stops
+  it before any client joins if that is anything else. Its operators are the run's own players, written fresh each
+  run.
 
 ## A mod's own part
 

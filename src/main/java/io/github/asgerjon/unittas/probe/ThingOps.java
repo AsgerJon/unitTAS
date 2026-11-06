@@ -119,38 +119,14 @@ final class ThingOps {
 	}
 
 	/** An item value (5.3) as a new stack; NotFound for an id the game doesn't have. */
+	/** An item stack from the protocol's item, or null: Values' (server-safe). */
 	static ItemStack stack(JsonElement value) throws ProbeException {
-		if (value == null || value.isJsonNull()) {
-			return null;
-		}
-		if (!value.isJsonObject() || Json.string(value.getAsJsonObject(), "id") == null) {
-			throw ProbeException.badRequest("item", "an item is {\"id\": ..., \"count\": ..., \"meta\": ...} or null");
-		}
-		JsonObject item = value.getAsJsonObject();
-		String id = Json.string(item, "id");
-		if (!Item.itemRegistry.containsKey(id)) {
-			throw new ProbeException("NotFound", "this game has no item " + id, Json.object("what", id));
-		}
-		if (item.has("components")) {
-			throw new ProbeException("Unsupported", "1.7.10's items have NBT, not components", null);
-		}
-		int count = item.has("count") ? item.get("count").getAsInt() : 1;
-		int meta = item.has("meta") ? item.get("meta").getAsInt() : 0;
-		ItemStack stack = new ItemStack((Item) Item.itemRegistry.getObject(id), count, meta);
-		String nbt = Json.string(item, "nbt");
-		if (nbt != null) {
-			stack.setTagCompound(compound(nbt, "nbt"));
-		}
-		return stack;
+		return Values.stack(value);
 	}
 
-	/** A compound from SNBT; a BadRequest naming the field for text that isn't one. */
+	/** A compound from SNBT: Values'. */
 	static net.minecraft.nbt.NBTTagCompound compound(String text, String field) throws ProbeException {
-		try {
-			return Snbt.readCompound(text);
-		} catch (IllegalArgumentException e) {
-			throw ProbeException.badRequest(field, e.getMessage());
-		}
+		return Values.compound(text, field);
 	}
 
 	private static JsonElement inventorySet(Call call) throws ProbeException {

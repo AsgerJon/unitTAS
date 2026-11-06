@@ -334,6 +334,38 @@ class NoWorldTests(WatchCase):
     self.assertNotIn('NO WORLD', self.progress())
 
 
+class OtherGamesTests(WatchCase):
+  """A multiplayer run's other games in watch.txt, each by its own heartbeat (SPEC.md 11.3, step 5)."""
+
+  def test_a_line_for_each_game(self) -> None:
+    watch = self.watch(False)
+    heard = {}
+
+    class Events:
+      def __init__(self, name):
+        self.name = name
+
+      def subscribe(self, subscriber):
+        heard[self.name] = subscriber
+
+    class Connection:
+      def __init__(self, name):
+        self.events = Events(name)
+
+    watch.addGame('server', Connection('server'))
+    watch.addGame('bob', Connection('bob'))
+    self.beat(watch)
+    heard['server']({'event': 'tick', 'client': None, 'server': 900, 'client_ago_ms': None, 'server_ago_ms': 40})
+    heard['bob']({'event': 'tick', 'client': 300, 'server': None, 'client_ago_ms': 9000, 'server_ago_ms': None})
+    watch.round()
+    text = self.read('watch.txt')
+    self.assertIn('game server: ticking (its server side)', text)
+    self.assertIn('game bob: last ticked 9 s ago', text)
+    self.clock.now += 10
+    watch.round()
+    self.assertIn('game server: silent for 10 s', self.read('watch.txt'))
+
+
 class GameTestCaseTimeLimitTests(WatchCase):
   """By the real clock: a GameTestCase past its timeout_seconds."""
 

@@ -20,6 +20,11 @@ repository that says which game a run needs (SPEC.md 9.3, step 2).
   task = "runClient"
   game = "run/client"
 
+  [server]                               # multiplayer runs (client = "real")
+  eula = true                            # you accept Mojang's EULA yourself
+  exclude = ["client-only-*.jar"]        # mods the server leaves out
+  memory = "2G"                          # the server's -Xmx
+
 Paths are taken from the spec's own folder. Every mistake is a SpecError
 that names the file and the key, an unknown key too (with the key it
 likely meant): it is a file people write by hand. Phase 3 runs 1.7.10
@@ -36,6 +41,7 @@ from __future__ import annotations
 import difflib
 import glob
 import os
+import re
 import shlex
 import tomllib
 from typing import TYPE_CHECKING
@@ -51,8 +57,10 @@ FORGE = '10.13.4.1614'
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
-        'probe', 'game', 'window', 'gradle')
+        'probe', 'game', 'window', 'gradle', 'server')
 GRADLE_KEYS = ('project', 'task', 'game')
+SERVER_KEYS = ('eula', 'exclude', 'memory')
+MEMORY = re.compile(r'^[1-9][0-9]*[MG]$')
 WINDOW_KEYS = ('width', 'height', 'display')
 #  A build is a command and its arguments, run without a shell: these would mean something only to a shell.
 SHELL_WORDS = ('&&', '||', '|', ';', '&', '>', '>>', '<')
@@ -96,6 +104,11 @@ class InstanceSpec(EZData, frozen=True):
   display = EZField[str]('nested')
   gradleProject = EZField[str]('')
   gradleTask = EZField[str]('')
+  #  the dedicated server of a multiplayer run (SPEC.md 11.6): the user's own acceptance of Mojang's EULA, the mod
+  #  jars it leaves out (globs on their names), its -Xmx
+  serverEula = EZField[bool](False)
+  serverExclude = EZField[tuple]()
+  serverMemory = EZField[str]('2G')
 
 
 # ---------------------------------------------------------------- reading
@@ -193,12 +206,33 @@ def _read(cls: type, path: str) -> InstanceSpec:
     if 'gradle' in body:
       raise reader.fail('"gradle" is only for client = "gradle"; this spec says client = "%s"' % client)
     game = reader.local(reader.string(body, 'game', otherwise='run/unittas'))
+  serverEula, serverExclude, serverMemory = _server(reader, body, client)
   return cls(
     path=reader.path, folder=reader.folder, minecraft=minecraft, loaderName=loaderName, loaderVersion=loaderVersion,
     javaText=reader.string(body, 'java', otherwise=''), client=client, mods=reader.strings(body, 'mods'),
     buildArgs=_build(reader, body), libraries=libraries, repositories=repositories, configPath=config,
     optionPairs=_options(reader, body), probe=probe if probe == 'bundled' else reader.local(probe), game=game,
-    width=width, height=height, display=display, gradleProject=gradleProject, gradleTask=gradleTask)
+    width=width, height=height, display=display, gradleProject=gradleProject, gradleTask=gradleTask,
+    serverEula=serverEula, serverExclude=serverExclude, serverMemory=serverMemory)
+
+
+def _server(reader: _Reader, body: dict, client: str) -> tuple:
+  """The [server] table: (eula, exclude, memory), as a multiplayer run's dedicated server takes them."""
+  if 'server' not in body:
+    return False, (), '2G'
+  if client != 'real':
+    raise reader.fail('"server" is for multiplayer runs, which need real clients each with a folder of its own: '
+                      'client = "real", not "%s"' % client)
+  server = reader.table(body, 'server')
+  reader.known(server, SERVER_KEYS, 'server.')
+  eula = server.get('eula', False)
+  if not isinstance(eula, bool):
+    raise reader.fail('"server.eula" is true or false (your own acceptance of Mojang\'s EULA), not %r' % (eula,))
+  exclude = reader.strings(server, 'exclude')
+  memory = reader.string(server, 'memory', 'server.', '2G')
+  if not MEMORY.match(memory):
+    raise reader.fail('"server.memory" is as -Xmx takes it, "2G" or "1536M", not %r' % (memory,))
+  return eula, exclude, memory
 
 
 def _loader(reader: _Reader, body: dict) -> tuple:
