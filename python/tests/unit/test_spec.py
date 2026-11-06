@@ -116,6 +116,14 @@ class SpecTests(unittest.TestCase):
 
   # ---------------------------------------------------------------- the mods' jars
 
+  def test_its_fields_are_the_declared_ones(self) -> None:
+    """A method or property in InstanceSpec's body is no field of it (worktoy-notes.md 7, as test_values says)."""
+    spec = InstanceSpec.read(self.write(REAL))
+    names = list(spec.asDict())
+    self.assertEqual([], [name for name in names if name.startswith('_')], names)
+    self.assertNotIn('cell', repr(spec))
+    self.assertEqual(hash(InstanceSpec.read(self.write(REAL))), hash(spec))
+
   def test_each_mod_matches_one_file(self) -> None:
     jar = self.touch('build/libs/mod-1.0.jar')
     spec = InstanceSpec.read(self.write(REAL))

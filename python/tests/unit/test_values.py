@@ -37,6 +37,26 @@ PLAYER = {'entity': 182, 'name': 'Dev', 'uuid': '380df991-f603-344c-a090-369bad2
           'effects': [{'effect': 'potion.moveSpeed', 'id': 1, 'amplifier': 1, 'duration': 600, 'ambient': False}]}
 
 
+VALUES = (Vec3, BlockPos, Look, Item, Block, Inventory, Entity, Effect, Player, ChatLine, Sound, LogLine, Screen)
+
+
+class ValueClassTests(unittest.TestCase):
+  """
+  Each value's fields are the ones it declares: a property or method in its class body is none. worktoy 1.0.0 on
+  Python 3.14+ takes a function in an EZData body for a field in a module without `from __future__ import
+  annotations` (worktoy-notes.md 7); values.py has that import, and worktoy 1.1 has the fix.
+  """
+
+  def test_only_the_declared_fields(self) -> None:
+    for cls in VALUES:
+      with self.subTest(cls.__name__):
+        value = cls()
+        names = list(value.asDict())
+        self.assertEqual([], [name for name in names if name.startswith('_')], names)
+        self.assertNotIn('cell', repr(value))
+        self.assertEqual(hash(cls()), hash(value))
+
+
 class ItemTests(unittest.TestCase):
 
   def test_read_and_back(self) -> None:

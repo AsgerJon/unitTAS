@@ -4,13 +4,11 @@ as frozen EZData: equal when their fields are, hashable, and shown by
 their fields. The JSON edge, reading them from answers and writing them
 into requests, is 'codec'.
 
-Until worktoy 1.1 has nullable fields, a value the wire may leave null
+Until worktoy has nullable fields, a value the wire may leave null
 keeps a stand-in in its field (an empty string, -1, False) and gives the
 None through a property beside it: 'Entity.customName' is None where the
 field 'customNameText' is ''. An empty slot is Item.EMPTY, as modern
-Minecraft's ItemStack.EMPTY is. The properties are set on the classes
-after they are made: on Python 3.14 and later, a function in an EZData
-class body becomes a field of it (worktoy-notes.md, 7).
+Minecraft's ItemStack.EMPTY is.
 
 - Vec3, BlockPos, Look: places and directions (5.1).
 - Item, Block: things (5.3, 5.4), their NBT as SNBT with a typed tree.
@@ -26,6 +24,18 @@ from __future__ import annotations
 from worktoy.ezdata import EZData, EZField
 
 from . import snbt
+
+
+def _parsed(text: str):
+  return snbt.loads(text) if text else None
+
+
+def _orNone(text: str):
+  return text if text else None
+
+
+def _id(number: int):
+  return number if number >= 0 else None
 
 
 class Vec3(EZData, frozen=True):
@@ -59,6 +69,16 @@ class Item(EZData, frozen=True):
   meta = EZField[int](0)
   snbt = EZField[str]('')
 
+  @property
+  def empty(self) -> bool:
+    """Whether this is an empty slot."""
+    return self.count <= 0
+
+  @property
+  def nbt(self):
+    """The NBT as a typed tree (unittas.snbt), or None."""
+    return _parsed(self.snbt)
+
 
 class Block(EZData, frozen=True):
   """
@@ -71,6 +91,11 @@ class Block(EZData, frozen=True):
   tileAsked = EZField[bool](False)
   tileSnbt = EZField[str]('')
 
+  @property
+  def tile(self):
+    """The block entity's data as a typed tree, or None."""
+    return _parsed(self.tileSnbt)
+
 
 class Inventory(EZData, frozen=True):
   """A player's inventory: the selected hotbar slot, the 36 main slots, the armour, the cursor's stack."""
@@ -81,6 +106,11 @@ class Inventory(EZData, frozen=True):
   chest = EZField[Item]()
   head = EZField[Item]()
   cursor = EZField[Item]()
+
+  @property
+  def held(self) -> Item:
+    """The stack in the selected hotbar slot."""
+    return self.main[self.selected] if 0 <= self.selected < len(self.main) else Item.EMPTY
 
 
 class Entity(EZData, frozen=True):
@@ -105,6 +135,26 @@ class Entity(EZData, frozen=True):
   living = EZField[bool](False)
   healthValue = EZField[float](0.0)
   maxHealthValue = EZField[float](0.0)
+
+  @property
+  def customName(self):
+    """Its name tag, or None."""
+    return _orNone(self.customNameText)
+
+  @property
+  def riding(self):
+    """The entity id it rides, or None."""
+    return _id(self.ridingId)
+
+  @property
+  def health(self):
+    """Its health, or None."""
+    return self.healthValue if self.living else None
+
+  @property
+  def maxHealth(self):
+    """Its most health, or None."""
+    return self.maxHealthValue if self.living else None
 
 
 class Effect(EZData, frozen=True):
@@ -150,6 +200,16 @@ class Player(EZData, frozen=True):
   effects = EZField[tuple]()
   cameraMode = EZField[int](-1)
 
+  @property
+  def riding(self):
+    """The entity id it rides, or None."""
+    return _id(self.ridingId)
+
+  @property
+  def camera(self):
+    """The client's camera mode (0 first person), or None."""
+    return _id(self.cameraMode)
+
 
 class ChatLine(EZData, frozen=True):
   """A chat line the client was shown; 'kind' is None in 1.7.10, which has none."""
@@ -157,6 +217,11 @@ class ChatLine(EZData, frozen=True):
   formatted = EZField[str]('')
   json = EZField[str]('')
   kindText = EZField[str]('')
+
+  @property
+  def kind(self):
+    """The line's kind (from 1.8), or None."""
+    return _orNone(self.kindText)
 
 
 class Sound(EZData, frozen=True):
@@ -168,6 +233,11 @@ class Sound(EZData, frozen=True):
   pitch = EZField[float](1.0)
   pos = EZField[Vec3]()
 
+  @property
+  def callers(self):
+    """Who asked for a sound the game lacks, or None."""
+    return _orNone(self.callersText)
+
 
 class LogLine(EZData, frozen=True):
   """A line of the game's log; 'thrown' (its exception, class and message) is None for most."""
@@ -176,6 +246,11 @@ class LogLine(EZData, frozen=True):
   thread = EZField[str]('')
   message = EZField[str]('')
   thrownText = EZField[str]('')
+
+  @property
+  def thrown(self):
+    """The line's exception, or None."""
+    return _orNone(self.thrownText)
 
 
 class Screen(EZData, frozen=True):
@@ -186,34 +261,5 @@ class Screen(EZData, frozen=True):
   pauses = EZField[bool](False)
 
 
-# ---------------------------------------------------------------- set on the classes after they are made (see above)
-
+#  an empty slot, as modern Minecraft's ItemStack.EMPTY: made once the class is
 Item.EMPTY = Item('minecraft:air', 0, 0, '')
-
-
-def _parsed(text: str):
-  return snbt.loads(text) if text else None
-
-
-def _orNone(text: str):
-  return text if text else None
-
-
-def _id(number: int):
-  return number if number >= 0 else None
-
-
-Item.empty = property(lambda self: self.count <= 0, doc='Whether this is an empty slot.')
-Item.nbt = property(lambda self: _parsed(self.snbt), doc='The NBT as a typed tree (unittas.snbt), or None.')
-Block.tile = property(lambda self: _parsed(self.tileSnbt), doc="The block entity's data as a typed tree, or None.")
-Inventory.held = property(lambda self: self.main[self.selected] if 0 <= self.selected < len(self.main) else Item.EMPTY,
-                          doc='The stack in the selected hotbar slot.')
-Entity.customName = property(lambda self: _orNone(self.customNameText), doc='Its name tag, or None.')
-Entity.riding = property(lambda self: _id(self.ridingId), doc='The entity id it rides, or None.')
-Entity.health = property(lambda self: self.healthValue if self.living else None, doc='Its health, or None.')
-Entity.maxHealth = property(lambda self: self.maxHealthValue if self.living else None, doc='Its most health, or None.')
-Player.riding = property(lambda self: _id(self.ridingId), doc='The entity id it rides, or None.')
-Player.camera = property(lambda self: _id(self.cameraMode), doc="The client's camera mode (0 first person), or None.")
-ChatLine.kind = property(lambda self: _orNone(self.kindText), doc="The line's kind (from 1.8), or None.")
-Sound.callers = property(lambda self: _orNone(self.callersText), doc='Who asked for a sound the game lacks, or None.')
-LogLine.thrown = property(lambda self: _orNone(self.thrownText), doc="The line's exception, or None.")

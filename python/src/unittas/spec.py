@@ -82,7 +82,7 @@ class InstanceSpec(EZData, frozen=True):
   """
   An instance spec as read. Paths are absolute; 'java', 'build' and
   'config' are None when the spec doesn't say (the fields beside them
-  hold an empty stand-in until worktoy 1.1 has nullable fields).
+  hold an empty stand-in until worktoy has nullable fields).
   """
   path = EZField[str]('')
   folder = EZField[str]('')
@@ -109,6 +109,35 @@ class InstanceSpec(EZData, frozen=True):
   serverEula = EZField[bool](False)
   serverExclude = EZField[tuple]()
   serverMemory = EZField[str]('2G')
+
+  @classmethod
+  def read(cls, path: str) -> InstanceSpec:
+    """The spec in the file; SpecError naming the file and the key for anything wrong."""
+    return _read(cls, path)
+
+  def modJars(self) -> tuple:
+    """Each of 'mods' as the one file it matches; SpecError for one that matches none, or more than one."""
+    return _modJars(self)
+
+  @property
+  def java(self):
+    """The Java the spec names, or None."""
+    return self.javaText or None
+
+  @property
+  def build(self):
+    """The build command and its arguments, or None."""
+    return self.buildArgs or None
+
+  @property
+  def config(self):
+    """The config folder to copy in, or None."""
+    return self.configPath or None
+
+  @property
+  def options(self) -> dict:
+    """The options for options.txt."""
+    return dict(self.optionPairs)
 
 
 # ---------------------------------------------------------------- reading
@@ -314,11 +343,3 @@ def _modJars(self: InstanceSpec) -> tuple:
     found.append(matches[0])
   return tuple(found)
 
-
-# set on the class after it is made: on Python 3.14+ a function in an EZData body becomes a field (worktoy-notes.md, 7)
-InstanceSpec.read = classmethod(_read)
-InstanceSpec.modJars = _modJars
-InstanceSpec.java = property(lambda self: self.javaText or None, doc='The Java the spec names, or None.')
-InstanceSpec.build = property(lambda self: self.buildArgs or None, doc='The build command and its arguments, or None.')
-InstanceSpec.config = property(lambda self: self.configPath or None, doc="The config folder to copy in, or None.")
-InstanceSpec.options = property(lambda self: dict(self.optionPairs), doc='The options for options.txt.')
