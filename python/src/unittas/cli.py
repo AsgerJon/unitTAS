@@ -1,7 +1,8 @@
 """
 The 'cli' module is the 'unittas' command (SPEC.md 9.3, step 8a):
 
-  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched]
+  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR]
+  unittas run --java SUITE,... [--instance FILE] [--results DIR] [--watched] [--saves DIR]
   unittas launch [--instance FILE] [--results DIR] [--world]
   unittas watch [--queue DIR]
   unittas compare BEFORE/report.txt AFTER/report.txt
@@ -14,6 +15,10 @@ The 'cli' module is the 'unittas' command (SPEC.md 9.3, step 8a):
   FAILED, 2 for a mistake in the command or the spec, 130 after Ctrl+C.
   --watched (or UNITTAS_WATCHED=1): where a fixed limit would decide the
   game is stuck, an alarm asks the watcher first (unittas.watch).
+  --saves DIR: save mode, on the saves in DIR (old saves: each opened
+  twice, as found and as this game saved it, the tests run in each).
+  --java SUITE,...: the mod's Java suites instead, by java.run, with
+  Java's own save mode when --saves is given.
 - launch: the spec's game as a run has it, nothing run, for looking at;
   --world opens the test world in it.
 - watch: the runs a session that can't open windows asks for, in the
@@ -44,7 +49,8 @@ if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional, TextIO
 
 USAGE = '''usage:
-  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched]
+  unittas run [TESTS ...] [--instance FILE] [--results DIR] [--watched] [--saves DIR]
+  unittas run --java SUITE,... [--instance FILE] [--results DIR] [--watched] [--saves DIR]
   unittas launch [--instance FILE] [--results DIR] [--world]
   unittas watch [--queue DIR]
   unittas compare BEFORE/report.txt AFTER/report.txt'''
@@ -65,6 +71,8 @@ def _parser() -> _Parser:
   run.add_argument('--instance')
   run.add_argument('--results')
   run.add_argument('--watched', action='store_true')
+  run.add_argument('--java')
+  run.add_argument('--saves')
   launch = commands.add_parser('launch', usage=USAGE, add_help=False)
   launch.add_argument('--instance')
   launch.add_argument('--results')
@@ -103,6 +111,10 @@ def main(argv: Optional[list] = None, out: Optional[TextIO] = None, environ: Opt
     if args.command == 'watch':
       from .watcher import QueueWatcher
       return QueueWatcher(cwd, queue=args.queue, out=out, environ=environ).serve()
+    if args.command == 'run' and args.java and args.tests:
+      raise session.UsageError('--java runs Java suites: name either Python tests or --java suites, not both')
+    if args.command == 'run' and args.saves:
+      session.findSaves(args.saves)
     spec = session.readSpec(session.findSpec(args.instance, environ, cwd))
     results = session.resultsFolder(spec, args.results, environ)
     #  SIGTERM ends a run or a launch as Ctrl+C does: properly, the game quit and the folder's own files put back
@@ -111,7 +123,11 @@ def main(argv: Optional[list] = None, out: Optional[TextIO] = None, environ: Opt
     try:
       if args.command == 'launch':
         return session.launchGame(spec, results, out, world=args.world, gameFor=gameFor)
-      return session.runTests(spec, args.tests, results, out, cwd, environ, gameFor=gameFor, watched=args.watched)
+      if args.java:
+        return session.runJava(spec, [each for each in args.java.split(',') if each], results, out, environ,
+                               pristine=args.saves, gameFor=gameFor, watched=args.watched)
+      return session.runTests(spec, args.tests, results, out, cwd, environ, gameFor=gameFor, watched=args.watched,
+                              pristine=args.saves)
     finally:
       if mainThread:
         signal.signal(signal.SIGTERM, before)

@@ -1,6 +1,9 @@
 package io.github.asgerjon.unittas;
 
+import io.github.asgerjon.unittas.probe.Opening;
 import io.github.asgerjon.unittas.probe.Reset;
+import io.github.asgerjon.unittas.probe.Side;
+import io.github.asgerjon.unittas.probe.Sides;
 import io.github.asgerjon.unittas.probe.Worlds;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiDownloadTerrain;
@@ -301,15 +304,52 @@ final class TasRunner implements Runnable {
 		}
 		long started = System.currentTimeMillis();
 		long giveUp = started + SAVE_LOAD_SECONDS * 1000L;
+		// the opening guard (Opening): a login the integrated server dropped is pictured and the save opened again, once
+		Opening opening = new Opening();
+		Sides sides = Sides.get();
+		int dropped = 0;
 		while (true) {
 			boolean in;
+			boolean title;
 			try {
 				in = game.client(game::inWorld);
+				title = !in && game.client(() -> Minecraft.getMinecraft().currentScreen instanceof GuiMainMenu);
 			} catch (TasGame.Timeout e) {
 				in = false;
+				title = false;
 			}
 			if (in) {
 				break;
+			}
+			MinecraftServer server = MinecraftServer.getServer();
+			boolean serverUp = server != null && !server.isServerStopped() && sides.tickedAt(Side.SERVER) > 0;
+			String hung = opening.dropped(title, serverUp, false, sides.ticks(Side.CLIENT), sides.ticks(Side.SERVER))
+				? Opening.DROPPED : null;
+			if (hung != null) {
+				dropped++;
+				String name = folder + "-dropped-" + dropped + ".png";
+				String picture;
+				try {
+					picture = game.client(() -> TasHang.picture(Minecraft.getMinecraft(), request.results, name));
+				} catch (RuntimeException e) {
+					picture = "none (" + e.getMessage() + ")";
+				}
+				if (dropped > Opening.RETRIES) {
+					return folder + ": " + hung + "; and again after it was opened once more (picture " + picture + ")";
+				}
+				request.progress(folder + ": " + hung + ": left and opened again (picture " + picture + ")");
+				try {
+					game.client(() -> {
+						// left as Save and Quit leaves a world (its server stopped), then the save opened again
+						Worlds.close(Minecraft.getMinecraft());
+						game.openSave(folder);
+						return null;
+					});
+				} catch (TasGame.Timeout e) {
+					// the client thread is starting the server again: wait on below
+				}
+				opening.reset();
+				continue;
 			}
 			if (System.currentTimeMillis() > giveUp) {
 				// a watched run asks first

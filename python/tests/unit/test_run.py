@@ -185,5 +185,48 @@ class RunTests(FakeRun, unittest.TestCase):
       self.assertEqual('OK', [line for line in file.read().split('\n') if line][-1])
 
 
+class OpeningGuardTests(FakeRun, unittest.TestCase):
+  """The opening guard's Python side: each world opened with the run's pictures folder; its warnings said."""
+
+  def test_the_pictures_folder_and_a_dropped_login_said(self) -> None:
+    from fakeprobe import Warned
+    opened = self.handlers['world.open']
+
+    def dropped(args, side):
+      return Warned(opened(args, side), 'the integrated server dropped the client\'s own connection before it joined'
+                                        ' (1.7.10\'s login race): left and opened again')
+
+    self.handlers['world.open'] = dropped
+    self.run.begin()
+    for op in ('world.create', 'world.open'):
+      args = [request['args'] for request in self.asked if request['op'] == op][0]
+      self.assertEqual(os.path.join(self.results, 'screenshots'), args['pictures'], op)
+    with open(os.path.join(self.results, 'progress.txt'), encoding='utf-8') as file:
+      self.assertIn("the test world: the integrated server dropped the client's own connection", file.read())
+
+  def test_a_world_that_does_not_open_is_no_result_for_its_class(self) -> None:
+    import io
+    import gamecases
+    from unittas.run import runSuite
+
+    self.run.begin()
+    # the run's first class has the run's first world: the classes after it are the ones whose world is opened again
+    self.run.enterClass('FirstTests')
+    opens = []
+
+    def refused(args, side):
+      opens.append(args)
+      raise FakeError('Disconnected', 'dropped, and again after it was opened once more', reason='dropped')
+
+    self.handlers['world.open'] = refused
+    runSuite(self.run, unittest.TestLoader().loadTestsFromNames(['gamecases.ATests', 'gamecases.BTests']),
+             stream=io.StringIO())
+    with open(self.run.finish(), encoding='utf-8') as file:
+      lines = file.read().split('\n')
+    outcomes = [line.split(' ... ')[1].split(' (')[0] for line in lines if ' ... ' in line]
+    self.assertEqual(['NO RESULT', 'NO RESULT', 'NO RESULT'], outcomes, '\n'.join(lines))
+    self.assertIn("the test world didn't open", '\n'.join(lines))
+
+
 if __name__ == '__main__':
   unittest.main()

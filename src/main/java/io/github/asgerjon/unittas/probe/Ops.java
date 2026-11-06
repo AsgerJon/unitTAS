@@ -48,6 +48,12 @@ final class Ops {
 		probe.register(Op.onSide("batch", Side.CLIENT, Side.SERVER).needingASide().does(Ops::batch));
 		// debugging (8.12)
 		probe.register(Op.onSide("debug.lag", Side.CLIENT, Side.SERVER).does(Ops::lag));
+		// the integrated server drops its next local connections as 1.7.10's login race does: the opening guard's tests
+		probe.register(Op.probe("debug.drop_login").does(call -> {
+			long logins = call.number("logins", 1, 0, 10);
+			Opening.DROP_LOGINS.set((int) logins);
+			return Json.object("logins", logins);
+		}));
 		probe.register(Op.probe("debug.threads").whileLoading().alongsideJava().does(Ops::threads));
 		probe.register(Op.probe("debug.trace").whileLoading().alongsideJava()
 			.does(call -> Json.object("lines", io.github.asgerjon.unittas.TasTrace.lines())));

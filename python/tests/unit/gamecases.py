@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 import unittest
 
+from unittas.run import Run
 from unittas.testcase import GameTestCase
 
 
@@ -78,6 +79,18 @@ class CrashTests(GameTestCase):
 
   def test_b_never_runs(self) -> None:
     self.fail('ran after the game had crashed')
+
+
+class SaveCaseTests(GameTestCase):
+  """For save mode: each test notes the save it found open (by the run: a class's state outlives a run)."""
+  seen = {}
+
+  def test_a_sees_its_save(self) -> None:
+    save = self.save()
+    SaveCaseTests.seen.setdefault(Run.current, []).append((save.folder, save.load, save.loadErrors))
+
+  def test_b_passes(self) -> None:
+    pass
 
 
 class ModErrorTests(GameTestCase):

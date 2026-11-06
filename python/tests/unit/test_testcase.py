@@ -101,7 +101,10 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
     self.handlers['ticks.wait'] = stillStuck
     result = self.runClasses(gamecases.StallTests, gamecases.ATests)
     self.assertEqual([], result.failures, 'no test was failed: none could be run to a verdict')
-    self.assertEqual(4, len(result.errors), result.errors)
+    # StallTests' two tests, and ATests' setUpClass: a class the stopped run never reaches says so once to unittest,
+    # and the report has a NO RESULT line for each of its tests
+    self.assertEqual(3, len(result.errors), result.errors)
+    self.assertIn('setUpClass (gamecases.ATests)', str(result.errors[2][0]))
     for _, text in result.errors:
       self.assertIn('NO TEST RESULT', text)
     lines = self.report()

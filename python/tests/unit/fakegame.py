@@ -44,7 +44,29 @@ def fakeHandlers(gameDir: str) -> dict:
     'refs.clear': lambda args, side: {},
     'screenshot': lambda args, side: {'file': args['file']},
     'quit': lambda args, side: {},
+    'java.run': javaRun,
   }
+
+
+def javaRun(args, side):
+  """
+  java.run as the Java runner does it, in short: one test (SaveTests.test_x) for each save and load, or once in the
+  fresh test world with no saves; its numbered lines into results/progress.txt and its report into results/.
+  """
+  results = args['results']
+  saves = args.get('saves') or []
+  names = ['SaveTests.test_x [%s, load %d]' % (save, load) for load in (1, 2) for save in saves] or ['SaveTests.test_x']
+  os.makedirs(results, exist_ok=True)
+  with open(os.path.join(results, 'progress.txt'), 'a', encoding='utf-8') as file:
+    for number, name in enumerate(names, 1):
+      file.write('test %d/%d %s ... ok\n' % (number, len(names), name))
+  report = os.path.join(results, 'report.txt')
+  with open(report, 'w', encoding='utf-8') as file:
+    file.write('unitTAS report\n\n' + ''.join('%s ... ok (0.1 s)\n' % name for name in names) + '-' * 70 + '\n'
+               + 'Ran %d tests in 1.0 s\n\nOK\n' % len(names))
+  return {'report': report, 'ok': True, 'counts': {'ran': len(names), 'failures': 0, 'errors': 0, 'skipped': 0,
+                                                    'expected_failures': 0, 'unexpected_successes': 0,
+                                                    'no_results': 0, 'problems': 0}}
 
 
 class FakeLaunched:

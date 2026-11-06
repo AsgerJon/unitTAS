@@ -99,6 +99,7 @@ final class WorldOps {
 		boolean structures = call.flag("structures", true);
 		long settle = call.number("settle_ticks", 40, 0, 72000);
 		long maxSeconds = call.number("max_seconds", 180, 1, 3600);
+		String pictures = pictures(call);
 		noWorldOpen(probe, "world.create");
 		if (new File(probe.gameDir, "saves/" + folder).exists()) {
 			throw new ProbeException("Exists", "saves/" + folder + " is there already: world.create makes a new world",
@@ -110,7 +111,7 @@ final class WorldOps {
 			Worlds.create(Minecraft.getMinecraft(), folder, name, seed, type, generator, mode, cheats, structures);
 			return null;
 		});
-		watchIn(probe, folder, launch, settle, maxSeconds, started);
+		watchIn(call, folder, launch, settle, maxSeconds, started, pictures);
 		JsonElement spawn = onServer(() -> Worlds.describe().get("spawn"));
 		return Json.object("folder", folder, "load_ms", System.currentTimeMillis() - started, "spawn", spawn);
 	}
@@ -120,6 +121,7 @@ final class WorldOps {
 		String folder = folder(call, null);
 		long settle = call.number("settle_ticks", 40, 0, 72000);
 		long maxSeconds = call.number("max_seconds", 180, 1, 3600);
+		String pictures = pictures(call);
 		noWorldOpen(probe, "world.open");
 		if (!new File(probe.gameDir, "saves/" + folder + "/level.dat").isFile()) {
 			throw new ProbeException("NotFound", "no save called " + folder + " in " + new File(probe.gameDir, "saves"),
@@ -131,7 +133,7 @@ final class WorldOps {
 			Worlds.open(Minecraft.getMinecraft(), folder);
 			return null;
 		});
-		watchIn(probe, folder, launch, settle, maxSeconds, started);
+		watchIn(call, folder, launch, settle, maxSeconds, started, pictures);
 		JsonElement name = onServer(() -> Worlds.describe().get("name"));
 		return Json.object("folder", folder, "name", name, "load_ms", System.currentTimeMillis() - started);
 	}
@@ -139,11 +141,17 @@ final class WorldOps {
 	/**
 	 * Watches the client going into the world: in on both sides, past the terrain screen, then settled for the ticks
 	 * asked. A world event says how far it is once a second; max_seconds gives TimedOut, with the loading trace.
+	 * What the game shows is watched too (Opening): a client left at the title screen while its server runs is a
+	 * dropped login, pictured (into the request's `pictures` folder), left and opened again once; dropped again, it is
+	 * Disconnected.
 	 */
-	private static void watchIn(Probe probe, String folder, FutureTask<Void> launch, long settle, long maxSeconds,
-		long started) throws ProbeException, InterruptedException {
+	private static void watchIn(Call call, String folder, FutureTask<Void> launch, long settle, long maxSeconds,
+		long started, String pictures) throws ProbeException, InterruptedException {
+		Probe probe = call.probe;
 		Snapshot snapshot = probe.snapshot;
 		Sides sides = Sides.get();
+		Opening opening = new Opening();
+		int dropped = 0;
 		snapshot.changing = true;
 		try {
 			long nextEvent = started;
@@ -151,6 +159,29 @@ final class WorldOps {
 			while (true) {
 				failed(launch, "open " + folder);
 				long now = System.currentTimeMillis();
+				String hung = launch.isDone() && opening.dropped(snapshot.menu, snapshot.serverRunning, snapshot.inWorld,
+					sides.ticks(Side.CLIENT), sides.ticks(Side.SERVER)) ? Opening.DROPPED : null;
+				if (hung != null) {
+					dropped++;
+					String picture = dropPicture(pictures, folder, dropped);
+					probe.event("world", Json.object("state", "dropped", "folder", folder, "ms", now - started, "screen",
+						snapshot.screen, "picture", picture));
+					if (dropped > Opening.RETRIES) {
+						throw new ProbeException("Disconnected", hung + "; and again after it was opened once more"
+							+ (picture == null ? "" : " (its picture: " + picture + ")"), Json.object("reason", hung,
+							"picture", picture, "screen", snapshot.screen));
+					}
+					call.warn(hung + ": left and opened again" + (picture == null ? "" : " (its picture: " + picture + ")"));
+					// left as Save and Quit leaves a world (its server stopped), then the folder opened again: world.create's
+					// world was made by its first try
+					launch = Sides.get().post(Side.CLIENT, () -> {
+						Worlds.close(Minecraft.getMinecraft());
+						Worlds.open(Minecraft.getMinecraft(), folder);
+						return null;
+					});
+					opening.reset();
+					continue;
+				}
 				if (snapshot.inWorld) {
 					long ticks = sides.ticks(Side.CLIENT);
 					if (inSince < 0) {
@@ -180,6 +211,33 @@ final class WorldOps {
 		}
 		TasTrace.stop();
 		probe.event("world", Json.object("state", "open", "folder", folder, "ms", System.currentTimeMillis() - started));
+	}
+
+	/** The request's `pictures` folder, for the opening guard's pictures: an absolute folder, or null for none. */
+	private static String pictures(Call call) throws ProbeException {
+		String pictures = call.string("pictures", null);
+		if (pictures != null && !new File(pictures).isAbsolute()) {
+			throw ProbeException.badRequest("pictures", "pictures is an absolute folder, not " + pictures);
+		}
+		return pictures;
+	}
+
+	/** The dropped opening's picture, into the `pictures` folder; its path, or null (none asked for, or it failed). */
+	private static String dropPicture(String pictures, String folder, int dropped) {
+		if (pictures == null) {
+			return null;
+		}
+		File file = new File(pictures, folder + "-dropped-" + dropped + ".png");
+		try {
+			Sides.get().run(Side.CLIENT, () -> {
+				Pictures.saveAs(Minecraft.getMinecraft(), file);
+				return null;
+			}, Sides.STALL_SECONDS, queued -> { });
+			return file.getAbsolutePath();
+		} catch (Exception e) {
+			// a picture is evidence, not the operation: its failure is said by its absence
+			return null;
+		}
 	}
 
 	private static JsonElement close(Call call) throws ProbeException, InterruptedException {

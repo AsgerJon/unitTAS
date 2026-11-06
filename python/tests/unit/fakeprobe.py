@@ -151,7 +151,11 @@ class FakeProbe:
             self.answer(request, error={'type': 'Unsupported', 'message': 'no operation %s' % request.get('op')})
             continue
           try:
-            self.answer(request, handler(request.get('args') or {}, request.get('side')))
+            value = handler(request.get('args') or {}, request.get('side'))
+            if isinstance(value, Warned):
+              self.answer(request, value.value, extra={'warnings': list(value.warnings)})
+            else:
+              self.answer(request, value)
           except FakeError as failure:
             self.answer(request, error=dict(failure.fields, type=failure.kind, message=failure.message))
           except OSError:
@@ -171,6 +175,14 @@ class FakeProbe:
       except OSError:
         pass
       self.sock.close()
+
+
+class Warned:
+  """A served handler's value with warnings beside it, as an answer can carry them (PROTOCOL.md 3.2)."""
+
+  def __init__(self, value: Any, *warnings: str) -> None:
+    self.value = value
+    self.warnings = warnings
 
 
 class FakeError(Exception):

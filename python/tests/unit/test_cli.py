@@ -61,6 +61,34 @@ SUITES = {
         pass
     ''',
 }
+SUITES['clisuite_unbegun'] = '''
+    from unittas.testcase import GameTestCase
+
+    class AFixtureTests(GameTestCase):
+      @classmethod
+      def setUpClass(cls):
+        super().setUpClass()
+        cls.game.setBlock((40, 4, 40), 'minecraft:gold_block')
+
+      def test_a(self):
+        pass
+
+      def test_b(self):
+        pass
+
+    class BSetUpFailsTests(GameTestCase):
+      @classmethod
+      def setUpClass(cls):
+        super().setUpClass()
+        raise RuntimeError('setUpClass fails on purpose')
+
+      def test_never_runs(self):
+        pass
+
+    class COkTests(GameTestCase):
+      def test_c(self):
+        pass
+    '''
 DISCOVERED = '''
   from unittas.testcase import GameTestCase
 
@@ -182,6 +210,9 @@ class RunTests(CliCase):
     self.assertTrue(said.rstrip().endswith('OK'), said)
     self.assertEqual(1, self.factory.game.stops)
     self.assertEqual('quit', self.factory.game.ops()[-1])
+    # the opening guard: a picture of the game as it came up, at its title screen
+    shots = [request['args']['file'] for request in self.factory.game.asked if request['op'] == 'screenshot']
+    self.assertEqual(os.path.join(self.results, 'screenshots', 'opened.png'), shots[0])
 
   def test_a_run_that_fails_exits_1(self) -> None:
     code, said = self.main('run', 'clisuite_fail', '--instance', self.spec, '--results', self.results)
@@ -230,6 +261,41 @@ class RunTests(CliCase):
     self.assertIn('AOkTests.test_b ... NO RESULT', text)
     self.assertIn('NO TEST RESULT', said)
     self.assertEqual('FAILED (no results=2, problems=1)', [line for line in lines if line][-1])
+
+  def test_a_run_that_cannot_begin_is_no_result_once_for_each_test(self) -> None:
+    """
+    The test world never loads (1.7.10's login race, 2026-11-05): every test is NO RESULT, once. A class's own
+    setUpClass doesn't run against a game with no world (that was an ERROR, a verdict), and the count never passes
+    the total.
+    """
+    from fakeprobe import FakeError
+    from fakegame import FakeLaunched
+
+    class Unbegun(Factory):
+      def __call__(self, spec, results, name='game', **_):
+        game = Factory.__call__(self, spec, results, name)
+
+        def stuck(args, side):
+          raise FakeError('TimedOut', "unittas didn't open within 180 s", seconds=180)
+
+        game.handlers['world.create'] = stuck
+        return game
+
+    factory = Unbegun(os.path.join(self.scratch, 'game'))
+    code, said = self.main('run', 'clisuite_unbegun', '--instance', self.spec, '--results', self.results,
+                           factory=factory)
+    self.assertEqual(1, code, said)
+    lines = self.report()
+    outcomes = [line.split(' ... ')[:2] for line in lines if ' ... ' in line]
+    names = [name for name, _ in outcomes]
+    self.assertEqual(['unitTAS.run', 'AFixtureTests.test_a', 'AFixtureTests.test_b', 'BSetUpFailsTests.test_never_runs',
+                      'COkTests.test_c'], names, '\n'.join(lines))
+    self.assertEqual(['problem', 'NO RESULT', 'NO RESULT', 'NO RESULT', 'NO RESULT'],
+                     [outcome.split(' (')[0] for _, outcome in outcomes])
+    self.assertEqual('FAILED (no results=4, problems=1)', [line for line in lines if line][-1])
+    numbered = [line for line in said.split('\n') if '] test ' in line]
+    self.assertEqual(['test %d/4' % n for n in range(1, 5)], [line.split('] ')[1].split(' ')[0] + ' ' +
+                                                              line.split('] ')[1].split(' ')[1] for line in numbered])
 
   def test_ctrl_c_ends_the_run_properly(self) -> None:
     code, said = self.main('run', 'clisuite_stop', '--instance', self.spec, '--results', self.results)

@@ -164,21 +164,32 @@ class GameTestCase(unittest.TestCase):
     super().setUpClass()
     run = _theRun()
     cls.game = run.game
+    if run.stopped is None:
+      try:
+        run.enterClass(cls.__name__, shared=bool(cls.shared_world))
+      except NoResult as error:
+        #  the watcher gave up on the class's world, or aborted the run
+        if run.stopped is None:
+          run.stopped = error.why
+      except NO_RESULT_ERRORS as error:
+        #  the class's world couldn't be had
+        run.stopped = run.whyNoResult(error)
     if run.stopped is not None:
-      return
-    try:
-      run.enterClass(cls.__name__, shared=bool(cls.shared_world))
-    except NoResult as error:
-      #  the watcher gave up on the class's world, or aborted the run: its tests have no result
-      if run.stopped is None:
-        run.stopped = error.why
-    except NO_RESULT_ERRORS as error:
-      #  the class's world couldn't be had: its tests have no result, said by each (run())
-      run.stopped = run.whyNoResult(error)
+      #  no test result can be had: each test of the class says so, and the class's own setUpClass doesn't go on to a
+      #  game with no world (what it met there would be an ERROR, a verdict, which it isn't)
+      cls._notRun(run, 'not run: no test result could be obtained after %s' % run.stopped)
+
+  @classmethod
+  def _notRun(cls, run: Run, why: str) -> None:
+    """A NO RESULT line for each of the class's tests, saying why; then NoResult, which ends its setUpClass."""
+    for name in unittest.TestLoader().getTestCaseNames(cls):
+      run.noResult('%s.%s%s' % (cls.__name__, name, run.suffix), why)
+    raise NoResult(why)
 
   def reportName(self) -> str:
-    """The test as the report names it: Class.method."""
-    return '%s.%s' % (type(self).__name__, self._testMethodName)
+    """The test as the report names it: Class.method, and in save mode its save ('Class.method [folder, load N]')."""
+    run = Run.current
+    return '%s.%s%s' % (type(self).__name__, self._testMethodName, run.suffix if run is not None else '')
 
   def run(self, result: Optional[unittest.TestResult] = None) -> Any:
     if result is None:
@@ -247,6 +258,10 @@ class GameTestCase(unittest.TestCase):
 
   def player(self, side: Optional[str] = None) -> Any:
     return self.game.player(side)
+
+  def save(self) -> Any:
+    """The save open, in save mode (unittas.run.OpenSave: its folder, load, pristine copy, buildings, load errors); else None."""
+    return _theRun().save
 
   def worldNumber(self) -> int:
     """The world this test runs in, as the report numbers them: 1 for the run's first, one more for each fresh one."""

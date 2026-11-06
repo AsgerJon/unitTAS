@@ -37,7 +37,9 @@ import traceback
 import unittest
 from typing import TYPE_CHECKING
 
-from .errors import NO_RESULT_ERRORS, LinkError, NoResult, whyNoResult
+from worktoy.ezdata import EZData, EZField
+
+from .errors import NO_RESULT_ERRORS, LinkError, NoResult, NotReady, UnitTasError, whyNoResult
 from .gamefiles import copyExactly, removeTree
 from .reset import reset
 
@@ -55,6 +57,30 @@ COUNTED = (('FAIL', 'failures'), ('ERROR', 'errors'), ('skipped', 'skipped'), ('
 FAILING = ('FAIL', 'ERROR', 'unexpected success', 'NO RESULT', 'problem')
 #  A test whose verdict was never reached (SPEC.md 9.8): the game stuck, gone, or past a wall-clock guard.
 NO_RESULT = 'NO RESULT'
+#  Save mode, as the Java runner's (TasRunner.SAVE_SETTLE_TICKS): client ticks for a save's world to settle in.
+SAVE_SETTLE_TICKS = 60
+
+
+class OpenSave(EZData, frozen=True):
+  """
+  The save a run in save mode has open, as TasSave has it: its folder,
+  which load (1: as found, 2: after this game saved it), its pristine copy
+  and building list (empty when the run named no pristine folder), what was
+  logged while it loaded ('[logger] message (thrown)'), and how long it took.
+  """
+  folder = EZField[str]('')
+  load = EZField[int](1)
+  pristine = EZField[str]('')
+  buildings = EZField[str]('')
+  loadErrors = EZField[tuple]()
+  loadWarnings = EZField[tuple]()
+  loadSeconds = EZField[float](0.0)
+
+
+def _logged(line) -> str:
+  """A log line as TasLogErrors words one: '[logger] message (thrown)', the message cut at 200."""
+  message = line.message if len(line.message) <= 200 else line.message[:200] + '...'
+  return '[%s] %s%s' % (line.logger, message, ' (%s)' % line.thrownText if line.thrownText else '')
 
 
 class _Line:
@@ -97,6 +123,13 @@ class Run:
     self.testStopped = None
     #  the progress's count, as the Java runner's: each test's line one more, a failed setUpClass its tests' worth
     self.counted = 0
+    #  tests a failed setUpClass's line accounts for: counted there, never given a line of their own
+    self.covered = set()
+    #  save mode (runSaves): the saves are the worlds, so no fresh ones, no resets, no world hooks; the save open, and
+    #  the suffix its lines are named with (' [folder, load N]')
+    self.saveMode = False
+    self.save = None
+    self.suffix = ''
     self.gameDir = gameDir
     self.results = results
     self.stop = stop
@@ -145,7 +178,13 @@ class Run:
     self.worldNumber = 1
 
   def enterClass(self, name: str, shared: bool = False) -> None:
-    """A class's world: the one before it shared, or the kept one put back; then a reset, for its setUpClass."""
+    """
+    A class's world: the one before it shared, or the kept one put back;
+    then a reset, for its setUpClass. In save mode, the save as it is.
+    """
+    if self.saveMode:
+      self.lastClass = name
+      return
     if self.lastClass is None:
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
       self.worldNote = 'world 1: the run\'s first, for %s' % name
@@ -164,16 +203,84 @@ class Run:
     self.lastClass = name
     reset(self.game.connection)
 
-  def _load(self, op: str, args: dict) -> Any:
+  def _load(self, op: str, args: dict, what: str = 'the test world') -> Any:
     """
     A world made or opened. Unwatched, by world.open's own limit (180 s:
     TimedOut, no result). Watched, the watch judges it (Watch.guardLoad):
-    an alarm after a minute, and the watcher's answer.
+    an alarm after a minute, and the watcher's answer. The probe's opening
+    guard pictures a dropped login into the run's screenshots/ and opens it
+    again; its warning goes into the progress. A world that doesn't open is
+    no result (NoResult), whatever the game said: it is no test's verdict.
     """
-    if self.watch is None or not self.watch.watched:
-      return self.game.request(op, args, timeout=240)
-    pending = self.game.connection.send(op, dict(args, max_seconds=3600))
-    return self.watch.guardLoad(pending, 'the test world')
+    pictures = os.path.join(self.results, 'screenshots')
+    os.makedirs(pictures, exist_ok=True)
+    args = dict(args, pictures=pictures)
+    try:
+      if self.watch is None or not self.watch.watched:
+        pending = self.game.connection.send(op, args)
+        value = pending.result(240)
+      else:
+        pending = self.game.connection.send(op, dict(args, max_seconds=3600))
+        value = self.watch.guardLoad(pending, what)
+    except NO_RESULT_ERRORS:
+      raise
+    except NoResult:
+      raise
+    except UnitTasError as error:
+      raise NoResult("%s didn't open: %s" % (what, error)) from error
+    for warning in pending.warnings:
+      self.progress('%s: %s' % (what, warning))
+    return value
+
+  # ---------------------------------------------------------------- save mode
+
+  def beginSaves(self) -> None:
+    """Save mode's start: beforeRun, and no test world (the saves are the worlds)."""
+    self.begun = True
+    self.saveMode = True
+    self.game.request('hooks.run', {'hook': 'beforeRun'})
+
+  def openSave(self, folder: str, load: int, pristine: Optional[str] = None) -> Optional[str]:
+    """
+    Opens the save (load 1: as found, 2: as this game saved it) and lets it
+    settle; self.save is it then, with the log's errors and warnings from
+    the asking to the settled world. None, or what went wrong.
+    """
+    self.progress('opening %s %s' % (folder, 'as it was found' if load == 1 else 'again, as this game saved it'))
+    mark = self.game.mark()
+    started = time.monotonic()
+    try:
+      self._load('world.open', {'folder': folder}, folder)
+      self.game.ticks(SAVE_SETTLE_TICKS)
+    except NoResult as error:
+      return "couldn't open %s: %s" % (folder, error.why)
+    except NO_RESULT_ERRORS as error:
+      return "couldn't open %s: %s" % (folder, self.whyNoResult(error))
+    except UnitTasError as error:
+      return "couldn't open %s: %s" % (folder, error)
+    seconds = time.monotonic() - started
+    logged = self.game.logs(mark)
+    self.save = OpenSave(
+      folder=folder, load=load, pristine=os.path.join(pristine, folder) if pristine else '',
+      buildings=os.path.join(pristine, folder + '.buildings') if pristine else '',
+      loadErrors=tuple(_logged(line) for line in logged if line.level in ('ERROR', 'FATAL')),
+      loadWarnings=tuple(_logged(line) for line in logged if line.level == 'WARN'), loadSeconds=seconds)
+    self.progress('%s loaded in %.0f s' % (folder, seconds))
+    return None
+
+  def closeSave(self) -> Optional[str]:
+    """Saves and leaves the open save, back to the title screen; None, or what went wrong."""
+    self.save = None
+    try:
+      self.game.request('world.close', timeout=240)
+    except NotReady:
+      #  no world open: it never opened
+      return None
+    except NO_RESULT_ERRORS as error:
+      return "the save didn't close: %s" % self.whyNoResult(error)
+    except UnitTasError as error:
+      return "the save didn't close: %s" % error
+    return None
 
   def beforeTest(self, name: Optional[str] = None, limit: Optional[int] = None) -> int:
     """
@@ -196,7 +303,8 @@ class Run:
         self.stopped = self.suspect if then == self.suspect else '%s; and then: %s' % (self.suspect, then)
         raise NoResult('not run: no test result could be obtained after %s' % self.stopped) from error
       self.suspect = None
-    reset(self.game.connection)
+    if not self.saveMode:
+      reset(self.game.connection)
     mark = self.game.mark()
     self.inTest = True
     if self.watch is not None:
@@ -265,12 +373,14 @@ class Run:
       self.suspect = why
     self._add(_Line(name, NO_RESULT, seconds, why, (), None, self.worldNote))
 
-  def fixture(self, name: str, outcome: str, detail: str, seconds: float = 0.0, notRun: int = 0) -> None:
+  def fixture(self, name: str, outcome: str, detail: str, seconds: float = 0.0, notRun: tuple = ()) -> None:
     """
     A class fixture's line (setUpClass, tearDownClass) or a line for a test
-    it kept from running; 'notRun' is how many tests it kept from running.
+    it kept from running; 'notRun' names the tests it kept from running,
+    which its line accounts for (notRun gives them no line of their own).
     """
-    self._add(_Line(name, outcome, seconds, detail, (), None, self.worldNote), notRun)
+    self.covered.update(notRun)
+    self._add(_Line(name, outcome, seconds, detail, (), None, self.worldNote), len(notRun))
 
   def problem(self, name: str, detail: str) -> None:
     """unitTAS's own trouble, outside any test: a problem line, which fails the run."""
@@ -278,7 +388,7 @@ class Run:
 
   def notRun(self, names: list, why: str) -> None:
     """A NO RESULT line, saying why, for each of these tests that has no line yet: those a stopped run never reached."""
-    done = set(line.name for line in self.lines)
+    done = set(line.name for line in self.lines) | self.covered
     for name in names:
       if name not in done:
         self.noResult(name, why)
@@ -310,7 +420,8 @@ class Run:
       try:
         if self.stopped is None:
           if self.begun:
-            self.game.request('hooks.run', {'hook': 'tearDownWorld'})
+            if not self.saveMode:
+              self.game.request('hooks.run', {'hook': 'tearDownWorld'})
             self.game.request('hooks.run', {'hook': 'afterRun'})
           self.game.request('quit', {'reason': 'the run is done'})
         else:
@@ -408,18 +519,22 @@ class RunResult(unittest.TextTestResult):
       return
     which, className = fixture
     tests = self.classTests.get(className, [])
+    if isinstance(error[1], NoResult):
+      #  GameTestCase has given each of the class's tests its NO RESULT line already
+      return
     if isinstance(error[1], NO_RESULT_ERRORS):
       why = self.run.whyNoResult(error[1])
-      self.run.noResult('%s.%s' % (className, which), why)
+      self.run.noResult('%s.%s%s' % (className, which, self.run.suffix), why)
       if which == 'setUpClass':
         for name in tests:
-          self.run.noResult('%s.%s' % (className, name), 'not run: no test result could be obtained (%s)' % why)
+          self.run.noResult('%s.%s%s' % (className, name, self.run.suffix),
+                            'not run: no test result could be obtained (%s)' % why)
       return
     detail = _exceptionText(error)
-    notRun = len(tests) if which == 'setUpClass' else 0
+    notRun = tuple('%s.%s%s' % (className, name, self.run.suffix) for name in tests) if which == 'setUpClass' else ()
     if notRun:
-      detail += '\n(its %d test%s not run)' % (notRun, '' if notRun == 1 else 's')
-    self.run.fixture('%s.%s' % (className, which), 'ERROR', detail, notRun=notRun)
+      detail += '\n(its %d test%s not run)' % (len(notRun), '' if len(notRun) == 1 else 's')
+    self.run.fixture('%s.%s%s' % (className, which, self.run.suffix), 'ERROR', detail, notRun=notRun)
 
   def addSkip(self, test: Any, reason: str) -> None:
     super().addSkip(test, reason)
@@ -428,7 +543,7 @@ class RunResult(unittest.TextTestResult):
       return
     which, className = fixture
     for name in self.classTests.get(className, []):
-      self.run.fixture('%s.%s' % (className, name), 'skipped', '%s: %s' % (which, reason))
+      self.run.fixture('%s.%s%s' % (className, name, self.run.suffix), 'skipped', '%s: %s' % (which, reason))
 
 
 def _tests(suite: unittest.TestSuite) -> list:
@@ -542,3 +657,40 @@ def runSuites(run: Run, names: list, stream: Any = None, verbosity: int = 1) -> 
   for name, detail in problems:
     run.problem(name, detail)
   return runSuite(run, suite, stream=stream, verbosity=verbosity)
+
+
+def runSaves(run: Run, names: list, saves: list, pristine: Optional[str] = None, stream: Any = None,
+             verbosity: int = 1, start: Optional[str] = None) -> None:
+  """
+  Save mode (SPEC.md 9.3 step 9b), in the Java runner's order
+  (TasRunner.runSaves): for each load (1: as found, 2: as this game saved
+  it), each save opened and settled, the tests by their names run in it,
+  loaded afresh each time, with no resets and no world hooks (they would
+  change the save), each line named 'Class.test [folder, load N]'; then
+  the save closed. A save that doesn't open is a problem line, and the run
+  goes on with the next; one that doesn't close stops the run.
+  """
+  suite, problems = loadSuites(names, start)
+  for name, detail in problems:
+    run.problem(name, detail)
+  if not run.total:
+    run.total = len(reportNames(suite)) * len(saves) * 2
+  run.beginSaves()
+  try:
+    for load in (1, 2):
+      for folder in saves:
+        if run.stopped is not None:
+          return
+        run.suffix = ' [%s, load %d]' % (folder, load)
+        problem = run.openSave(folder, load, pristine)
+        if problem is not None:
+          run.problem('unitTAS.openSave' + run.suffix, problem)
+        else:
+          runSuite(run, loadSuites(names, start)[0], stream=stream, verbosity=verbosity)
+        problem = run.closeSave()
+        if problem is not None:
+          run.problem('unitTAS.closeSave' + run.suffix, problem)
+          run.stopped = problem
+          return
+  finally:
+    run.suffix = ''

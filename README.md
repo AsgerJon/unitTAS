@@ -68,6 +68,14 @@ time.
   dumped into `hang-threads.txt`.
 - The test world has 60 s to load; past that the run ends with `loading-trace.txt` (the local connection's steps)
   and `hang-threads.txt`, and the report says so.
+- Every world opening is watched, in both runners: the game says which screen it shows. 1.7.10's integrated server
+  sometimes drops its own local connection before the player joins, and the client then waits at the title screen
+  for ever, its ticks still counting. A client back at the title screen while its own server runs with nobody in it,
+  for 100 ticks of each side, is such a hung opening (it begins after the game has loaded, and counts ticks, so
+  neither the mods' loading nor a slow game counts against it). It is pictured (`screenshots/loading-dropped-1.png`,
+  or `<world>-dropped-1.png`), left, and opened again, once, and the progress says so. Hung twice, the world doesn't
+  open: the run's tests are `NO RESULT`. A Python run also pictures the game as it comes up
+  (`screenshots/opened.png`).
 - Outside the game, `./unittas.sh` takes a run that writes nothing new to `progress.txt` for 10 minutes
   (`UNITTAS_STALL_SECONDS` to change it) to be stuck: `./hang-dump.sh` writes each game JVM's threads into the results
   (`hang-*.txt`) and the game is stopped. A game that doesn't quit within a minute of its report is stopped too.
@@ -334,6 +342,8 @@ unittas run tests.test_give                            # a module
 unittas run tests.test_give.GiveTests.test_red_wool    # one test (or a class)
 unittas run --instance other.toml --results out/
 unittas run --watched                                  # alarms for a watcher where a limit would decide
+unittas run tests.test_saves --saves run/oldsaves/vanilla   # save mode: each save opened twice (below, "Old saves")
+unittas run --java oldsaves --saves run/oldsaves/vanilla    # a mod's Java suites, by java.run, here in save mode
 unittas launch --world                                 # the game alone, in the test world, to look at
 unittas watch                                          # the watcher, for a session that can't open windows
 unittas compare before/report.txt after/report.txt
@@ -398,6 +408,27 @@ Forge's universal jar, every library, the natives, the assets), so nothing is do
 needed. `./unittas.sh oldsaves instance` runs the release jar there with no saves, every suite its jars hold, in the
 fresh test world: for unitTAS's own jar there are none, and the run is the check that the jar starts outside a
 development run (`Ran 0 tests`, OK).
+
+**Through the orchestrator** (`unittas run`, "Tests in Python" above), in whatever game an instance spec names:
+
+- `unittas run --java oldsaves --saves run/oldsaves/vanilla` runs a mod's Java `oldsaves` suite:
+  - the saves go in as fresh copies (a copy of the same name already there goes into the results'
+    `saves-before-this-run/`);
+  - the Java runner's save mode runs inside the game (`java.run`), its lines shown as they come;
+  - the saves as the game left them go into `saves-after/`.
+
+  It is meant to replace `./unittas.sh oldsaves`'s real-client path. `--java` without `--saves` runs Java suites in
+  the fresh test world, in any game a spec names.
+- `unittas run tests.test_saves --saves DIR` runs Python tests in save mode, in the Java runner's order:
+  - each save is opened twice, as found and again as this game saved it, and settled 60 ticks;
+  - the tests run in it as they find it, with no resets and no world hooks;
+  - each line is `Class.test [save, load N]`.
+
+  `self.save()` is the save open: its `folder`, `load`, `pristine` copy and `buildings` list, and its `loadErrors`,
+  `loadWarnings` and `loadSeconds`.
+- unitTAS's own check needs no download. `python/tests/probe/test_oldsaves.py` makes `run/oldsaves/selfcheck/` (two
+  test worlds with a gold marker each) and runs the self suite `oldsaves` on it three ways (the script, `--java`, and
+  its Python twin). All three must come out the same.
 
 ## The watcher
 

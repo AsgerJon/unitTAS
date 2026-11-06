@@ -13,6 +13,7 @@ import net.minecraft.world.WorldType;
 import net.minecraft.world.storage.ISaveFormat;
 import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.common.MinecraftForge;
+import io.github.asgerjon.unittas.probe.Opening;
 import io.github.asgerjon.unittas.probe.Side;
 import io.github.asgerjon.unittas.probe.Sides;
 import io.github.asgerjon.unittas.probe.Window;
@@ -99,6 +100,9 @@ public final class TasGame {
 	private volatile Map<String, Integer> reportCounts;
 	/** The game's ticks and the steps run on them, the probe's own (one for the game, shared). */
 	private final Sides sides = Sides.get();
+	/** The opening guard for the test world (Opening): a dropped login is opened again once. */
+	private final Opening opening = new Opening();
+	private int dropped;
 	private final List<ChatLine> chat = new ArrayList<>();
 	/** When the test world began loading (System.currentTimeMillis()). */
 	private volatile long loadingSince;
@@ -234,6 +238,23 @@ public final class TasGame {
 				String givenUp = giveUpLoading;
 				if (givenUp == null && (mc.thePlayer == null || mc.theWorld == null || serverPlayerOrNull() == null)) {
 					settledTicks = 0;
+					MinecraftServer server = MinecraftServer.getServer();
+					boolean serverUp = server != null && !server.isServerStopped() && sides.tickedAt(Side.SERVER) > 0;
+					String hung = opening.dropped(mc.currentScreen instanceof GuiMainMenu, serverUp, false, sides.ticks(Side.CLIENT),
+						sides.ticks(Side.SERVER)) ? Opening.DROPPED : null;
+					if (hung != null) {
+						dropped++;
+						String picture = TasHang.picture(mc, request.results, "loading-dropped-" + dropped + ".png");
+						if (dropped > Opening.RETRIES) {
+							givenUp = hung + "; and again after it was opened once more (picture " + picture + ")";
+						} else {
+							request.progress(hung + ": left and opened again (picture " + picture + ")");
+							// left as Save and Quit leaves a world (its server stopped), then the world made by the first try opened
+							Worlds.close(mc);
+							Worlds.open(mc, WORLD_FOLDER);
+							opening.reset();
+						}
+					}
 					if (stageTicks == 100 || stageTicks % 400 == 0) {
 						String picture = TasHang.picture(mc, request.results, stageTicks / 20);
 						request.progress("loading for " + stageTicks / 20 + " s: the screen is "

@@ -13,8 +13,9 @@ plain 'python -m unittest' alike.
 
 - UsageError: a mistake in how the command was called.
 - findSpec, resultsFolder: where the spec and the results are.
-- runTests: 'unittas run'; watchFor its watch; launchGame: 'unittas
-  launch'.
+- runTests: 'unittas run' (in save mode with --saves); runJava: 'unittas
+  run --java'; findSaves, savesIn, savesOut: the old saves in and out;
+  watchFor a run's watch; launchGame: 'unittas launch'.
 - autoRun, endAutoRun: the run plain unittest's first GameTestCase starts.
 """
 #  Apache-2.0 license
@@ -23,14 +24,15 @@ from __future__ import annotations
 
 import atexit
 import os
+import shutil
 import sys
 import time
 from typing import TYPE_CHECKING
 
 from .api import Game
-from .errors import NO_RESULT_ERRORS, NoResult, UnitTasError, whyNoResult
-from .gamefiles import removeTree
-from .run import FOLDER, Run, loadSuites, reportNames, runSuite
+from .errors import NO_RESULT_ERRORS, LinkTimeout, NoResult, UnitTasError, whyNoResult
+from .gamefiles import copyExactly, removeTree
+from .run import FOLDER, Run, loadSuites, reportNames, runSaves, runSuite
 from .spec import InstanceSpec, SpecError
 from .specgame import gameFor
 from .watch import Watch
@@ -138,14 +140,25 @@ def mappingsFor(connection: Connection, launched: LaunchedGame, environ: dict) -
   return Mappings.load(Sources(gradleHome=gradleHome, cache=getattr(launched, 'cache', None) or Cache()))
 
 
-def _ready(launched: LaunchedGame) -> Connection:
-  """The game started and at its title screen ('ready'); stopped again if it doesn't get there."""
+def _ready(launched: LaunchedGame, results: Optional[str] = None) -> Connection:
+  """
+  The game started and at its title screen ('ready'); stopped again if it
+  doesn't get there. The opening guard's first picture: the game as it came
+  up (screenshots/opened.png in the results), evidence that it did.
+  """
   connection = launched.start()
   try:
     connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
   except BaseException:
     launched.stop()
     raise
+  if results is not None:
+    picture = os.path.join(results, 'screenshots', 'opened.png')
+    os.makedirs(os.path.dirname(picture), exist_ok=True)
+    try:
+      connection.request('screenshot', {'file': picture}, timeout=60)
+    except UnitTasError:  # a picture is evidence, not the run: its absence says it
+      pass
   return connection
 
 
@@ -189,16 +202,146 @@ def watchFor(run: Run, environ: dict, watched: bool = False) -> Watch:
   return watch
 
 
+# ---------------------------------------------------------------- old saves
+
+
+def findSaves(pristine: str) -> list:
+  """The saves in a pristine folder: each folder in it that holds a level.dat, by name. UsageError if none."""
+  if not os.path.isdir(pristine):
+    raise UsageError('--saves %s: no such folder' % pristine)
+  names = sorted(name for name in os.listdir(pristine) if os.path.isfile(os.path.join(pristine, name, 'level.dat')))
+  if not names:
+    raise UsageError('--saves %s: no saves in it (a save is a folder holding level.dat)' % pristine)
+  return names
+
+
+def savesIn(pristine: str, gameDir: str, results: str) -> list:
+  """
+  The pristine folder's saves into the game's saves/ as fresh copies; a
+  copy of the same name already there goes into the results'
+  saves-before-this-run/, never deleted (as unittas-oldsaves.sh has it).
+  Their names.
+  """
+  names = findSaves(pristine)
+  saves = os.path.join(gameDir, 'saves')
+  os.makedirs(saves, exist_ok=True)
+  for name in names:
+    there = os.path.join(saves, name)
+    if os.path.lexists(there):
+      before = os.path.join(results, 'saves-before-this-run')
+      os.makedirs(before, exist_ok=True)
+      shutil.move(there, os.path.join(before, name))
+    copyExactly(os.path.join(pristine, name), there)
+  return names
+
+
+def savesOut(names: list, gameDir: str, results: str) -> None:
+  """After the run: the copies as the game left them, into the results' saves-after/."""
+  after = os.path.join(results, 'saves-after')
+  for name in names:
+    there = os.path.join(gameDir, 'saves', name)
+    if os.path.lexists(there):
+      os.makedirs(after, exist_ok=True)
+      shutil.move(there, os.path.join(after, name))
+
+
+def runJava(spec: InstanceSpec, suites: list, results: str, out: TextIO, environ: dict,
+            pristine: Optional[str] = None, gameFor: Optional[Callable] = None, watched: bool = False) -> int:
+  """
+  'unittas run --java': Java suites in the spec's game, by java.run, with
+  its saves when given (Java's own save loop: TasRunner.runSaves). The
+  Java runner's progress shown as it comes; its report is the run's.
+  """
+  saveNames = findSaves(pristine) if pristine else []
+
+  def say(line: str) -> None:
+    print('[%s] %s' % (time.strftime('%H:%M:%S'), line), file=out)
+    out.flush()
+
+  launched = (gameFor or globals()['gameFor'])(spec, results, 'game')
+  try:
+    connection = _ready(launched, results)
+  except Exception as error:  # whatever kept the game from starting: no test has a result
+    run = Run(None, '', results, say=say)
+    run.problem('unitTAS.game', "the game didn't start: %s" % _said(error))
+    _show(out, run.writeReport())
+    return 1
+  progress = os.path.join(results, 'progress.txt')
+  shown = [0]
+
+  def follow() -> None:
+    """The Java runner's progress lines, each once, as they come."""
+    try:
+      with open(progress, encoding='utf-8', errors='replace') as file:
+        lines = file.read().split('\n')[:-1]
+    except OSError:
+      return
+    for line in lines[shown[0]:]:
+      say(line)
+    shown[0] = len(lines)
+
+  copied = []
+  interrupted = False
+  failure = None
+  pending = None
+  try:
+    if pristine:
+      copied = savesIn(pristine, launched.gameDir, results)
+    args = {'suites': suites, 'results': results, 'watched': bool(watched or environ.get('UNITTAS_WATCHED') == '1'),
+            'watch_pictures': int(environ.get('UNITTAS_PICTURE_SECONDS', '10')),
+            'watch_decide': int(environ.get('UNITTAS_DECIDE_SECONDS', '300'))}
+    if copied:
+      args.update(saves=copied, oldsaves=os.path.abspath(pristine))
+    pending = connection.send('java.run', args)
+    while True:
+      try:
+        pending.result(0.5)
+        break
+      except LinkTimeout:
+        follow()
+  except KeyboardInterrupt:
+    interrupted = True
+    if pending is not None:
+      try:
+        #  as the watch's stop: the test running now, none after it; the Java runner writes its report
+        connection.cancel(pending)
+        pending.result(120)
+      except Exception:  # cancelled, or past answering: the game is stopped below either way
+        pass
+  except Exception as error:  # java.run refused, or the game went: said in the report if the runner wrote none
+    failure = _said(error)
+  finally:
+    follow()
+    try:
+      connection.request('quit', {'reason': 'the Java run is done'}, timeout=10)
+    except Exception:  # stuck or gone: the stop below ends it
+      pass
+    launched.stop()
+    if copied:
+      savesOut(copied, launched.gameDir, results)
+  report = os.path.join(results, 'report.txt')
+  if not os.path.isfile(report):
+    run = Run(None, '', results)
+    run.problem('unitTAS.java', 'java.run gave no report: %s' % (failure or 'stopped by Ctrl+C'))
+    report = run.writeReport()
+  passed = _show(out, report)
+  return 130 if interrupted else (0 if passed else 1)
+
+
 def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: str, environ: dict,
-             gameFor: Optional[Callable] = None, watched: bool = False) -> int:
+             gameFor: Optional[Callable] = None, watched: bool = False, pristine: Optional[str] = None) -> int:
   """
   'unittas run': the tests on the spec's game, watched (watchFor), the
-  report shown. 0 for OK, 1 for FAILED, 130 after Ctrl+C (the run ended
-  properly all the same).
+  report shown; with 'pristine', in save mode on its saves (runSaves). 0
+  for OK, 1 for FAILED, 130 after Ctrl+C (the run ended properly all the
+  same).
   """
   start = gameFor or globals()['gameFor']
+  saveNames = findSaves(pristine) if pristine else []
   suite, problems = loadSuites(names, cwd)
   wanted = reportNames(suite)
+  if saveNames:
+    wanted = ['%s [%s, load %d]' % (name, folder, load) for load in (1, 2) for folder in saveNames for name in wanted]
 
   def say(line: str) -> None:
     print('[%s] %s' % (time.strftime('%H:%M:%S'), line), file=out)
@@ -215,7 +358,7 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
     return 1
   launched = start(spec, results, 'game')
   try:
-    connection = _ready(launched)
+    connection = _ready(launched, results)
   except Exception as error:  # whatever kept the game from starting: no test has a result
     _show(out, _unstarted(results, problems, wanted, _said(error)))
     return 1
@@ -230,14 +373,20 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
     run.problem(name, detail)
   interrupted = False
   passedUnittest = True
+  copied = []
   try:
-    try:
-      run.begin()
-    except Exception as error:  # the run's world or its plugins' beforeRun: nothing after it has a result
-      run.problem('unitTAS.run', "the run couldn't begin: %s" % _why(error))
-      run.stopped = "the run couldn't begin: %s" % _why(error)
-    with open(os.path.join(results, 'unittest.txt'), 'w', encoding='utf-8') as log:
-      passedUnittest = runSuite(run, suite, stream=log, verbosity=2).wasSuccessful()
+    if saveNames:
+      copied = savesIn(pristine, launched.gameDir, results)
+      with open(os.path.join(results, 'unittest.txt'), 'w', encoding='utf-8') as log:
+        runSaves(run, names, copied, os.path.abspath(pristine), stream=log, verbosity=2, start=cwd)
+    else:
+      try:
+        run.begin()
+      except Exception as error:  # the run's world or its plugins' beforeRun: nothing after it has a result
+        run.problem('unitTAS.run', "the run couldn't begin: %s" % _why(error))
+        run.stopped = "the run couldn't begin: %s" % _why(error)
+      with open(os.path.join(results, 'unittest.txt'), 'w', encoding='utf-8') as log:
+        passedUnittest = runSuite(run, suite, stream=log, verbosity=2).wasSuccessful()
   except KeyboardInterrupt:
     interrupted = True
     if run.stopped is None:
@@ -247,6 +396,8 @@ def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: st
     if run.stopped is not None:
       run.notRun(wanted, 'not run: no test result could be obtained after %s' % run.stopped)
     report = run.finish()
+    if copied:
+      savesOut(copied, launched.gameDir, results)
   passed = _show(out, report)
   if interrupted:
     return 130
@@ -270,7 +421,7 @@ def launchGame(spec: InstanceSpec, results: str, out: TextIO, world: bool = Fals
         'so it can\'t be played. Close its window, or press Ctrl+C here, to end it.' % spec.path, file=out)
   out.flush()
   try:
-    connection = _ready(launched)
+    connection = _ready(launched, results)
     if world:
       game = Game(connection)
       folder = os.path.join(launched.gameDir, 'saves', FOLDER)
@@ -320,7 +471,7 @@ def autoRun(environ: Optional[dict] = None, cwd: Optional[str] = None, gameFor: 
   results = resultsFolder(spec, None, environ)
   launched = (gameFor or globals()['gameFor'])(spec, results, 'game')
   try:
-    connection = _ready(launched)
+    connection = _ready(launched, results)
   except Exception as error:  # whatever kept the game from starting
     _auto['failed'] = "the game didn't start: %s (its output: %s)" % (_said(error), results)
     raise NoResult(_auto['failed']) from error
