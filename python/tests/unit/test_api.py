@@ -59,6 +59,41 @@ class GameTests(unittest.TestCase):
     self.assertEqual(CommandResult(1, ('Given [Red Wool] * 1',), ()), said)
     self.assertEqual([('command.run', None, {'command': '/give @p wool 1 14'})], self.sent())
 
+  def test_joining_and_leaving_a_server(self) -> None:
+    """server.join on 127.0.0.1 at the port given, its wait long enough for the join's own limit; server.leave."""
+    game = self.game({'server.join': lambda args, side: {'load_ms': 900},
+                      'server.leave': lambda args, side: {'leave_ms': 40}})
+    self.assertEqual(900, game.join(41300))
+    self.assertEqual(40, game.leave())
+    self.assertEqual([('server.join', None, {'address': '127.0.0.1', 'port': 41300, 'settle_ticks': 40, 'max_seconds': 180}),
+                      ('server.leave', None, {})], self.sent())
+    from unittas.errors import Disconnected
+    refused = self.game({'server.join': lambda args, side: (_ for _ in ()).throw(FakeError(
+      'Disconnected', "couldn't join 127.0.0.1:41301: Failed to connect to the server: Connection refused",
+      reason='Failed to connect to the server: Connection refused'))})
+    with self.assertRaises(Disconnected) as raised:
+      refused.join(41301, settleTicks=10)
+    self.assertIn('Connection refused', str(raised.exception))
+
+  def test_players_by_name_on_a_server(self) -> None:
+    """players.list, player.kick, a command as a player or the console, a player named (SPEC.md 11.3, step 4)."""
+    alice = dict(PLAYER, name='alice')
+    listed = [{'name': 'alice', 'uuid': 'a-uuid', 'entity': 7, 'dimension': 'minecraft:overworld', 'pos': [0.5, 4, 0.5]}]
+    game = self.game({'players.list': lambda args, side: listed, 'player.kick': lambda args, side: {},
+                      'player.get': lambda args, side: alice,
+                      'command.run': lambda args, side: {'result': 1, 'lines': [], 'errors': []}})
+    self.assertEqual(('alice',), tuple(each['name'] for each in game.players()))
+    game.kick('bob', 'the test is done with bob')
+    self.assertEqual('alice', game.player(name='alice').name)
+    game.command('/say hi', as_='server')
+    game.command('/say hi', as_='bob')
+    game.command('/say hi')
+    self.assertEqual([('players.list', None, {}), ('player.kick', None, {'player': 'bob', 'reason': 'the test is done with bob'}),
+                      ('player.get', None, {'player': 'alice'}),
+                      ('command.run', None, {'command': '/say hi', 'as': 'server'}),
+                      ('command.run', None, {'command': '/say hi', 'as': {'player': 'bob'}}),
+                      ('command.run', None, {'command': '/say hi'})], self.sent())
+
   def test_the_player_and_the_inventory(self) -> None:
     game = self.game({
       'player.get': lambda args, side: dict(PLAYER, camera=0) if side == 'client' else PLAYER,

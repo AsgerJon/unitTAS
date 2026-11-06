@@ -155,10 +155,11 @@ public final class Probe implements Link.Handler {
 				boolean server = snapshot.serverRunning;
 				long clientAt = sides.tickedAt(Side.CLIENT);
 				long serverAt = sides.tickedAt(Side.SERVER);
+				boolean dedicated = dedicated();
 				link.event("tick", Json.object(
-					"client", sides.ticks(Side.CLIENT),
+					"client", dedicated ? null : sides.ticks(Side.CLIENT),
 					"server", server ? sides.ticks(Side.SERVER) : null,
-					"client_ago_ms", clientAt == 0 ? null : now - clientAt,
+					"client_ago_ms", dedicated || clientAt == 0 ? null : now - clientAt,
 					"server_ago_ms", server && serverAt != 0 ? now - serverAt : null,
 					"screen", snapshot.screen,
 					"state", snapshot.state,
@@ -192,6 +193,30 @@ public final class Probe implements Link.Handler {
 
 	public static boolean active() {
 		return probe != null;
+	}
+
+	/** Whether this game is a dedicated server (its start file's role): a server side only, no client, no window. */
+	boolean dedicated() {
+		return "server".equals(start.role);
+	}
+
+	/** The side a request runs on when it names none and either would do: the client's, or a dedicated server's own. */
+	Side ownSide() {
+		return dedicated() ? Side.SERVER : Side.CLIENT;
+	}
+
+	/** A dedicated server's players by name, for status: kept by its hooks as they come and go. */
+	final java.util.Set<String> players = java.util.Collections.synchronizedSet(new java.util.TreeSet<>());
+
+	java.util.List<String> playerNames() {
+		synchronized (players) {
+			return new ArrayList<>(players);
+		}
+	}
+
+	/** What a request for the client side gets from a dedicated server (PROTOCOL.md 9.1). */
+	static ProbeException noClientSide() {
+		return new ProbeException("Unsupported", "a dedicated server has no client side", Json.object("role", "server"));
 	}
 
 	/** The probe, or null in an ordinary game. */
@@ -269,6 +294,9 @@ public final class Probe implements Link.Handler {
 		Side side;
 		try {
 			side = sideFor(op, sideGiven, args);
+			if (side == Side.CLIENT && dedicated()) {
+				throw noClientSide();
+			}
 		} catch (ProbeException e) {
 			from.error(id, e.type, e.getMessage(), e.fields);
 			return;
@@ -327,6 +355,9 @@ public final class Probe implements Link.Handler {
 		if (side == null) {
 			throw ProbeException.badRequest("side", "side is client or server, not " + given);
 		}
+		if (side == Side.CLIENT && probe != null && probe.dedicated()) {
+			throw noClientSide();
+		}
 		if (!op.allows(side)) {
 			throw ProbeException.badRequest("side", op.name + " runs on the " + op.sides[0].wire + " only");
 		}
@@ -361,7 +392,8 @@ public final class Probe implements Link.Handler {
 	@Override
 	public JsonObject at() {
 		Sides sides = Sides.get();
-		return Json.object("client", sides.ticks(Side.CLIENT), "server", snapshot.serverRunning ? sides.ticks(Side.SERVER) : null);
+		return Json.object("client", dedicated() ? null : sides.ticks(Side.CLIENT), "server",
+			snapshot.serverRunning ? sides.ticks(Side.SERVER) : null);
 	}
 
 	/** An event to the orchestrator (dropped if the link has ended). */

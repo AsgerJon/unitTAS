@@ -22,6 +22,7 @@ import subprocess
 import sys
 
 from .game import LaunchedGame
+from .launcher import PLAYER_NAME
 
 def releaseJarIn(libs: str, version: str) -> str:
   """
@@ -54,7 +55,8 @@ def releaseJar(root: str, log: str) -> str:
   first; its output into 'log') and returns it, checked to be this build's.
   """
   with open(log, 'ab') as output:
-    code = subprocess.call(['./gradlew', '--console=plain', 'remapJar'], cwd=root, stdin=subprocess.DEVNULL,
+    #  no daemon: a test's build leaves no Gradle process behind (2026-11-06: one of ~840 MB stayed after test_server)
+    code = subprocess.call(['./gradlew', '--no-daemon', '--console=plain', 'remapJar'], cwd=root, stdin=subprocess.DEVNULL,
                            stdout=output, stderr=subprocess.STDOUT)
   if code != 0:
     raise RuntimeError('the release build failed (exit %d); its log: %s' % (code, log))
@@ -88,8 +90,13 @@ class ReleaseGame(LaunchedGame):
   """
 
   def __init__(self, root: str, results: str, name: str = 'release', jar: str = None, cache: str = None,
-               gradleCache: bool = True) -> None:
+               gradleCache: bool = True, folder: str = None, username: str = None) -> None:
+    if username is not None and not PLAYER_NAME.match(username):
+      raise ValueError('%r is no player name 1.7.10 takes (letters, digits and _, 1 to 16 of them)' % (username,))
     LaunchedGame.__init__(self, root, results, name)
+    #  its own folder and player, for several clients at once (SPEC.md 11.3, step 4); run/release and unitTAS otherwise
+    self.__folder__ = folder
+    self.__username__ = username
     self.__jar__ = jar
     self.__mods__ = []
     #  the download cache to fill (None: the Gradle cache only, nothing downloaded), and whether to use the Gradle cache
@@ -97,7 +104,7 @@ class ReleaseGame(LaunchedGame):
     self.__gradle_cache__ = gradleCache
 
   def gameFolder(self) -> str:
-    return os.path.join(self.root(), 'run', 'release')
+    return self.__folder__ or os.path.join(self.root(), 'run', 'release')
 
   def command(self) -> list:
     words = [os.path.join(self.root(), 'unittas-display.sh'), sys.executable, '-I',
@@ -106,6 +113,8 @@ class ReleaseGame(LaunchedGame):
       words += ['--cache', self.__cache__]
     if not self.__gradle_cache__:
       words.append('--no-gradle-cache')
+    if self.__username__:
+      words += ['--username', self.__username__]
     return words
 
   def outputName(self) -> str:

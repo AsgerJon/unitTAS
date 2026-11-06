@@ -68,6 +68,7 @@ public final class ClientHooks {
 		GameOps.bind(probe);
 		ResetOps.bind(probe);
 		ThingOps.bind(probe);
+		JoinOps.bind(probe);
 		io.github.asgerjon.unittas.UnitTasMode.soundListener = (id, known, from, volume, pitch, x, y, z) -> {
 			if (probe.events.sound) {
 				probe.event("sound", Json.object("id", id, "known", known, "from", from, "volume", (double) volume,
@@ -113,6 +114,18 @@ public final class ClientHooks {
 		// a server side to run on: an integrated server up and ticking (its first tick gives it a thread)
 		snapshot.serverRunning = !stopped && sides.tickedAt(Side.SERVER) > 0;
 		snapshot.inWorld = Worlds.inWorld(mc);
+		snapshot.remote = JoinOps.inRemoteWorld(mc);
+		if (mc.currentScreen instanceof net.minecraft.client.gui.GuiDisconnected && snapshot.disconnected == null) {
+			snapshot.disconnected = JoinOps.reason((net.minecraft.client.gui.GuiDisconnected) mc.currentScreen);
+		}
+		if (snapshot.joined != null && mc.theWorld == null) {
+			// out of the server it joined: left, kicked, or the server gone (the disconnected screen says which)
+			String was = snapshot.joined;
+			snapshot.joined = null;
+			String[] where = was.split(":", 2);
+			probe.event("connection", Json.object("state", "left", "address", where[0], "port", Long.parseLong(where[1]),
+				"reason", snapshot.disconnected));
+		}
 		snapshot.menu = mc.currentScreen instanceof net.minecraft.client.gui.GuiMainMenu;
 		snapshot.worldFolder = stopped ? null : server.getFolderName();
 		snapshot.dimension = mc.thePlayer == null ? null : Worlds.dimension(mc.thePlayer.dimension);

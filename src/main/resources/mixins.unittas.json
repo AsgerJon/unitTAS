@@ -17,5 +17,9 @@
     "client.MixinNetworkSystemTrace",
     "client.MixinPlayClientTrace",
     "client.MixinSoundHandler"
+  ],
+  "server": [
+    "server.MixinDedicatedServer",
+    "server.MixinNetworkSystemDrop"
   ]
 }

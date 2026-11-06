@@ -27,7 +27,14 @@ final class Ops {
 	private Ops() {
 	}
 
+	/**
+	 * The operations of this game's role: a client's (both sides while a world of its own is open), or a dedicated
+	 * server's (SPEC.md 11.3, step 2), which has only a server side and only the operations whose bodies name no client
+	 * class (ServerOps). A client's operation isn't declared there at all, so the hello doesn't list it and asking for it
+	 * is Unsupported.
+	 */
 	static void declare(Probe probe) {
+		Side[] both = probe.dedicated() ? new Side[]{Side.SERVER} : new Side[]{Side.CLIENT, Side.SERVER};
 		// the session (8.1)
 		// those marked alongsideJava answer while a java.run goes too: they don't touch the game (8.14)
 		probe.register(Op.probe("status").whileLoading().alongsideJava().does(call -> status(call.probe)));
@@ -45,18 +52,33 @@ final class Ops {
 		// ticks and waiting (8.2)
 		probe.register(Op.probe("ticks.wait").alongsideJava().does(Ops::ticksWait));
 		probe.register(Op.probe("wait.until").does(Ops::waitUntil));
-		probe.register(Op.onSide("batch", Side.CLIENT, Side.SERVER).needingASide().does(Ops::batch));
+		probe.register(Op.onSide("batch", both).needingASide().does(Ops::batch));
 		// debugging (8.12)
-		probe.register(Op.onSide("debug.lag", Side.CLIENT, Side.SERVER).does(Ops::lag));
-		// the integrated server drops its next local connections as 1.7.10's login race does: the opening guard's tests
+		probe.register(Op.onSide("debug.lag", both).does(Ops::lag));
+		probe.register(Op.probe("debug.threads").whileLoading().alongsideJava().does(Ops::threads));
+		probe.register(Op.probe("debug.trace").whileLoading().alongsideJava()
+			.does(call -> Json.object("lines", io.github.asgerjon.unittas.TasTrace.lines())));
+		// the server drops its next connections as 1.7.10's login race does: the opening guard's tests on a client (its
+		// integrated server's), the join guard's on a dedicated server (MixinNetworkSystemDrop)
 		probe.register(Op.probe("debug.drop_login").does(call -> {
 			long logins = call.number("logins", 1, 0, 10);
 			Opening.DROP_LOGINS.set((int) logins);
 			return Json.object("logins", logins);
 		}));
-		probe.register(Op.probe("debug.threads").whileLoading().alongsideJava().does(Ops::threads));
-		probe.register(Op.probe("debug.trace").whileLoading().alongsideJava()
-			.does(call -> Json.object("lines", io.github.asgerjon.unittas.TasTrace.lines())));
+		declareRefs(probe);
+		if (probe.dedicated()) {
+			// a dedicated server's, given their bodies at its preInit (ServerOps)
+			probe.register(Op.onSide("world.get", Side.SERVER).reading());
+			probe.register(Op.onSide("world.prepare", Side.SERVER));
+			probe.register(Op.onSide("command.run", Side.SERVER));
+			probe.register(Op.onSide("players.list", Side.SERVER).reading());
+			probe.register(Op.onSide("player.get", Side.SERVER).reading());
+			probe.register(Op.onSide("player.kick", Side.SERVER));
+			return;
+		}
+		// a dedicated server joined and left (9.3), given their bodies at preInit (JoinOps)
+		probe.register(Op.probe("server.join"));
+		probe.register(Op.probe("server.leave"));
 		// today's Java runner (8.14), given its body at preInit (JavaOps)
 		probe.register(Op.probe("java.run"));
 		// worlds (8.3), given their bodies at preInit (WorldOps)
@@ -105,9 +127,15 @@ final class Ops {
 		probe.register(Op.onSide("camera.set", Side.CLIENT));
 		probe.register(Op.onSide("sound.play", Side.CLIENT));
 		probe.register(Op.onSide("screenshot", Side.CLIENT));
-		// reflection (8.11), given its bodies at preInit (ThingOps); the refs are the probe's own
+		// reflection (8.11), given its bodies at preInit (ThingOps); the refs are the probe's own (declareRefs)
 		probe.register(Op.onSide("reflect.get", Side.SERVER, Side.CLIENT).reading().needingASide());
 		probe.register(Op.onSide("reflect.set", Side.SERVER, Side.CLIENT).needingASide());
+		// the client's own, given their bodies at preInit (ClientOps)
+		probe.register(Op.onSide("screen.get", Side.CLIENT).reading());
+	}
+
+	/** The probe's own refs, in either role. */
+	private static void declareRefs(Probe probe) {
 		probe.register(Op.probe("refs.release").alongsideJava().does(call -> {
 			com.google.gson.JsonElement ids = call.args.get("refs");
 			if (ids == null || !ids.isJsonArray()) {
@@ -122,8 +150,6 @@ final class Ops {
 			call.probe.refs.clear("refs.clear released it");
 			return new JsonObject();
 		}));
-		// the client's own, given their bodies at preInit (ClientOps)
-		probe.register(Op.onSide("screen.get", Side.CLIENT).reading());
 	}
 
 	// ---------------------------------------------------------------- the session
@@ -135,9 +161,10 @@ final class Ops {
 		Runtime runtime = Runtime.getRuntime();
 		long megabyte = 1024L * 1024L;
 		boolean server = snapshot.serverRunning;
-		long clientAt = sides.tickedAt(Side.CLIENT);
+		boolean dedicated = probe.dedicated();
+		long clientAt = dedicated ? 0 : sides.tickedAt(Side.CLIENT);
 		long serverAt = sides.tickedAt(Side.SERVER);
-		JsonObject window = snapshot.ready ? Json.object(
+		JsonObject window = snapshot.ready && !dedicated ? Json.object(
 			"title", snapshot.windowTitle,
 			"width", snapshot.width,
 			"height", snapshot.height,
@@ -145,12 +172,13 @@ final class Ops {
 		return Json.object(
 			"state", snapshot.state,
 			"role", probe.start.role,
-			"sides", server ? Arrays.asList("client", "server") : Collections.singletonList("client"),
-			"joined", null,
-			"players", Collections.emptyList(),
+			"sides", dedicated ? Collections.singletonList("server")
+				: server ? Arrays.asList("client", "server") : Collections.singletonList("client"),
+			"joined", snapshot.joined,
+			"players", dedicated ? probe.playerNames() : Collections.emptyList(),
 			"screen", snapshot.screen,
 			"paused", snapshot.paused,
-			"ticks", Json.object("client", sides.ticks(Side.CLIENT), "server", server ? sides.ticks(Side.SERVER) : null),
+			"ticks", Json.object("client", dedicated ? null : sides.ticks(Side.CLIENT), "server", server ? sides.ticks(Side.SERVER) : null),
 			"ago_ms", Json.object(
 				"client", clientAt == 0 ? null : now - clientAt,
 				"server", server && serverAt != 0 ? now - serverAt : null),
@@ -189,8 +217,18 @@ final class Ops {
 
 	// ---------------------------------------------------------------- ticks and waiting
 
-	/** Throws NotReady when the side has no thread: no server while no world is open. */
+	/**
+	 * Throws NotReady when the side has no thread: no server while no world is open. Unsupported for a client side on a
+	 * dedicated server, which has none.
+	 */
 	static void needThread(Probe probe, Side side) throws ProbeException {
+		if (side == Side.CLIENT && probe.dedicated()) {
+			throw Probe.noClientSide();
+		}
+		if (side == Side.SERVER && probe.snapshot.joined != null) {
+			throw new ProbeException("NotReady", "this client has joined " + probe.snapshot.joined + ": that server's side is"
+				+ " its own probe's to ask", Json.object("joined", probe.snapshot.joined));
+		}
 		if (side == Side.SERVER && !probe.snapshot.serverRunning) {
 			throw new ProbeException("NotReady", "no world is open, so there is no server side to wait for",
 				Json.object("state", probe.snapshot.state, "screen", probe.snapshot.screen));
@@ -219,7 +257,7 @@ final class Ops {
 			}
 			target = call.with(until, null).number(name, 0, 0, Long.MAX_VALUE);
 		} else {
-			side = call.sideArg("side", Side.CLIENT);
+			side = call.sideArg("side", call.probe.ownSide());
 			target = -1;
 		}
 		long n = call.number("n", 1, 0, 100_000_000L);
@@ -256,7 +294,7 @@ final class Ops {
 	 * answer, not an error: the test says what it saw last.
 	 */
 	private static JsonElement waitUntil(Call call) throws ProbeException, InterruptedException {
-		Side side = call.sideArg("side", Side.CLIENT);
+		Side side = call.sideArg("side", call.probe.ownSide());
 		String opName = call.string("op", null);
 		if (opName == null) {
 			throw ProbeException.badRequest("op", "wait.until needs the op to check");

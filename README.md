@@ -330,6 +330,9 @@ class GiveTests(GameTestCase):
   `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), `ticks(n)`, `waitUntil`, `screenshot`, and
   `reflect` by readable names (a real client's are translated). Its values are typed (`unittas.values`). An error
   from the game is the package's exception (`unittas.errors`): a mod that threw is a `GameError`.
+- `command` gives back the command's `result` (1 for success in 1.7.10), `lines` (the chat lines that came in while it
+  ran, plain) and `errors` (the red ones among them). A refusal's text is checked with a substring:
+  `any('higher than the maximum' in line for line in said.errors)`.
 - The levels are the Java runner's. Each class gets the kept world back unless it says `shared_world = True`. The
   player is reset before every test, whatever its own `setUp` does. `setUpClass` (which calls
   `super().setUpClass()` first, as unittest has it) runs in the class's world. `self.chat()` and `self.sounds()` are

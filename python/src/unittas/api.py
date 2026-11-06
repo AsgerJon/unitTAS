@@ -142,16 +142,53 @@ class Game:
     """A line into the game's log, under unitTAS: a test's edges, for a person reading latest.log."""
     self.request('log.write', {'message': message, 'level': level})
 
+  # ---------------------------------------------------------------- a dedicated server, joined and left (PROTOCOL.md 9.3)
+
+  def join(self, port: int, settleTicks: int = 40, maxSeconds: int = 180) -> int:
+    """
+    This client joins the dedicated server on 127.0.0.1 at 'port', as
+    Direct Connect does, and stands in its world 'settleTicks' client ticks.
+    Its milliseconds. Disconnected (with the reason the client was shown)
+    when it is refused or kicked; TimedOut past 'maxSeconds'.
+    """
+    answer = self.request('server.join', {'address': '127.0.0.1', 'port': port, 'settle_ticks': settleTicks,
+                                          'max_seconds': maxSeconds}, timeout=maxSeconds + 30)
+    return answer['load_ms']
+
+  def leave(self, maxSeconds: int = 60) -> int:
+    """This client leaves the server it joined, as the pause menu's Disconnect does; at the title screen then. Its ms."""
+    answer = self.request('server.leave', None if maxSeconds == 60 else {'max_seconds': maxSeconds},
+                          timeout=maxSeconds + 30)
+    return answer['leave_ms']
+
   # ---------------------------------------------------------------- commands
 
-  def command(self, text: str, side: Optional[str] = None) -> CommandResult:
-    said = self.request('command.run', {'command': text}, side)
+  def command(self, text: str, side: Optional[str] = None, as_: Optional[str] = None) -> CommandResult:
+    """
+    A command, as the player (on a dedicated server, the only one in) or,
+    with 'as_', as that player by name or as 'server' (the console).
+    """
+    args = {'command': text}
+    if as_ is not None:
+      args['as'] = 'server' if as_ == 'server' else {'player': as_}
+    said = self.request('command.run', args, side)
     return CommandResult(said.get('result', 0), tuple(said.get('lines', ())), tuple(said.get('errors', ())))
 
   # ---------------------------------------------------------------- the player
 
-  def player(self, side: Optional[str] = None) -> Player:
-    return fromJson(Player, self.request('player.get', None, side))
+  def player(self, side: Optional[str] = None, name: Optional[str] = None) -> Player:
+    """The player: the client's own, or on a server the one named (the only one in, unnamed)."""
+    return fromJson(Player, self.request('player.get', None if name is None else {'player': name}, side))
+
+  # ---------------------------------------------------------------- players by name, on a server (PROTOCOL.md 9.4)
+
+  def players(self) -> tuple:
+    """The players in: each {'name', 'uuid', 'entity', 'dimension', 'pos'}, as players.list gives them."""
+    return tuple(self.request('players.list'))
+
+  def kick(self, player: str, reason: str) -> None:
+    """The player kicked, as /kick does: its client is shown the reason."""
+    self.request('player.kick', {'player': player, 'reason': reason})
 
   def teleport(self, pos: Any, dimension: Optional[str] = None, look: Optional[Look] = None,
                timeout: Optional[float] = None) -> None:

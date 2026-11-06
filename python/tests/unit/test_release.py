@@ -94,6 +94,15 @@ class ReleaseGameTests(unittest.TestCase):
     self.assertEqual('/repo/unittas-display.sh', command[0])
     self.assertEqual(['-I', '/repo/bin/launch_client.py', '--game', '/repo/run/release'], command[2:])
 
+  def test_a_folder_and_a_name_of_its_own(self) -> None:
+    """For several clients at once (SPEC.md 11.3, step 4): each its own folder and its own player."""
+    game = ReleaseGame('/repo', '/results', 'bob', folder='/results/bob-game', username='bob')
+    self.assertEqual('/results/bob-game', game.gameDir)
+    self.assertEqual(['-I', '/repo/bin/launch_client.py', '--game', '/results/bob-game', '--username', 'bob'],
+                     game.command()[2:])
+    with self.assertRaises(ValueError):
+      ReleaseGame('/repo', '/results', 'x', username='bob smith')
+
 
 if __name__ == '__main__':
   unittest.main()

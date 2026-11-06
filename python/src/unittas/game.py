@@ -47,7 +47,8 @@ class LaunchedGame(BaseObject):
   '<results>/<name>/'. A kind of game says its folder (gameFolder), its
   command (command), the file in the results its game's output is in
   (outputName) and its command's own (launchName, the same by default),
-  and what it needs before it starts (prepare).
+  what it needs before it starts (prepare), and its role (a client
+  unless it says otherwise).
   """
 
   name: Field[str] = Field()
@@ -107,6 +108,10 @@ class LaunchedGame(BaseObject):
     """The file in the results the command's own output goes to: the game's, unless the command writes that itself."""
     return self.outputName()
 
+  def role(self) -> Role:
+    """What the game is, for its start file and its hello (PROTOCOL.md 9.1): a client, unless a kind says otherwise."""
+    return Role.CLIENT
+
   def prepare(self) -> None:
     """What the game needs before it starts, after its folder's own files are kept aside; nothing by default."""
 
@@ -139,7 +144,7 @@ class LaunchedGame(BaseObject):
     self.__files__.keep()
     self.prepare()
     self.__listener__ = Listener()
-    expected = self.__listener__.prepare(self.gameDir, self.name, Role.CLIENT)
+    expected = self.__listener__.prepare(self.gameDir, self.name, self.role())
     if beforeLaunch is not None:
       beforeLaunch(expected)
     output = open(os.path.join(self.results, self.launchName()), 'ab')

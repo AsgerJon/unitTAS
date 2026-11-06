@@ -30,4 +30,10 @@ final class Snapshot {
 	volatile int width;
 	volatile int height;
 	volatile boolean pointerGrabbed;
+	/** The server this client has joined ("127.0.0.1:port"), or null (SPEC.md 11.3, step 3). */
+	volatile String joined;
+	/** In a server's world: its player and world there, past the terrain screen, no world of its own. */
+	volatile boolean remote;
+	/** What the disconnected screen said, when it last showed (a refused join, a kick), or null. */
+	volatile String disconnected;
 }

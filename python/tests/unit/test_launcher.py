@@ -20,7 +20,7 @@ import unittest.mock
 import zipfile
 
 from unittas.cache import Cache, httpsFetch
-from unittas.launcher import FORGE_SHA1_PINS, Missing, Sources, command, findJava, main
+from unittas.launcher import FORGE_SHA1_PINS, Missing, Sources, command, findJava, main, offlineId
 
 FORGE_VERSION = '1.7.10-10.13.4.1614-1.7.10'
 
@@ -77,8 +77,12 @@ class Fixture:
                                  'rules': [{'action': 'allow', 'os': {'name': 'osx'}}]})
     client = b'the client jar'
     self.served['https://launcher.mojang.com/client.jar'] = client
+    server = b'the server jar'
+    self.served['https://launcher.mojang.com/server.jar'] = server
     vanilla['downloads'] = {'client': {'url': 'https://launcher.mojang.com/client.jar', 'sha1': sha1(client),
-                                       'size': len(client)}}
+                                       'size': len(client)},
+                            'server': {'url': 'https://launcher.mojang.com/server.jar', 'sha1': sha1(server),
+                                       'size': len(server)}}
     index = json.dumps({'objects': {name: {'hash': sha1(data), 'size': len(data)}
                                     for name, data in self.objects.items()}}).encode('utf-8')
     self.served['https://launchermeta.mojang.com/indexes/1.7.10.json'] = index
@@ -101,7 +105,8 @@ class Fixture:
       'libraries': [{'name': 'net.minecraftforge:forge:' + FORGE_VERSION, 'url': 'http://files.minecraftforge.net/maven/'}]}
     for name in self.FORGE_LIBRARIES:
       data = jarBytes(name)
-      entry = {'name': name}
+      # as Forge's JSON marks them: every one of these is a server's too
+      entry = {'name': name, 'serverreq': True}
       if name.startswith('org.scala-lang'):
         # as Forge's JSON has its Scala libraries: on its old maven, by plain HTTP, with their sha1s
         entry.update({'url': 'http://files.minecraftforge.net/maven/', 'checksums': [sha1(data)]})
@@ -111,7 +116,17 @@ class Fixture:
         self.served[url] = data
         self.served[url + '.sha1'] = sha1(data).encode('ascii')
       forge['libraries'].append(entry)
-    forge['libraries'].append({'name': 'some.server:only:1.0', 'clientreq': False})
+    forge['libraries'].append({'name': 'some.server:only:1.0', 'clientreq': False, 'serverreq': True})
+    onlyServer = jarBytes('some.server:only:1.0')
+    self.served['https://libraries.minecraft.net/' + mavenPath('some.server:only:1.0')] = onlyServer
+    self.served['https://libraries.minecraft.net/' + mavenPath('some.server:only:1.0') + '.sha1'] = sha1(
+      onlyServer).encode('ascii')
+    # a client's only (Forge's JSON gives no serverreq): never on a server's class path
+    forge['libraries'].append({'name': 'some.client:clientonly:1.0', 'clientreq': True})
+    self.served['https://libraries.minecraft.net/' + mavenPath('some.client:clientonly:1.0')] = jarBytes(
+      'some.client:clientonly:1.0')
+    self.served['https://libraries.minecraft.net/' + mavenPath('some.client:clientonly:1.0') + '.sha1'] = sha1(
+      jarBytes('some.client:clientonly:1.0')).encode('ascii')
     universal = io.BytesIO()
     with zipfile.ZipFile(universal, 'w') as jar:
       jar.writestr('version.json', json.dumps(forge))
@@ -137,6 +152,8 @@ class Fixture:
       json.dump(self.vanilla, file)
     with open(os.path.join(unimined, 'minecraft-1.7.10-client.jar'), 'wb') as file:
       file.write(b'the client jar')
+    with open(os.path.join(unimined, 'minecraft-1.7.10-server.jar'), 'wb') as file:
+      file.write(b'the server jar')
     if assets:
       folder = os.path.join(home, 'caches', 'unimined', 'assets')
       os.makedirs(os.path.join(folder, 'indexes'))
@@ -147,7 +164,8 @@ class Fixture:
         os.makedirs(os.path.dirname(objectPath), exist_ok=True)
         with open(objectPath, 'wb') as file:
           file.write(data)
-    jars = [(name, '', jarBytes(name)) for name in self.VANILLA_LIBRARIES + self.FORGE_LIBRARIES]
+    jars = [(name, '', jarBytes(name)) for name in self.VANILLA_LIBRARIES + self.FORGE_LIBRARIES +
+            ('some.server:only:1.0', 'some.client:clientonly:1.0')]
     jars.append(('org.lwjgl.lwjgl:lwjgl-platform:2.9.1', 'natives-linux', nativesJar()))
     jars.append(('net.minecraftforge:forge:' + FORGE_VERSION, 'universal', self.universal))
     for name, classifier, data in jars:
@@ -181,7 +199,7 @@ class LauncherTests(unittest.TestCase):
     launch = command(self.game, self.java, Sources(gradleHome=home, cache=self.cache()))
     self.assertEqual([], self.fixture.asked)
     self.assertEqual(['forge-%s-universal.jar' % FORGE_VERSION, 'launchwrapper-1.12.jar', 'guava-17.0.jar',
-                      'scala-library-2.11.1.jar', 'netty-all-4.0.10.Final.jar', 'lwjgl-2.9.1.jar',
+                      'scala-library-2.11.1.jar', 'clientonly-1.0.jar', 'netty-all-4.0.10.Final.jar', 'lwjgl-2.9.1.jar',
                       'minecraft-1.7.10-client.jar'], self.names(launch))
     self.assertEqual(os.path.join(home, 'caches', 'unimined', 'assets'), launch.assets)
     self.assertEqual(self.java, launch.java[0])
@@ -190,7 +208,7 @@ class LauncherTests(unittest.TestCase):
     cache = self.cache()
     launch = command(self.game, self.java, Sources(gradleHome=None, cache=cache))
     self.assertEqual(['forge-%s-universal.jar' % FORGE_VERSION, 'launchwrapper-1.12.jar', 'guava-17.0.jar',
-                      'scala-library-2.11.1.jar', 'netty-all-4.0.10.Final.jar', 'lwjgl-2.9.1.jar', '1.7.10.jar'],
+                      'scala-library-2.11.1.jar', 'clientonly-1.0.jar', 'netty-all-4.0.10.Final.jar', 'lwjgl-2.9.1.jar', '1.7.10.jar'],
                      self.names(launch))
     classPath = launch.java[launch.java.index('-cp') + 1].split(os.pathsep)
     self.assertTrue(all(path.startswith(cache.root) for path in classPath), classPath)
@@ -313,6 +331,24 @@ class LauncherTests(unittest.TestCase):
       code = main('--game', self.game, '--dry-run', '--java', os.path.join(self.scratch, 'jdk'), gradleHome=home)
     self.assertEqual(0, code, printed.getvalue())
     self.assertTrue(printed.getvalue().startswith(java + ' '), printed.getvalue()[:200])
+
+  def test_a_player_of_its_own(self) -> None:
+    """The player's name, and the offline id it has, as the client is launched (SPEC.md 11.3, step 4)."""
+    home = self.fixture.gradleHome(self.scratch)
+    launch = command(self.game, self.java, Sources(gradleHome=home), username='bob')
+    words = launch.java
+    self.assertEqual('bob', words[words.index('--username') + 1])
+    self.assertEqual(offlineId('bob'), words[words.index('--uuid') + 1])
+    self.assertEqual('unitTAS', command(self.game, self.java, Sources(gradleHome=home)).java[
+      words.index('--username') + 1], 'unitTAS unless told')
+    for name in ('', 'bob smith', 'a' * 17):
+      with self.assertRaises(ValueError, msg=repr(name)):
+        command(self.game, self.java, Sources(gradleHome=home), username=name)
+    printed = io.StringIO()
+    with unittest.mock.patch('sys.stdout', printed):
+      code = main('--game', self.game, '--dry-run', '--username', 'alice', gradleHome=home)
+    self.assertEqual(0, code, printed.getvalue())
+    self.assertIn('--username alice ', printed.getvalue())
 
   def test_https_only(self) -> None:
     for url in ('http://libraries.minecraft.net/x.jar', 'ftp://example.com/x', 'file:///etc/passwd'):

@@ -2,6 +2,9 @@
 The 'launcher' module starts a real (not development) Minecraft 1.7.10
 client with Forge 10.13.4.1614: unitTAS's own launcher, no other needed
 (SPEC.md 9.3, step 3). It was bin/launch_client.py, which now calls it.
+It also makes the dedicated server's command (SPEC.md 11.3, step 1):
+Forge's universal jar, the libraries Forge's JSON marks a server's, and
+Mojang's server jar, launched as FML launches a server, with no window.
 
 Each file comes from the first place that has it:
 
@@ -24,6 +27,7 @@ own Python.
 
 - Sources: where files come from.
 - command: the java command for a game folder, and what to extract first.
+- serverCommand: the java command for a dedicated server's folder.
 - extract: the natives into a folder.
 - main: bin/launch_client.py's command line.
 """
@@ -35,6 +39,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shlex
 import sys
 import uuid
@@ -48,6 +53,12 @@ if TYPE_CHECKING:  # pragma: no cover
 
 MINECRAFT = '1.7.10'
 FORGE = '1.7.10-10.13.4.1614-1.7.10'
+#  How FML starts a dedicated server: the Main-Class of Forge's universal jar's manifest.
+SERVER_MAIN = 'cpw.mods.fml.relauncher.ServerLaunchWrapper'
+#  A player name as 1.7.10 takes one: letters, digits and the underscore, 1 to 16 of them.
+PLAYER_NAME = re.compile(r'^[A-Za-z0-9_]{1,16}$')
+#  A JVM's memory as -Xmx takes it: '2G', '1536M'.
+MEMORY = re.compile(r'^[1-9][0-9]*[MG]$')
 USERNAME = 'unitTAS'
 OS_NAME = 'linux'
 MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
@@ -202,6 +213,19 @@ def _client(sources: Sources, vanilla: dict) -> str:
                   'the %s client jar' % MINECRAFT, [entry['sha1']])
 
 
+def _server(sources: Sources, vanilla: dict) -> str:
+  """Mojang's server jar: the Gradle cache's (Unimined's, as its runServer keeps it), else the download cache's."""
+  if sources.gradleHome is not None:
+    path = os.path.join(_unimined(sources.gradleHome), 'minecraft-%s-server.jar' % MINECRAFT)
+    if os.path.isfile(path):
+      return path
+  entry = vanilla.get('downloads', {}).get('server')
+  if sources.cache is None or not entry:
+    raise Missing('no %s server jar: build unitTAS once (./gradlew build) to fill the Gradle cache' % MINECRAFT)
+  return _fetched(sources, 'versions/%s/%s-server.jar' % (MINECRAFT, MINECRAFT), entry['url'],
+                  'the %s server jar' % MINECRAFT, [entry['sha1']])
+
+
 def _assets(sources: Sources, vanilla: dict) -> str:
   """The assets' root: the Gradle cache's when it has the index and every object, else the download cache's."""
   name = vanilla['assets']
@@ -270,8 +294,15 @@ def offlineId(name: str) -> str:
   return uuid.UUID(bytes=hashlib.md5(('OfflinePlayer:' + name).encode('utf-8')).digest(), version=3).hex
 
 
-def command(game: str, java: str, sources: Sources) -> Launch:
-  """The launch of a real 1.7.10 Forge client in the game folder, on that Java; Missing naming what can't be had."""
+def command(game: str, java: str, sources: Sources, username: str = USERNAME) -> Launch:
+  """
+  The launch of a real 1.7.10 Forge client in the game folder, on that
+  Java, its player 'username' (offline, so its id follows from the name);
+  Missing naming what can't be had, ValueError for a name 1.7.10 wouldn't
+  take.
+  """
+  if not isinstance(username, str) or not PLAYER_NAME.match(username):
+    raise ValueError('%r is no player name 1.7.10 takes (letters, digits and _, 1 to 16 of them)' % (username,))
   vanilla = _vanillaJson(sources)
   universal = _universal(sources)
   with zipfile.ZipFile(universal) as jar:
@@ -301,8 +332,8 @@ def command(game: str, java: str, sources: Sources) -> Launch:
   path.append(_client(sources, vanilla))
   assets = _assets(sources, vanilla)
   values = {
-    'auth_player_name': USERNAME, 'version_name': forge['id'], 'game_directory': game, 'assets_root': assets,
-    'assets_index_name': vanilla['assets'], 'auth_uuid': offlineId(USERNAME), 'auth_access_token': '0',
+    'auth_player_name': username, 'version_name': forge['id'], 'game_directory': game, 'assets_root': assets,
+    'assets_index_name': vanilla['assets'], 'auth_uuid': offlineId(username), 'auth_access_token': '0',
     'user_properties': '{}', 'user_type': 'legacy',
   }
   arguments = []
@@ -313,6 +344,31 @@ def command(game: str, java: str, sources: Sources) -> Launch:
   javaCommand = [java, '-Xms512M', '-Xmx2G', '-Djava.library.path=' + os.path.join(game, 'natives'),
                  '-cp', os.pathsep.join(path), forge['mainClass']]
   return Launch(javaCommand + arguments, natives, assets)
+
+
+def serverCommand(folder: str, java: str, sources: Sources, memory: str = '2G') -> Launch:
+  """
+  The launch of a 1.7.10 Forge dedicated server in its folder, on that
+  Java, with that much memory: as Forge's universal jar's manifest has it,
+  the universal jar first, then the libraries Forge's JSON marks a
+  server's (serverreq) in its order, then Mojang's server jar, which
+  carries vanilla's own. No window, so no natives and no assets. Missing
+  naming what can't be had; ValueError for memory -Xmx wouldn't take.
+  """
+  if not MEMORY.match(memory or ''):
+    raise ValueError("a server's memory is as -Xmx takes it, '2G' or '1536M', not %r" % (memory,))
+  vanilla = _vanillaJson(sources)
+  universal = _universal(sources)
+  with zipfile.ZipFile(universal) as jar:
+    forge = json.loads(jar.read('version.json').decode('utf-8'))
+  path = [universal]
+  for library in forge['libraries']:
+    if _key(library['name']) == 'net.minecraftforge:forge' or library.get('serverreq') is not True:
+      continue
+    path.append(_forgeLibrary(sources, library))
+  path.append(_server(sources, vanilla))
+  javaCommand = [java, '-Xmx' + memory, '-cp', os.pathsep.join(path), SERVER_MAIN, 'nogui']
+  return Launch(javaCommand, [], '')
 
 
 def extract(natives: list, into: str) -> None:
@@ -359,7 +415,8 @@ def java8() -> str:
 def main(*args: str, gradleHome: Optional[str] = None) -> int:
   """
   bin/launch_client.py's command line:
-  --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache].
+  --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]
+  [--username NAME].
 
   The Gradle cache is UNITTAS_GRADLE_HOME's, else the one given, unless
   --no-gradle-cache. Nothing is downloaded but with --cache, which names
@@ -369,7 +426,7 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   folder.
   """
   usage = ('Usage: python3 bin/launch_client.py --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]'
-           '  (or: python -m unittas.launcher ...)')
+           ' [--username NAME]  (or: python -m unittas.launcher ...)')
   args = list(args)
   dry = '--dry-run' in args
   if dry:
@@ -378,7 +435,7 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   if noGradle:
     args.remove('--no-gradle-cache')
   taken = {}
-  for option in ('--cache', '--java'):
+  for option in ('--cache', '--java', '--username'):
     if option in args:
       at = args.index(option)
       if at + 1 >= len(args):
@@ -394,7 +451,8 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   sources = Sources(gradleHome=None if noGradle else os.environ.get('UNITTAS_GRADLE_HOME') or gradleHome,
                     cache=Cache(cacheRoot) if cacheRoot else None)
   try:
-    launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources)
+    launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources,
+                     taken.get('--username', USERNAME))
   except (Missing, OSError, KeyError, ValueError) as problem:
     print('unitTAS launcher: %s' % problem)
     return 2

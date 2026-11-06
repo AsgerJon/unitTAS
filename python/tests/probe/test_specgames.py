@@ -84,7 +84,7 @@ game = "%s"
     jar = os.path.join(ROOT, 'build', 'libs', 'unittas-%s.jar' % modVersion())
     spec = self.spec('real', '''
 client = "real"
-build = "%s -p %s --console=plain remapJar"
+build = "%s -p %s --no-daemon --console=plain remapJar"
 mods = ["%s"]
 libraries = ["%s"]
 probe = "%s"

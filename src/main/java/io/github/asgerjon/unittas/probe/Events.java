@@ -9,7 +9,8 @@ final class Events {
 
 	/** The events this probe sends (PROTOCOL.md 7); multiplayer's come with phase 3b. */
 	static final List<String> KINDS = Collections.unmodifiableList(Arrays.asList("ready", "log", "quit", "dropped", "world", "chat", "sound", "screen",
-		"java.result", "tick", "crash"));
+		"java.result", "tick", "crash", "connection",
+		"player.joined", "player.left"));
 	static final List<String> LOG_LEVELS = Collections.unmodifiableList(Arrays.asList("off", "error", "warn", "info", "debug"));
 
 	volatile boolean chat = true;

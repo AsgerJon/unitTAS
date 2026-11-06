@@ -61,7 +61,7 @@ class SelfSuitesTests(unittest.TestCase):
     path = os.path.join(folder, 'self-real.toml')
     with open(path, 'w', encoding='utf-8') as file:
       file.write('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "real"\n'
-                 'build = "%s -p %s --console=plain remapJar"\nmods = ["%s"]\nlibraries = ["%s"]\nprobe = "%s"\n'
+                 'build = "%s -p %s --no-daemon --console=plain remapJar"\nmods = ["%s"]\nlibraries = ["%s"]\nprobe = "%s"\n'
                  'game = "%s"\n' % (os.path.join(ROOT, 'gradlew'), ROOT, jar,
                                     os.path.join(ROOT, 'run', 'oldsaves', 'mods', 'unimixins-1.7.10-0.3.1.jar'), jar,
                                     os.path.join(ROOT, 'run', 'release')))
