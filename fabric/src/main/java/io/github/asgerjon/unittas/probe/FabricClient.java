@@ -22,6 +22,7 @@ public final class FabricClient implements ClientModInitializer {
 	public static void launched(Minecraft minecraft) {
 		Probe probe = Probe.get();
 		if (probe != null) {
+			FabricHooks.register(probe);
 			probe.leaveBy(minecraft::stop);
 		}
 		Probe.launched(null);

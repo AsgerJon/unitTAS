@@ -9,7 +9,14 @@ Phase 4 (SPEC.md section 12.3): the 26.3 Fabric probe.
   for), in a game folder of its own with the probe in mods/, in the test display. The probe wakes before Minecraft
   loads, dials from the end of Minecraft's constructor, and its hello says what really runs: the port 26.3-fabric,
   Minecraft 26.3, Fabric Loader 0.20.1, Mojang's names, a client. Its first run downloads 26.3 (the client, its
-  libraries and assets, several hundred MB) into the download cache, once.
+  libraries and assets, several hundred MB) into the download cache, once. Asked to quit, it does, as the Quit
+  button does.
+- Step 3, the same game: its hooks (mixins on Minecraft's tick and screen and the server's tick, no Fabric API).
+  Ready once it has loaded (the loading overlay gone, the title screen up), naming its mods; status in the menu,
+  its ticks counted; ticks.wait counts exactly; wait.until on screen.get; the heartbeat's client ticks. Its window
+  is titled unitTAS, as the 1.7.10 probe's is (PROTOCOL.md 2.5). Its game folder's options.txt is a returning
+  player's (onboardAccessibility:false, tutorialStep:none): a first launch of 26.3 opens on its accessibility
+  onboarding screen, not the title screen.
 
   python -m unittas.selftest test_fabric.      (through the watcher: "probe test_fabric.")
   python -m unittest test_fabric.FabricJarTests (here: it builds, nothing more)
@@ -34,6 +41,7 @@ from unittas.release import gameJvms, putMods
 
 FABRIC = os.path.join(ROOT, 'fabric')
 MINECRAFT, LOADER, LOADER_VERSION = '26.3', 'fabric', '0.20.1'
+TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
 JAR = os.path.join(FABRIC, 'build', 'libs', 'unittas-probe-26.3-fabric.jar')
 JAVA_25 = os.environ.get('UNITTAS_JAVA_25', '/usr/lib/jvm/java-25-openjdk')
 #  the core: compiled into both probes from one place (D5)
@@ -110,6 +118,10 @@ class FabricGame(LaunchedGame):
 
   def prepare(self) -> None:
     putMods(self.gameFolder(), [self.__jar__], os.path.join(self.results, 'mods-before-this-run'))
+    # a returning player's options: 26.3's first launch opens on its accessibility onboarding, and a world's first
+    # minutes show the movement tutorial's hints
+    with open(os.path.join(self.gameFolder(), 'options.txt'), 'w', encoding='utf-8') as file:
+      file.write('onboardAccessibility:false\ntutorialStep:none\n')
 
   def terminate(self) -> None:
     """The display's process group (the display, the game in it); and the game's JVM, found by its folder."""
@@ -132,6 +144,7 @@ class FabricGameTests(unittest.TestCase):
     jar = buildFabric(os.path.join(folder, 'build.log'))
     cls.game = FabricGame(results(), jar)
     cls.connection = cls.game.start(READY_SECONDS)
+    cls.ready = cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
 
   @classmethod
   def tearDownClass(cls) -> None:
@@ -151,11 +164,52 @@ class FabricGameTests(unittest.TestCase):
   def test_2_the_probe_s_own_operations(self) -> None:
     for op in ('status', 'quit', 'ticks.wait', 'cancel', 'events.set'):
       self.assertIn(op, self.connection.hello.ops)
-    self.assertNotIn('block.get', self.connection.hello.ops, "the game's operations come with the later steps")
+    self.assertIn('screen.get', self.connection.hello.ops, "the client's own (step 3)")
+    self.assertNotIn('block.get', self.connection.hello.ops, "the game's things come with the later steps")
+
+  def test_2b_ready_once_loaded(self) -> None:
+    self.assertEqual(TITLE, self.ready['screen'])
+    mods = {mod['id'] for mod in self.ready['mods']}
+    self.assertTrue({'unittas', 'minecraft', 'fabricloader'} <= mods, mods)
+    self.assertEqual((854, 480), (self.ready['window']['width'], self.ready['window']['height']))
+    self.assertEqual('unitTAS', self.ready['window']['title'], "the window's behaviours (PROTOCOL.md 2.5)")
+    self.assertEqual([], self.ready['mixins']['missing'])
 
   def test_3_status_answers(self) -> None:
     status = self.connection.request('status')
-    self.assertIn('state', status)
+    self.assertEqual('menu', status['state'])
+    self.assertEqual(TITLE, status['screen'])
+    self.assertEqual(['client'], status['sides'], 'no world: no server side')
+    self.assertGreaterEqual(status['ticks']['client'], 1)
+    self.assertEqual('unitTAS', status['player'])
+    self.assertEqual('unitTAS', status['window']['title'])
+
+  def test_3b_ticks_counted_exactly(self) -> None:
+    before = self.connection.request('status')['ticks']['client']
+    waited = self.connection.request('ticks.wait', {'side': 'client', 'n': 20}, timeout=30)
+    self.assertGreaterEqual(waited['from'], before)
+    self.assertEqual(20, waited['tick'] - waited['from'])
+    none = self.connection.request('ticks.wait', {'side': 'client', 'n': 0})
+    self.assertEqual(none['from'], none['tick'])
+
+  def test_3c_wait_until_on_the_screen(self) -> None:
+    found = self.connection.request('wait.until', {'side': 'client', 'op': 'screen.get', 'args': {},
+                                                   'test': {'path': ['class'], 'eq': TITLE}, 'max_ticks': 100})
+    self.assertTrue(found['held'], found)
+    self.assertFalse(found['value']['pauses'])
+    never = self.connection.request('wait.until', {'side': 'client', 'op': 'screen.get', 'args': {},
+                                                   'test': {'path': ['pauses'], 'eq': True}, 'max_ticks': 10})
+    self.assertFalse(never['held'])
+    self.assertEqual(10, never['checks'], 'one check a tick')
+
+  def test_3d_the_heartbeat_s_ticks(self) -> None:
+    mark = self.connection.events.mark()
+    first = self.connection.events.waitFor(lambda event: event.get('event') == 'tick', 10, since=mark)
+    self.connection.request('ticks.wait', {'side': 'client', 'n': 40}, timeout=30)
+    later = self.connection.events.waitFor(
+      lambda event: event.get('event') == 'tick' and event['client'] > first['client'], 10, since=mark)
+    self.assertGreater(later['client'], first['client'])
+    self.assertIsNone(later['server'], 'no world: no server ticks')
 
   def test_4_quit_ends_the_game(self) -> None:
     """The game's own way out (Minecraft.stop, as its Quit button), which the port gives the probe as it dials."""
