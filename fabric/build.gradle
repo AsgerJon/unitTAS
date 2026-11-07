@@ -1,0 +1,51 @@
+// The 26.3 Fabric probe (SPEC.md 12.2): the probe's version-free core, shared with the 1.7.10 probe as source
+// (../src/probe-core/java, D5), and this port's own code. Fabric Loader and Mixin only, no Fabric API (D3).
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// one version for both probes: the root's mod_version, which the release buttons stamp
+def rootProperties = new Properties()
+file('../gradle.properties').withInputStream { rootProperties.load(it) }
+version = rootProperties.getProperty('mod_version')
+group = 'io.github.asgerjon'
+
+base {
+	archivesName = 'unittas-probe-26.3-fabric'
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+}
+
+sourceSets {
+	main {
+		java {
+			srcDir '../src/probe-core/java'
+		}
+	}
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+	it.options.encoding = 'UTF-8'
+}
+
+processResources {
+	def probeVersion = project.version
+	inputs.property 'version', probeVersion
+	filesMatching('fabric.mod.json') {
+		expand 'version': probeVersion
+	}
+}
+
+// the jar by one name, as the orchestrator bundles it: unittas-probe-26.3-fabric.jar
+tasks.withType(Jar).configureEach {
+	archiveVersion = ''
+}

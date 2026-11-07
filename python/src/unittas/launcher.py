@@ -46,6 +46,7 @@ import uuid
 import zipfile
 from typing import TYPE_CHECKING
 
+from . import versions
 from .cache import Cache, CacheError
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -67,6 +68,12 @@ FORGE_MAVEN = 'https://maven.minecraftforge.net/'
 #  Forge's own JSONs name its maven so; it is reached through FORGE_MAVEN, by HTTPS
 OLD_FORGE_MAVENS = ('http://files.minecraftforge.net/maven/', 'https://files.minecraftforge.net/maven/')
 ASSETS = 'https://resources.download.minecraft.net/'
+#  Fabric's meta server (fabric-meta's v2 API): the launcher profile for a game version and a loader version
+FABRIC_META = 'https://meta.fabricmc.net/v2/versions/loader/%s/%s/profile/json'
+#  The loaders versionCommand puts on a version (1.7.10 Forge is command's, below)
+LOADERS = ('fabric',)
+#  What a version's default-user-jvm says of memory, which a run gives itself instead
+_MEMORY_FLAG = re.compile(r'^-Xm[sx]')
 #  Forge 10.13.4.1614's JSON pins these two Scala jars at sha1s its maven no longer serves. Found by the live
 #  download (2026-11-05): what the maven serves, its own .sha1 file, and the copy Gradle fetched months before (which
 #  every game here runs on) all agree on these. They are pinned here exactly, beside the JSON's; nothing else is taken
@@ -90,12 +97,17 @@ class Sources:
 
 
 class Launch:
-  """What a launch needs: the java command, the natives jars to extract (with what not to), the assets' root."""
+  """
+  What a launch needs: the java command, the natives jars to extract (with
+  what not to), the assets' root, and the major version of the Java it
+  needs.
+  """
 
-  def __init__(self, java: list, natives: list, assets: str) -> None:
+  def __init__(self, java: list, natives: list, assets: str, javaMajor: int = 8) -> None:
     self.java = java
     self.natives = natives
     self.assets = assets
+    self.javaMajor = javaMajor
 
 
 # ---------------------------------------------------------------- the Gradle cache
@@ -228,7 +240,11 @@ def _server(sources: Sources, vanilla: dict) -> str:
 
 def _assets(sources: Sources, vanilla: dict) -> str:
   """The assets' root: the Gradle cache's when it has the index and every object, else the download cache's."""
-  name = vanilla['assets']
+  return _assetsOf(sources, vanilla['assets'], vanilla.get('assetIndex'), MINECRAFT)
+
+
+def _assetsOf(sources: Sources, name: str, entry: Optional[dict], minecraft: str) -> str:
+  """The assets of the index 'name' ('entry' its version JSON's assetIndex), from the Gradle cache or downloaded."""
   if sources.gradleHome is not None:
     root = os.path.join(sources.gradleHome, 'caches', 'unimined', 'assets')
     index = os.path.join(root, 'indexes', name + '.json')
@@ -238,9 +254,8 @@ def _assets(sources: Sources, vanilla: dict) -> str:
       raise Missing('no asset index %s in %s: run ./gradlew runClient once to fetch the assets' % (name, root))
   if sources.cache is None:
     raise Missing('no assets: build unitTAS once (./gradlew runClient) to fill the Gradle cache')
-  entry = vanilla.get('assetIndex')
   if not entry:
-    raise Missing('the %s version JSON names no asset index' % MINECRAFT)
+    raise Missing('the %s version JSON names no asset index' % minecraft)
   index = _fetched(sources, 'assets/indexes/%s.json' % name, entry['url'], 'the asset index ' + name, [entry['sha1']])
   with open(index, encoding='utf-8') as file:
     objects = json.load(file).get('objects', {})
@@ -371,6 +386,138 @@ def serverCommand(folder: str, java: str, sources: Sources, memory: str = '2G') 
   return Launch(javaCommand, [], '')
 
 
+# ---------------------------------------------------------------- any version, with a loader on top (SPEC.md 12)
+
+
+def _versionJson(sources: Sources, minecraft: str) -> dict:
+  """Mojang's version JSON for 'minecraft': the download cache's, else by the version manifest, held to its sha1."""
+  if sources.cache is None:
+    raise Missing('no %s version JSON: there is no download cache to fetch it into' % minecraft)
+  relative = 'versions/%s/%s.json' % (minecraft, minecraft)
+  if not os.path.isfile(sources.cache.path(relative)):
+    try:
+      manifest = json.loads(sources.cache.fetch(MANIFEST).decode('utf-8'))
+    except (OSError, ValueError) as error:
+      raise Missing('Mojang\'s version manifest couldn\'t be fetched from %s: %s' % (MANIFEST, error)) from None
+    entry = next((each for each in manifest.get('versions', []) if each.get('id') == minecraft), None)
+    if entry is None:
+      raise Missing('Mojang\'s version manifest has no %s' % minecraft)
+    _fetched(sources, relative, entry['url'], 'the %s version JSON' % minecraft, [entry['sha1']])
+  with open(sources.cache.path(relative), encoding='utf-8') as file:
+    return json.load(file)
+
+
+def _kept(sources: Sources, relative: str, url: str, what: str) -> str:
+  """
+  A file that is itself where trust starts, as Mojang's version manifest
+  is: a loader's profile from its meta server, which has no checksum of
+  its own. Fetched over HTTPS once, read as JSON, and kept whole (written
+  apart, then renamed into place); what it names is held to its sha1s.
+  """
+  if sources.cache is None:
+    raise Missing('no %s: there is no download cache to fetch it into' % what)
+  target = sources.cache.path(relative)
+  if os.path.isfile(target):
+    return target
+  try:
+    data = sources.cache.fetch(url)
+    json.loads(data.decode('utf-8'))
+  except (OSError, ValueError) as error:
+    raise Missing('%s couldn\'t be had from %s: %s' % (what, url, error)) from None
+  os.makedirs(os.path.dirname(target), exist_ok=True)
+  part = '%s.part-%d' % (target, os.getpid())
+  try:
+    with open(part, 'wb') as file:
+      file.write(data)
+    os.replace(part, target)
+  finally:
+    if os.path.exists(part):
+      os.remove(part)
+  return target
+
+
+def _profile(sources: Sources, minecraft: str, loader: str, loaderVersion: str) -> dict:
+  """The loader's launcher profile for that game version: Fabric's from its meta server."""
+  from urllib.parse import quote
+  url = FABRIC_META % (quote(minecraft, safe=''), quote(loaderVersion, safe=''))
+  path = _kept(sources, 'versions/fabric-loader-%s-%s/profile.json' % (loaderVersion, minecraft), url,
+               "Fabric Loader %s's profile for %s" % (loaderVersion, minecraft))
+  with open(path, encoding='utf-8') as file:
+    return json.load(file)
+
+
+def _jar(sources: Sources, library: versions.Library) -> str:
+  """
+  One library's jar: the Gradle cache's where it has it, else downloaded,
+  held to the sha1 its JSON gives, or else to its maven's .sha1. Forge's
+  old maven by plain HTTP is reached by HTTPS.
+  """
+  parts = library.name.split(':')
+  found = _module(sources.gradleHome, ':'.join(parts[:3]), parts[3] if len(parts) > 3 else '')
+  if found:
+    return found
+  url = library.url
+  for old in OLD_FORGE_MAVENS:
+    if url.startswith(old):
+      url = FORGE_MAVEN + url[len(old):]
+  return _fetched(sources, 'libraries/' + library.path, url, library.name, library.sha1s,
+                  None if library.sha1s else url + '.sha1')
+
+
+def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: str, loader: str, loaderVersion: str,
+                   username: str = USERNAME, memory: str = '4G', width: int = 854, height: int = 480,
+                   javaCandidates: Optional[dict] = None) -> Launch:
+  """
+  The launch of a real client of any version with a loader on top (SPEC.md
+  12.3, step 2; LOADERS names them), in the game folder, on that Java: the
+  version JSON and the loader's profile resolved for this system
+  (unittas.versions), every file from the Gradle cache or the download
+  cache and held to its sha1. Its player 'username' (offline), its memory
+  the run's ('-Xmx'), the version's own collector flags kept, its window
+  'width' by 'height'. 'java' None: the Java the version's JSON asks for
+  (findJavaFor). Missing naming what can't be had; ValueError for a
+  loader it doesn't put on, a name, or a memory it can't take.
+  """
+  if loader not in LOADERS:
+    raise ValueError('unitTAS puts %s on a version, not %r (1.7.10 Forge is command\'s)' % (
+      ', '.join(LOADERS), loader))
+  if not isinstance(username, str) or not PLAYER_NAME.match(username):
+    raise ValueError('%r is no player name the game takes (letters, digits and _, 1 to 16 of them)' % (username,))
+  if not MEMORY.match(memory or ''):
+    raise ValueError("memory is as -Xmx takes it, '4G' or '3072M', not %r" % (memory,))
+  vanilla = _versionJson(sources, minecraft)
+  profile = _profile(sources, minecraft, loader, loaderVersion)
+  version = versions.resolve(vanilla, profile, features={'has_custom_resolution': True})
+  if java is None:
+    java = findJavaFor(version.javaMajor, javaCandidates)
+  path = [_jar(sources, library) for library in version.libraries]
+  natives = [(_jar(sources, library), list(exclude)) for library, exclude in version.natives]
+  client = version.client
+  if not client:
+    raise Missing('the %s version JSON names no client jar' % minecraft)
+  path.append(_fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
+                       'the %s client jar' % minecraft, [client['sha1']]))
+  assets = _assetsOf(sources, version.assets, version.assetIndex, minecraft)
+  values = {
+    'auth_player_name': username, 'version_name': version.id, 'game_directory': game, 'assets_root': assets,
+    'assets_index_name': version.assets, 'auth_uuid': offlineId(username), 'auth_access_token': '0',
+    'clientid': '', 'auth_xuid': '0', 'user_type': 'legacy', 'user_properties': '{}',
+    'version_type': vanilla.get('type', 'release'), 'natives_directory': os.path.join(game, 'natives'),
+    'launcher_name': 'unitTAS', 'launcher_version': 'unittas', 'classpath': os.pathsep.join(path),
+    'classpath_separator': os.pathsep, 'library_directory': sources.cache.path('libraries') if sources.cache else '',
+    'resolution_width': str(width), 'resolution_height': str(height),
+  }
+  jvm = ['-Xms512M', '-Xmx' + memory] + [flag for flag in version.defaultJvm if not _MEMORY_FLAG.match(flag)]
+  if version.logging.get('file'):
+    config = version.logging['file']
+    configPath = _fetched(sources, 'assets/log_configs/' + config['id'], config['url'],
+                          'the logging config ' + config['id'], [config['sha1']])
+    jvm += versions.fill([version.logging['argument']], {'path': configPath})
+  jvm += versions.fill(version.jvm, values)
+  return Launch([java] + jvm + [version.mainClass] + versions.fill(version.game, values), natives, assets,
+                version.javaMajor)
+
+
 def extract(natives: list, into: str) -> None:
   """The natives jars' files into the folder, but what each says not to extract (META-INF/)."""
   os.makedirs(into, exist_ok=True)
@@ -407,6 +554,35 @@ def findJava(named: Optional[str] = None, candidates: tuple = JAVA8_CANDIDATES) 
                 'spec\'s "java"' % ', '.join(looked))
 
 
+#  Where a Java of each major version usually is on Linux (Arch, Debian and Ubuntu, Fedora), for findJavaFor
+JAVA_CANDIDATES = {
+  8: JAVA8_CANDIDATES,
+  17: ('/usr/lib/jvm/java-17-openjdk/bin/java', '/usr/lib/jvm/java-17-openjdk-amd64/bin/java',
+       '/usr/lib/jvm/jre-17/bin/java'),
+  21: ('/usr/lib/jvm/java-21-openjdk/bin/java', '/usr/lib/jvm/java-21-openjdk-amd64/bin/java',
+       '/usr/lib/jvm/jre-21/bin/java'),
+  25: ('/usr/lib/jvm/java-25-openjdk/bin/java', '/usr/lib/jvm/java-25-openjdk-amd64/bin/java',
+       '/usr/lib/jvm/jre-25/bin/java'),
+}
+
+
+def findJavaFor(major: int, candidates: Optional[dict] = None) -> str:
+  """
+  A java of that major version, as a version's JSON asks for one
+  (javaVersion): UNITTAS_JAVA<major> (UNITTAS_JAVA8, UNITTAS_JAVA25), else
+  the first of the usual places that has one. Never downloaded: Missing
+  names every place looked at.
+  """
+  variable = 'UNITTAS_JAVA%d' % major
+  looked = ([os.environ[variable]] if os.environ.get(variable) else []) + list(
+    (candidates if candidates is not None else JAVA_CANDIDATES).get(major, ()))
+  for binary in looked:
+    if os.path.isfile(binary) and os.access(binary, os.X_OK):
+      return binary
+  raise Missing('no Java %d found (looked at %s). Java is never downloaded: install a Java %d JDK, or name it with '
+                '%s or the spec\'s "java"' % (major, ', '.join(looked) or 'nowhere', major, variable))
+
+
 def java8() -> str:
   """bin/launch_client.py's java: UNITTAS_JAVA8, else Arch's Java 8, as it always was (the scripts' own check)."""
   return os.environ.get('UNITTAS_JAVA8') or JAVA8_CANDIDATES[0]
@@ -416,7 +592,12 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   """
   bin/launch_client.py's command line:
   --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]
-  [--username NAME].
+  [--username NAME] [--minecraft VERSION --loader NAME --loader-version
+  VERSION [--memory 4G] [--width N] [--height N]].
+
+  Without --minecraft it is 1.7.10 Forge (command); with it, that version
+  with the loader on top (versionCommand), its Java the one its JSON asks
+  for unless --java names one.
 
   The Gradle cache is UNITTAS_GRADLE_HOME's, else the one given, unless
   --no-gradle-cache. Nothing is downloaded but with --cache, which names
@@ -426,7 +607,8 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   folder.
   """
   usage = ('Usage: python3 bin/launch_client.py --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]'
-           ' [--username NAME]  (or: python -m unittas.launcher ...)')
+           ' [--username NAME] [--minecraft VERSION --loader NAME --loader-version VERSION [--memory 4G] [--width N]'
+           ' [--height N]]  (or: python -m unittas.launcher ...)')
   args = list(args)
   dry = '--dry-run' in args
   if dry:
@@ -435,7 +617,8 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   if noGradle:
     args.remove('--no-gradle-cache')
   taken = {}
-  for option in ('--cache', '--java', '--username'):
+  for option in ('--cache', '--java', '--username', '--minecraft', '--loader', '--loader-version', '--memory',
+                 '--width', '--height'):
     if option in args:
       at = args.index(option)
       if at + 1 >= len(args):
@@ -451,8 +634,17 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   sources = Sources(gradleHome=None if noGradle else os.environ.get('UNITTAS_GRADLE_HOME') or gradleHome,
                     cache=Cache(cacheRoot) if cacheRoot else None)
   try:
-    launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources,
-                     taken.get('--username', USERNAME))
+    if '--minecraft' in taken:
+      if '--loader' not in taken or '--loader-version' not in taken:
+        print(usage)
+        return 2
+      launch = versionCommand(game, findJava(taken['--java']) if '--java' in taken else None, sources,
+                              taken['--minecraft'], taken['--loader'], taken['--loader-version'],
+                              taken.get('--username', USERNAME), taken.get('--memory', '4G'),
+                              int(taken.get('--width', 854)), int(taken.get('--height', 480)))
+    else:
+      launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources,
+                       taken.get('--username', USERNAME))
   except (Missing, OSError, KeyError, ValueError) as problem:
     print('unitTAS launcher: %s' % problem)
     return 2

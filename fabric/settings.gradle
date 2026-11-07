@@ -1,0 +1,13 @@
+// The 26.3 Fabric probe (SPEC.md 12): a Gradle build of its own, beside the 1.7.10 one in the root (D5)
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'unittas-probe-fabric'

@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "unittas",
+	"version": "${version}",
+	"name": "unitTAS probe",
+	"description": "unitTAS's probe for Minecraft 26.3 on Fabric: it does what unitTAS's orchestrator asks and reports what happened. It sleeps unless an orchestrator wakes it.",
+	"authors": ["Asger Jon Vistisen"],
+	"contact": {
+		"sources": "https://github.com/AsgerJon/unitTAS"
+	},
+	"license": "Apache-2.0",
+	"environment": "*",
+	"entrypoints": {
+		"preLaunch": ["io.github.asgerjon.unittas.probe.FabricPreLaunch"],
+		"client": ["io.github.asgerjon.unittas.probe.FabricClient"]
+	},
+	"mixins": ["unittas.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "26.3",
+		"java": ">=25"
+	}
+}

@@ -16,8 +16,9 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Every operation this probe has (PROTOCOL.md 8), declared when the probe starts, so the hello lists them all. The
- * bodies that need no Minecraft class are given here; those that do are given at preInit (ClientOps), and before that
- * the game isn't ready for them anyway.
+ * probe's own, whose bodies need no Minecraft class, are declared and given here; the game's are declared by the port
+ * ({@link Port#declare}) and given their bodies at its preInit (1.7.10: ClientOps and the rest), and before that the
+ * game isn't ready for them anyway.
  */
 final class Ops {
 
@@ -57,86 +58,10 @@ final class Ops {
 		probe.register(Op.onSide("debug.lag", both).does(Ops::lag));
 		probe.register(Op.probe("debug.threads").whileLoading().alongsideJava().does(Ops::threads));
 		probe.register(Op.probe("debug.trace").whileLoading().alongsideJava()
-			.does(call -> Json.object("lines", io.github.asgerjon.unittas.TasTrace.lines())));
-		// the server drops its next connections as 1.7.10's login race does: the opening guard's tests on a client (its
-		// integrated server's), the join guard's on a dedicated server (MixinNetworkSystemDrop)
-		probe.register(Op.probe("debug.drop_login").does(call -> {
-			long logins = call.number("logins", 1, 0, 10);
-			Opening.DROP_LOGINS.set((int) logins);
-			return Json.object("logins", logins);
-		}));
+			.does(call -> Json.object("lines", call.probe.port.trace())));
 		declareRefs(probe);
-		if (probe.dedicated()) {
-			// a dedicated server's, given their bodies at its preInit (ServerOps)
-			probe.register(Op.onSide("world.get", Side.SERVER).reading());
-			probe.register(Op.onSide("world.prepare", Side.SERVER));
-			probe.register(Op.onSide("command.run", Side.SERVER));
-			probe.register(Op.onSide("players.list", Side.SERVER).reading());
-			probe.register(Op.onSide("player.get", Side.SERVER).reading());
-			probe.register(Op.onSide("player.kick", Side.SERVER));
-			probe.register(Op.onSide("player.reset", Side.SERVER));
-			probe.register(Op.onSide("world.reset", Side.SERVER));
-			probe.register(Op.onSide("hooks.run", Side.SERVER));
-			probe.register(Op.onSide("reflect.get", Side.SERVER).reading().needingASide());
-			probe.register(Op.onSide("reflect.set", Side.SERVER).needingASide());
-			return;
-		}
-		// a dedicated server joined and left (9.3), given their bodies at preInit (JoinOps)
-		probe.register(Op.probe("server.join"));
-		probe.register(Op.probe("server.leave"));
-		// today's Java runner (8.14), given its body at preInit (JavaOps)
-		probe.register(Op.probe("java.run"));
-		// worlds (8.3), given their bodies at preInit (WorldOps)
-		probe.register(Op.probe("world.create"));
-		probe.register(Op.probe("world.open"));
-		probe.register(Op.probe("world.close"));
-		probe.register(Op.onSide("world.get", Side.SERVER).reading());
-		probe.register(Op.onSide("world.rules.set", Side.SERVER));
-		probe.register(Op.onSide("world.time.set", Side.SERVER));
-		probe.register(Op.onSide("world.weather.set", Side.SERVER));
-		probe.register(Op.onSide("world.difficulty.set", Side.SERVER));
-		probe.register(Op.onSide("world.prepare", Side.SERVER));
-		// the player, the inventory, containers, commands, entities, screens, the mods' hooks (8.1, 8.4 to 8.9), given
-		// their bodies at preInit (GameOps)
-		probe.register(Op.onSide("command.run", Side.SERVER));
-		probe.register(Op.onSide("player.get", Side.SERVER, Side.CLIENT).reading());
-		probe.register(Op.onSide("player.teleport", Side.SERVER));
-		probe.register(Op.onSide("inventory.get", Side.SERVER, Side.CLIENT).reading());
-		probe.register(Op.onSide("container.get", Side.CLIENT, Side.SERVER).reading());
-		probe.register(Op.onSide("entity.list", Side.SERVER, Side.CLIENT).reading());
-		probe.register(Op.onSide("screen.open", Side.CLIENT));
-		probe.register(Op.onSide("screen.close", Side.CLIENT));
-		probe.register(Op.onSide("hooks.run", Side.SERVER, Side.CLIENT).choosing(args -> {
-			String hook = Json.string(args, "hook");
-			return "beforeRun".equals(hook) || "afterRun".equals(hook) ? Side.CLIENT : Side.SERVER;
-		}));
-		// the reset (8.4, 9.5), given its bodies at preInit (ResetOps)
-		probe.register(Op.onSide("client.reset", Side.CLIENT));
-		probe.register(Op.onSide("player.reset", Side.SERVER));
-		probe.register(Op.onSide("world.reset", Side.SERVER));
-		// the game's things (8.4 to 8.10), given their bodies at preInit (ThingOps)
-		probe.register(Op.onSide("player.look", Side.CLIENT));
-		probe.register(Op.onSide("inventory.set", Side.SERVER));
-		probe.register(Op.onSide("block.get", Side.SERVER, Side.CLIENT).reading());
-		probe.register(Op.onSide("block.set", Side.SERVER));
-		probe.register(Op.onSide("entity.spawn", Side.SERVER));
-		probe.register(Op.onSide("entity.get", Side.SERVER, Side.CLIENT).reading());
-		probe.register(Op.onSide("entity.remove", Side.SERVER));
-		probe.register(Op.onSide("key.down", Side.CLIENT));
-		probe.register(Op.onSide("key.up", Side.CLIENT));
-		probe.register(Op.onSide("key.tap", Side.CLIENT));
-		probe.register(Op.onSide("screen.type", Side.CLIENT));
-		probe.register(Op.onSide("screen.key", Side.CLIENT));
-		probe.register(Op.onSide("chat.read", Side.CLIENT).reading());
-		probe.register(Op.onSide("chat.send", Side.CLIENT));
-		probe.register(Op.onSide("camera.set", Side.CLIENT));
-		probe.register(Op.onSide("sound.play", Side.CLIENT));
-		probe.register(Op.onSide("screenshot", Side.CLIENT));
-		// reflection (8.11), given its bodies at preInit (ThingOps); the refs are the probe's own (declareRefs)
-		probe.register(Op.onSide("reflect.get", Side.SERVER, Side.CLIENT).reading().needingASide());
-		probe.register(Op.onSide("reflect.set", Side.SERVER, Side.CLIENT).needingASide());
-		// the client's own, given their bodies at preInit (ClientOps)
-		probe.register(Op.onSide("screen.get", Side.CLIENT).reading());
+		// the game's own, by the port: the 1.7.10 Forge one, or the 26.3 Fabric one (SPEC.md 12, D5)
+		probe.port.declare(probe);
 	}
 
 	/** The probe's own refs, in either role. */

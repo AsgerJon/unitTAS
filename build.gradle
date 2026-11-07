@@ -23,6 +23,13 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 sourceSets {
+    // the probe's version-free core (SPEC.md 12, D5): one source, compiled into this 1.7.10 jar and into the 26.3
+    // Fabric probe (fabric/)
+    main {
+        java {
+            srcDir 'src/probe-core/java'
+        }
+    }
     // unitTAS's own: the `self` suite, compiled against main and its Minecraft, run in main's runClient (below),
     // in no jar
     self {

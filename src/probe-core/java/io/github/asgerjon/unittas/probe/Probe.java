@@ -3,12 +3,9 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import io.github.asgerjon.unittas.UnitTasMod;
-import io.github.asgerjon.unittas.UnitTasMode;
 import io.github.asgerjon.unittas.probe.link.Json;
 import io.github.asgerjon.unittas.probe.link.Link;
 import io.github.asgerjon.unittas.probe.link.StartFile;
-import net.minecraftforge.common.ForgeVersion;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,17 +21,16 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * unitTAS's probe in a 1.7.10 Forge game (PROTOCOL.md): asleep unless an orchestrator left a start file in the game's
- * folder. Then it wakes from the coremod, before any mod loads, and as soon as Minecraft is launched it dials the
+ * unitTAS's probe in a game (PROTOCOL.md): asleep unless an orchestrator left a start file in the game's folder. Then
+ * it wakes before any mod loads (1.7.10 Forge: from the coremod), and as soon as Minecraft is launched it dials the
  * orchestrator, says hello and runs what it is asked ({@link #launched} says why not sooner).
- * It knows nothing of tests. This class touches no Minecraft class (it starts too early for that): the game's side is
- * {@link ClientHooks}, registered from the mod's preInit.
+ * It knows nothing of tests, and of no version: this class is in the probe's version-free core (SPEC.md 12, D5) and
+ * touches no Minecraft class (it starts too early for that). What one version and loader give it is its {@link Port};
+ * the game's side is the port's hooks (1.7.10: ClientHooks, registered from the mod's preInit).
  */
 public final class Probe implements Link.Handler {
 
 	static final Logger LOG = LogManager.getLogger("unitTAS");
-	public static final String PORT = "1.7.10-forge";
-	public static final String MINECRAFT = "1.7.10";
 	/** The protocol versions this probe speaks. */
 	private static final int[] PROTOCOLS = {1};
 	/** How often the heartbeat (the tick event) goes, from the probe's own thread, whether or not the game ticks. */
@@ -48,7 +44,8 @@ public final class Probe implements Link.Handler {
 
 	final StartFile start;
 	final File gameDir;
-	final boolean obfuscated;
+	/** What this version and loader give the probe: the hello's facts, the game's operations. */
+	final Port port;
 	final Snapshot snapshot = new Snapshot();
 	final Events events = new Events();
 	final ChatLog chat = new ChatLog();
@@ -71,20 +68,20 @@ public final class Probe implements Link.Handler {
 	/** How the game is made to quit once there is a game to quit (ClientHooks sets it at preInit). */
 	private volatile Runnable leave;
 
-	private Probe(StartFile start, File gameDir, boolean obfuscated) {
+	private Probe(StartFile start, File gameDir, Port port) {
 		this.start = start;
 		this.gameDir = gameDir;
-		this.obfuscated = obfuscated;
+		this.port = port;
 		Ops.declare(this);
 		this.link = new Link(start, hello(), this);
 	}
 
 	/**
-	 * From the coremod (injectData), before any mod loads: the start file read and deleted, the log listened to. The
-	 * link waits for {@link #launched}. Without a start file nothing at all happens; with one that can't be used, the
-	 * probe says why and stays asleep.
+	 * Before any mod loads (1.7.10 Forge: the coremod's injectData), from the port: the start file read and deleted, the
+	 * log listened to. The link waits for {@link #launched}. Without a start file nothing at all happens; with one that
+	 * can't be used, the probe says why and stays asleep.
 	 */
-	public static synchronized void early(File gameDir, boolean obfuscated) {
+	public static synchronized void early(File gameDir, Port port) {
 		if (probe != null || gameDir == null) {
 			return;
 		}
@@ -102,10 +99,10 @@ public final class Probe implements Link.Handler {
 			LOG.warn("unitTAS probe: can't delete {}; delete it before the next ordinary game", new File(gameDir, StartFile.PATH));
 		}
 		// the window's behaviours (PROTOCOL.md 2.5): titled unitTAS, the pointer and the real input left alone
-		UnitTasMode.running = true;
-		Probe made = new Probe(start, gameDir, obfuscated);
+		port.beforeWake();
+		Probe made = new Probe(start, gameDir, port);
 		probe = made;
-		ProbeLog.attach(made);
+		port.woken(made);
 		Runtime.getRuntime().addShutdownHook(new Thread(made::closing, "unitTAS probe closing"));
 		LOG.info("unitTAS probe: woken as {} ({}); it dials once Minecraft is launched", start.name, start.role);
 	}
@@ -258,15 +255,15 @@ public final class Probe implements Link.Handler {
 			"token", start.token,
 			"name", start.name,
 			"role", start.role,
-			"probe", Json.object("version", UnitTasMod.VERSION, "port", PORT),
-			"minecraft", MINECRAFT,
-			"loader", Json.object("name", "forge", "version", ForgeVersion.majorVersion + "." + ForgeVersion.minorVersion + "."
-				+ ForgeVersion.revisionVersion + "." + ForgeVersion.buildVersion),
+			"probe", Json.object("version", port.probeVersion(), "port", port.name()),
+			"minecraft", port.minecraft(),
+			"loader", Json.object("name", port.loaderName(), "version", port.loaderVersion()),
 			"java", Json.object("version", System.getProperty("java.version"), "max_memory_mb",
 				Runtime.getRuntime().maxMemory() / (1024 * 1024)),
-			// a real 1.7.10 client names Minecraft's members by Searge; a development run by MCP
-			"names", obfuscated ? "srg" : "mcp",
-			"development", !obfuscated,
+			// how the game names Minecraft's members, for reflection: 1.7.10 Searge in a real client, MCP in a
+			// development run; 26.x Mojang's own
+			"names", port.names(),
+			"development", port.development(),
 			"pid", Long.parseLong(pid),
 			"game_dir", gameDir.getAbsolutePath(),
 			"ops", names,
@@ -279,7 +276,7 @@ public final class Probe implements Link.Handler {
 	public void request(Link from, JsonElement id, String name, JsonElement sideGiven, JsonObject args) {
 		Op op = op(name);
 		if (op == null) {
-			from.error(id, "Unsupported", "this probe (" + PORT + ") has no operation " + name, Json.object("op", name));
+			from.error(id, "Unsupported", "this probe (" + port.name() + ") has no operation " + name, Json.object("op", name));
 			return;
 		}
 		if (!snapshot.ready && !op.beforeReady()) {

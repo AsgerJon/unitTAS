@@ -1,6 +1,7 @@
 package io.github.asgerjon.unittas.core;
 
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
+import io.github.asgerjon.unittas.probe.ForgePort;
 import io.github.asgerjon.unittas.probe.Probe;
 import net.minecraft.launchwrapper.Launch;
 
@@ -52,7 +53,8 @@ public final class UnitTasLoadingPlugin implements IFMLLoadingPlugin {
 		UnitTasMixins.addConfig();
 		// the probe, if an orchestrator left its start file (PROTOCOL.md 2.1): before any mod loads, so it hears them load
 		Object gameDir = data.get("mcLocation");
-		Probe.early(gameDir instanceof File ? (File) gameDir : null, Boolean.TRUE.equals(data.get("runtimeDeobfuscationEnabled")));
+		Probe.early(gameDir instanceof File ? (File) gameDir : null,
+			new ForgePort(Boolean.TRUE.equals(data.get("runtimeDeobfuscationEnabled"))));
 	}
 
 	@Override
