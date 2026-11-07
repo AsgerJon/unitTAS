@@ -590,6 +590,10 @@ The scripts use the project's own Gradle cache, `.gradle-home/`; a session build
 `GRADLE_USER_HOME` to it too, so Minecraft is set up once, and runs `./gradlew --stop` before asking the watcher for
 a run (a daemon left inside the sandbox could hold the cache's locks).
 
+The 26.3 Fabric probe is a Gradle build of its own in `fabric/`, with its own wrapper: `cd fabric && ./gradlew build`
+on Java 25 (Gradle 9.8.2, Fabric Loom, Mojang's names) makes `fabric/build/libs/unittas-probe-26.3-fabric.jar`. Its
+version is the root's `mod_version`. The probe's version-free core, `src/probe-core/java`, is compiled into both.
+
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the
 config put back): `./unittas.sh "self,self-red,nosuch"`, then `python3 bin/self_red_check.py` checks the report line
@@ -620,13 +624,15 @@ pressed on, sets all four back to `STOP` and pushes that whatever it read, and o
 **A run**, after the lock:
 
 1. What can be checked without a display: the tools' own tests (`bin/release_tooling/tests`, `bin/tests`), that the
-   version agrees across the tree (`version_stamp.py --check`), and `./gradlew build`. The game's own tests can't
+   version agrees across the tree (`version_stamp.py --check`), `./gradlew build`, and the 26.3 Fabric probe's build
+   in `fabric/` on Java 25. The game's own tests can't
    run there: run `./unittas.sh self` before pressing.
 2. The version is stamped into `gradle.properties` (`mod_version`, which names both jars and goes into
-   `mcmod.info`), `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built; the counters
-   advance. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag `X` are pushed together,
+   `mcmod.info`), `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and the 26.3 Fabric
+   probe's; the counters advance. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag `X` are pushed together,
    or neither is (if `main` moved meanwhile, or the tag is taken).
-3. A GitHub release of that tag with both jars and GitHub's generated notes (the commits and pull requests since the
+3. A GitHub release of that tag with both 1.7.10 jars, the 26.3 Fabric probe's
+   (`unittas-probe-26.3-fabric-<version>.jar`), and GitHub's generated notes (the commits and pull requests since the
    last release), titled `dev X`, `rc X` or `X`. For a draft you write yourself instead, the release step's
    `--generate-notes` becomes `--draft --notes ""`.
 

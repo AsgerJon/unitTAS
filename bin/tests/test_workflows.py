@@ -63,5 +63,40 @@ class WorkflowTests(unittest.TestCase):
     self.assertEqual([], pasted, 'expressions pasted into shell scripts (use the environment):\n' + '\n'.join(pasted))
 
 
+class FabricProbeReleasedTests(unittest.TestCase):
+  """
+  Every release button builds the 26.3 Fabric probe too (SPEC.md 12, D6): fabric/ with its own wrapper on Java 25,
+  while Java 21 stays the default (the root's Gradle 8.10.2 doesn't run on 25), and the release carries its jar
+  beside the 1.7.10 ones, by a name with the version in it.
+  """
+
+  JAR = 'unittas-probe-26.3-fabric'
+
+  def workflows(self) -> list:
+    out = []
+    for path in sorted(glob.glob(os.path.join(WORKFLOWS, '*.yml'))):
+      with open(path, encoding='utf-8') as file:
+        out.append((os.path.basename(path), file.read()))
+    return out
+
+  def test_java_25_beside_21_which_stays_the_default(self) -> None:
+    for name, text in self.workflows():
+      for versions in re.findall(r'java-version: \|\n((?:\s+\d+\n)+)', text):
+        listed = versions.split()
+        self.assertIn('25', listed, name)
+        self.assertEqual('21', listed[-1], '%s: the last one listed is the default JAVA_HOME' % name)
+
+  def test_fabric_is_built_on_java_25(self) -> None:
+    for name, text in self.workflows():
+      self.assertEqual(2, text.count('working-directory: fabric'), '%s: in the test job and the publish job' % name)
+      self.assertEqual(2, text.count('JAVA_HOME: ${{ env.JAVA_HOME_25_X64 }}'), name)
+
+  def test_the_release_carries_its_jar(self) -> None:
+    for name, text in self.workflows():
+      self.assertIn('test -f fabric/build/libs/%s.jar' % self.JAR, text, name)
+      self.assertIn('build/libs/%s-${{ env.VERSION_INFO }}.jar' % self.JAR, text, '%s: kept for the release' % name)
+      self.assertIn('"jars/%s-$VERSION_INFO.jar"' % self.JAR, text, '%s: in the release' % name)
+
+
 if __name__ == '__main__':
   unittest.main()
