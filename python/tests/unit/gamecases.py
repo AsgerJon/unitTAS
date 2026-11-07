@@ -41,6 +41,20 @@ class CTests(GameTestCase):
     self.assertTrue(False)
 
 
+class TerrainTests(GameTestCase):
+  """A class that needs real terrain: a world of its own (a map, say), made for it."""
+  world = {'type': 'default', 'seed': 1234}
+
+  def test_in_its_own_world(self) -> None:
+    self.assertIn('fresh for TerrainTests, made as it asks', Run.current.worldNote)
+
+
+class AfterTerrainTests(GameTestCase):
+
+  def test_back_on_the_flat_world(self) -> None:
+    self.assertIn('the kept world put back', Run.current.worldNote)
+
+
 class ChatTests(GameTestCase):
 
   def test_its_own_chat(self) -> None:
@@ -101,6 +115,14 @@ class ModErrorTests(GameTestCase):
 
   def test_b_runs_after(self) -> None:
     self.assertEqual('Given', self.command('/say hi').lines[0])
+
+
+class MpTerrainTests(MultiplayerTestCase):
+  """A multiplayer class can't ask for a world of its own yet: its server's world is the run's flat one."""
+  world = {'type': 'default'}
+
+  def test_never_runs(self) -> None:
+    pass
 
 
 class MpCaseTests(MultiplayerTestCase):

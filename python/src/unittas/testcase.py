@@ -4,7 +4,10 @@ unittest.TestCase whose fixture is the game, with today's levels.
 
 - The class: its world, the run's kept world put back for it, unless it
   says 'shared_world = True' (then it runs in the world the class before
-  it left). A subclass's own setUpClass calls super().setUpClass() first,
+  it left). A class that needs real terrain (a map, say) asks for a world
+  of its own: 'world = {"type": "default", "seed": 1234}', world.create's
+  own arguments; it is made fresh for the class, and the reset starts
+  where the game put the player in it. A subclass's own setUpClass calls super().setUpClass() first,
   as unittest has it, and then runs in its world after a reset.
 - Each test: a reset of the player before it and an event mark, whatever
   its own setUp does; refs.clear after it. A failure or an error is
@@ -152,10 +155,16 @@ class GameTestCase(unittest.TestCase):
   """
   A test class whose fixture is the game: 'self.game' (unittas.api.Game)
   and the helpers below. 'shared_world = True' runs the class in the world
-  the class before it left, rather than a fresh one.
+  the class before it left, rather than a fresh one. 'world' (None: the
+  run's own superflat world, which most tests are fine in) asks for a
+  world of the class's own, by world.create's arguments ('type' default,
+  flat, large_biomes or amplified, as the game version has them; 'seed';
+  'generator'; 'game_mode'; 'cheats'; 'structures'; 'name'): made fresh
+  for it, the player reset to where the game put it there.
   """
 
   shared_world = False
+  world: Optional[dict] = None
   #  How long one test may take, by the clock, before it is stopped with no result (a watched run asks first): a guard
   #  for a test that never ends, as Java's timeoutSeconds(). Its verdict is never the clock's.
   timeout_seconds = 60
@@ -168,7 +177,7 @@ class GameTestCase(unittest.TestCase):
     cls.game = run.game
     if run.stopped is None:
       try:
-        run.enterClass(cls.__name__, shared=bool(cls.shared_world))
+        run.enterClass(cls.__name__, shared=bool(cls.shared_world), world=cls.world)
       except NoResult as error:
         #  the watcher gave up on the class's world, or aborted the run
         if run.stopped is None:
@@ -312,6 +321,9 @@ class MultiplayerTestCase(GameTestCase):
     cls.game = run.game
     if run.stopped is not None:
       cls._notRun(run, 'not run: no test result could be obtained after %s' % run.stopped)
+    if cls.world is not None:
+      raise TypeError("%s.world: a multiplayer class can't ask for a world of its own yet: its server's world is the "
+                      "run's superflat one" % cls.__name__)
     if not run.multiplayerAllowed:
       raise unittest.SkipTest(MULTIPLAYER_ASK)
     if run.multiplayer is None:

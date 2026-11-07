@@ -74,7 +74,8 @@ class SelfSuitesTests(unittest.TestCase):
     with open(report, encoding='utf-8') as file:
       lines = file.read().split('\n')
     outcomes = [(found.group(1), found.group(2)) for found in map(RESULT.match, lines) if found]
-    self.assertEqual(15, len(outcomes), outcomes)
+    # the green suite's tests (selfsuite/green.py), WorldTerrainTests' two and WorldTerrainThenFlatTests' one among them
+    self.assertEqual(18, len(outcomes), outcomes)
     self.assertEqual([], [each for each in outcomes if each[1] != 'ok'], '\n'.join(lines))
     self.assertEqual('OK', [line for line in lines if line][-1])
 

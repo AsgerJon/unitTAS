@@ -51,6 +51,12 @@ if TYPE_CHECKING:  # pragma: no cover
 
 #  The test world's folder in the game's saves, as the Java runner's (Worlds.FOLDER).
 FOLDER = 'unittas'
+#  A class's own world, when it asks for one (world = {...}): a save folder apart, so the kept flat world is never touched
+CLASS_FOLDER = 'unittas-class'
+#  world.create's own arguments a class may give for its world; the folder is the run's
+CLASS_WORLD_KEYS = ('type', 'seed', 'generator', 'game_mode', 'cheats', 'structures', 'name')
+#  Where the reset puts the player in the run's flat world: on its grass, at the spawn
+FLAT_START = (0.5, 4.0, 0.5)
 DASHES = '-' * 70
 #  The report's outcome words, in the order its counts line gives them.
 COUNTED = (('FAIL', 'failures'), ('ERROR', 'errors'), ('skipped', 'skipped'), ('expected failure', 'expected failures'),
@@ -96,6 +102,25 @@ class _Line:
     self.chat = chat
     self.screenshot = screenshot
     self.worldNote = worldNote
+
+
+def classWorld(world: Any, name: str) -> dict:
+  """A class's own world as world.create takes it, checked: TypeError naming the class for one it can't ask for."""
+  if not isinstance(world, dict):
+    raise TypeError("%s.world is world.create's arguments as a dict ({'type': 'default', 'seed': 1234}), not %r" % (
+      name, world))
+  unknown = sorted(set(world) - set(CLASS_WORLD_KEYS))
+  if unknown:
+    raise TypeError('%s.world names %s; a class may give %s (its folder is the run\'s)' % (
+      name, ', '.join(unknown), ', '.join(CLASS_WORLD_KEYS)))
+  kinds = {'type': str, 'generator': str, 'game_mode': str, 'name': str, 'cheats': bool, 'structures': bool}
+  for key, value in world.items():
+    if key == 'seed':
+      if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError('%s.world: seed is a whole number, not %r' % (name, value))
+    elif not isinstance(value, kinds[key]):
+      raise TypeError('%s.world: %s is a %s, not %r' % (name, key, kinds[key].__name__, value))
+  return dict(world)
 
 
 class Run:
@@ -149,6 +174,10 @@ class Run:
     self.singleplayerOpen = False
     #  whether that world has had its setUpWorld (the first class's, or a fresh one's): its tearDownWorld only then
     self.worldSetUp = False
+    #  the world.create arguments the open world was made with for a class (None: the run's own flat world), and where
+    #  the reset puts the player in the open world
+    self.classWorld = None
+    self.start = FLAT_START
     self.finished = False
     #  why no more test results can be had, or None while they can
     self.stopped = None
@@ -207,11 +236,18 @@ class Run:
     self.singleplayerOpen = True
     self.worldNumber = 1
 
-  def enterClass(self, name: str, shared: bool = False) -> None:
+  def enterClass(self, name: str, shared: bool = False, world: Optional[dict] = None) -> None:
     """
     A class's world: the one before it shared, or the kept one put back;
     then a reset, for its setUpClass. In save mode, the save as it is.
+    'world', a class's own (world.create's arguments: type, seed,
+    generator, game_mode, cheats, structures, name): made fresh for it in
+    its own save folder (CLASS_FOLDER), the reset then starting where the
+    game put the player; shared only after a class that asked for the
+    same. TypeError for a world it can't ask for.
     """
+    if world is not None:
+      world = classWorld(world, name)
     if self.saveMode:
       self.lastClass = name
       return
@@ -219,11 +255,16 @@ class Run:
     if afterServer:
       #  after a multiplayer class: off the server, and a world of its own again (there is none to share)
       self.multiplayer.leave()
-    if self.lastClass is None and self.singleplayerOpen:
+    if world is not None:
+      if shared and self.singleplayerOpen and self.classWorld == world:
+        self.worldNote = 'world %d, shared: %s runs in it as %s left it' % (self.worldNumber, name, self.lastClass)
+      else:
+        self._makeClassWorld(name, world)
+    elif self.lastClass is None and self.singleplayerOpen and self.classWorld is None:
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
       self.worldSetUp = True
       self.worldNote = 'world 1: the run\'s first, for %s' % name
-    elif shared and self.singleplayerOpen:
+    elif shared and self.singleplayerOpen and self.classWorld is None:
       self.worldNote = 'world %d, shared: %s runs in it as %s left it' % (self.worldNumber, name, self.lastClass)
     else:
       started = time.monotonic()
@@ -232,13 +273,41 @@ class Run:
       copyExactly(self.keptFolder(), self.worldFolder())
       self._load('world.open', {'folder': FOLDER})
       self.singleplayerOpen = True
+      self.classWorld = None
+      self.start = FLAT_START
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
       self.worldSetUp = True
       self.worldNumber += 1
       self.worldNote = 'world %d: fresh for %s (the kept world put back, opened in %.1f s)' % (
         self.worldNumber, name, time.monotonic() - started)
     self.lastClass = name
-    reset(self.game.connection)
+    reset(self.game.connection, at=self.start)
+
+  def _makeClassWorld(self, name: str, world: dict) -> None:
+    """
+    A class's own world, made fresh in CLASS_FOLDER with its arguments,
+    prepared as the run's own is, its setUpWorld run; the reset's start
+    from then is where the game put the player in it (a safe spot at its
+    spawn: a world with real terrain has no fixed height to put it at).
+    """
+    started = time.monotonic()
+    if self.singleplayerOpen:
+      self._closeOwnWorld()
+    folder = os.path.join(self.gameDir, 'saves', CLASS_FOLDER)
+    if os.path.lexists(folder):
+      removeTree(folder)
+    self._load('world.create', dict(world, folder=CLASS_FOLDER))
+    self.singleplayerOpen = True
+    self.classWorld = dict(world)
+    pos = self.game.request('player.get', None, 'server')['pos']
+    self.start = (float(pos[0]), float(pos[1]), float(pos[2]))
+    self.game.request('world.prepare')
+    self.game.request('hooks.run', {'hook': 'setUpWorld'})
+    self.worldSetUp = True
+    self.worldNumber += 1
+    asked = ', '.join('%s %s' % (key, world[key]) for key in CLASS_WORLD_KEYS if key in world)
+    self.worldNote = 'world %d: fresh for %s, made as it asks (%s; made in %.1f s)' % (
+      self.worldNumber, name, asked or 'the probe\'s defaults', time.monotonic() - started)
 
   def enterMultiplayer(self, name: str, names: tuple, shared: bool = False) -> dict:
     """
@@ -384,7 +453,7 @@ class Run:
       self.multiplayer.rejoin()
       reset(self.multiplayer.serverGame.connection, self.multiplayer.connections())
     elif not self.saveMode:
-      reset(self.game.connection)
+      reset(self.game.connection, at=self.start)
     mark = self.game.mark()
     self.inTest = True
     if self.watch is not None:

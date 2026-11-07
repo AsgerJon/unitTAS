@@ -103,10 +103,11 @@ class RedTests(GameTestCase):
 
 class RedWorldLeavesTests(GameTestCase):
   X, Y, Z = 70, 4, 70
-  world = 0
+  #  the world it ran in (not "world": that is the class's own world, when it asks for one)
+  worldSeen = 0
 
   def testLeavesABlock(self) -> None:
-    RedWorldLeavesTests.world = self.worldNumber()
+    RedWorldLeavesTests.worldSeen = self.worldNumber()
     self.game.setBlock((self.X, self.Y, self.Z), 'minecraft:stone')
 
 
@@ -114,7 +115,7 @@ class RedWorldSharedTests(GameTestCase):
   shared_world = True
 
   def testFindsWhatTheClassBeforeLeft(self) -> None:
-    self.assertEqual(RedWorldLeavesTests.world, self.worldNumber(), 'not the world RedWorldLeavesTests ran in')
+    self.assertEqual(RedWorldLeavesTests.worldSeen, self.worldNumber(), 'not the world RedWorldLeavesTests ran in')
     self.assertEqual('minecraft:stone',
                      self.game.block((RedWorldLeavesTests.X, RedWorldLeavesTests.Y, RedWorldLeavesTests.Z)).id,
                      'the block RedWorldLeavesTests left is gone')

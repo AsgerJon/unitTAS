@@ -17,6 +17,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.WorldSettings;
+import net.minecraft.world.WorldType;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -55,6 +56,15 @@ final class TasRunner implements Runnable {
 	static final double START_X = Reset.START_X;
 	static final double START_Y = Reset.START_Y;
 	static final double START_Z = Reset.START_Z;
+	/** A class's own world (@TasWorld): a save folder apart, so the kept superflat world is never touched. */
+	static final String CLASS_FOLDER = "unittas-class";
+
+	/** Where the reset puts the player in the open world: the flat world's start, or a class world's own. */
+	private volatile double startX = START_X;
+	private volatile double startY = START_Y;
+	private volatile double startZ = START_Z;
+	/** The @TasWorld the open world was made for, or null while it is the run's superflat world. */
+	private TasWorld classWorldOpen;
 
 	private enum Outcome {
 		OK("ok", "ok"), FAIL("FAIL", "fail"), ERROR("ERROR", "error"), SKIP("skipped", "skipped"),
@@ -292,9 +302,17 @@ final class TasRunner implements Runnable {
 
 	/** Opens the save and waits for the player in it and the chunks around; null, or what went wrong. */
 	private String openAndSettle(String folder) {
+		return settle(folder, () -> game.openSave(folder));
+	}
+
+	/**
+	 * Begins a world on the client thread (opens a save, or makes a world) and waits for the player in it and the chunks
+	 * around, with the opening guard (a dropped login opens the save again); null, or what went wrong.
+	 */
+	private String settle(String folder, Runnable begin) {
 		try {
 			game.client(() -> {
-				game.openSave(folder);
+				begin.run();
 				return null;
 			});
 		} catch (TasGame.Timeout e) {
@@ -464,9 +482,15 @@ final class TasRunner implements Runnable {
 		return left + " test" + (left == 1 ? "" : "s") + " not run";
 	}
 
-	/** A class after the first that isn't @SharedWorld needs the world as made: then it's kept aside before the first. */
+	/**
+	 * A class after the first that isn't @SharedWorld needs the world as made, and so does any class after one with a
+	 * world of its own (@TasWorld): then it's kept aside before the first.
+	 */
 	private static boolean needsFreshWorlds(List<Test> tests) {
 		for (Test test : tests) {
+			if (test.testClass.isAnnotationPresent(TasWorld.class)) {
+				return true;
+			}
 			if (test.testClass != tests.get(0).testClass && !test.testClass.isAnnotationPresent(SharedWorld.class)) {
 				return true;
 			}
@@ -507,6 +531,51 @@ final class TasRunner implements Runnable {
 		if (open != null) {
 			return open;
 		}
+		startX = START_X;
+		startY = START_Y;
+		startZ = START_Z;
+		classWorldOpen = null;
+		game.nextWorld();
+		worldHooks("setUpWorld");
+		return null;
+	}
+
+	/**
+	 * A class's own world (@TasWorld): the open world closed (its tearDownWorld first), an earlier class world's folder
+	 * gone, the world made fresh in CLASS_FOLDER with the class's settings and waited for, given the run's steady
+	 * settings (prepareWorld), its setUpWorld run. The reset's start from then is where the game put the player in it:
+	 * a world with real terrain has no fixed height to put it at. Null, or what went wrong.
+	 */
+	private String classWorld(TasWorld world) {
+		WorldType type = Worlds.type(world.type());
+		if (type == null) {
+			return "its @TasWorld type is " + world.type() + ", not default, flat, large_biomes or amplified";
+		}
+		String generator = world.generator().isEmpty() && type == WorldType.FLAT ? Worlds.FLAT_LAYERS : world.generator();
+		worldHooks("tearDownWorld");
+		String quit = quitAndWait();
+		if (quit != null) {
+			return quit;
+		}
+		game.client(() -> {
+			Minecraft.getMinecraft().getSaveLoader().flushCache();
+			Minecraft.getMinecraft().getSaveLoader().deleteWorldDirectory(CLASS_FOLDER);
+			return null;
+		});
+		String made = settle(CLASS_FOLDER, () -> Worlds.create(Minecraft.getMinecraft(), CLASS_FOLDER, Worlds.NAME,
+			world.seed(), type, generator, WorldSettings.GameType.CREATIVE, true, world.structures()));
+		if (made != null) {
+			return made;
+		}
+		prepareWorld();
+		double[] at = game.server(() -> {
+			EntityPlayerMP player = TasGame.serverPlayer();
+			return new double[]{player.posX, player.posY, player.posZ};
+		});
+		startX = at[0];
+		startY = at[1];
+		startZ = at[2];
+		classWorldOpen = world;
 		game.nextWorld();
 		worldHooks("setUpWorld");
 		return null;
@@ -541,10 +610,27 @@ final class TasRunner implements Runnable {
 				end++;
 			}
 			String name = testClass.getSimpleName();
+			TasWorld own = testClass.getAnnotation(TasWorld.class);
 			if (freshWorlds) {
-				if (previous == null) {
+				if (own != null) {
+					if (testClass.isAnnotationPresent(SharedWorld.class) && own.equals(classWorldOpen)) {
+						worldNote = "world " + game.worldNumber() + ", shared: " + name + " runs in it as " + previous + " left it";
+					} else {
+						game.activity("making " + name + "'s own world");
+						long asked = System.currentTimeMillis();
+						String problem = classWorld(own);
+						if (problem != null) {
+							problem = "couldn't give " + name + " its own world: " + problem + "; " + notRun(total - number);
+							record(Result.problem("unitTAS.world", problem));
+							request.progress(problem);
+							return false;
+						}
+						worldNote = String.format(Locale.ROOT, "world %d: fresh for %s, made as it asks (type %s, seed %d; made in"
+							+ " %.1f s)", game.worldNumber(), name, own.type(), own.seed(), (System.currentTimeMillis() - asked) / 1000.0);
+					}
+				} else if (previous == null && classWorldOpen == null) {
 					worldNote = "world " + game.worldNumber() + ": the run's first, for " + name;
-				} else if (testClass.isAnnotationPresent(SharedWorld.class)) {
+				} else if (testClass.isAnnotationPresent(SharedWorld.class) && classWorldOpen == null) {
 					worldNote = "world " + game.worldNumber() + ", shared: " + name + " runs in it as " + previous + " left it";
 				} else {
 					game.activity("putting the test world back for " + name);
@@ -1017,7 +1103,7 @@ final class TasRunner implements Runnable {
 		// the server's part in one step, as the probe's batch does it: the player, every dimension, the mods' own part
 		game.server(() -> {
 			EntityPlayerMP player = TasGame.serverPlayer();
-			Reset.player(player, START_X, START_Y, START_Z, 0.0F, 0.0F);
+			Reset.player(player, startX, startY, startZ, 0.0F, 0.0F);
 			Reset.world();
 			TasPlugins.resetPlayer(player);
 			return null;

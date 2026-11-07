@@ -54,7 +54,8 @@ DETAILS = {
 #  Lines that mustn't be there: tests that shouldn't have run.
 ABSENT = ('RedSetUpClassTests.testNeverRuns',)
 SELF_CLASSES = ('ChatTests.', 'ClassFixtureTests.', 'MixinTests.', 'ResetContainerTests.', 'ResetTests.',
-                'SlowGameTests.', 'StepTests.', 'WorldFreshATests.', 'WorldFreshBTests.')
+                'SlowGameTests.', 'StepTests.', 'WorldFreshATests.', 'WorldFreshBTests.', 'WorldTerrainTests.',
+                'WorldTerrainThenFlatTests.')
 #  The one class that shares the world of the class before it, and that class.
 SHARED = ('RedWorldSharedTests', 'RedWorldLeavesTests')
 WARNED = 'RedTests.testWarnsOutsideAStep'

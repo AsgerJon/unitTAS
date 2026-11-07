@@ -142,10 +142,11 @@ class SlowGameTests(GameTestCase):
 
 class WorldFreshATests(GameTestCase):
   X, Y, Z = 60, 4, 60
-  world = 0
+  #  the world it ran in (not "world": that is the class's own world, when it asks for one)
+  worldSeen = 0
 
   def testLeavesABlock(self) -> None:
-    WorldFreshATests.world = self.worldNumber()
+    WorldFreshATests.worldSeen = self.worldNumber()
     self.game.setBlock((self.X, self.Y, self.Z), 'minecraft:stone')
     self.assertEqual('minecraft:stone', self.game.block((self.X, self.Y, self.Z)).id)
 
@@ -156,7 +157,7 @@ class WorldFreshBTests(GameTestCase):
     self.assertEqual(Block('minecraft:air', 0),
                      self.game.block((WorldFreshATests.X, WorldFreshATests.Y, WorldFreshATests.Z)),
                      'the block WorldFreshATests left is still there')
-    self.assertEqual(WorldFreshATests.world + 1, self.worldNumber(), "not the world after WorldFreshATests's")
+    self.assertEqual(WorldFreshATests.worldSeen + 1, self.worldNumber(), "not the world after WorldFreshATests's")
     if self.game.connection.hello.development:
       # SelfPlugin is the self source set's: in a development client only (the release jar doesn't carry it)
       plugin = {'class': SELF_PLUGIN}
@@ -164,3 +165,30 @@ class WorldFreshBTests(GameTestCase):
                        "setUpWorld didn't run for every world")
       self.assertEqual(self.worldNumber() - 1, self.game.reflect(['worldsTornDown'], source=plugin),
                        "tearDownWorld didn't run for every closed world")
+
+
+class WorldTerrainTests(GameTestCase):
+  """
+  A class that needs real terrain asks for a world of its own: it gets that world, made fresh with its settings, and
+  the reset puts the player where the game put it there (on its ground at the spawn), not at y 4 on the superflat
+  grass.
+  """
+  world = {'type': 'default', 'seed': 1234}
+
+  def testItsOwnWorld(self) -> None:
+    made = self.game.request('world.get')
+    self.assertEqual(('default', 1234), (made['type'], made['seed']), 'not the world it asked for')
+
+  def testTheResetPutsThePlayerOnItsGround(self) -> None:
+    pos = self.game.player().pos
+    self.assertGreater(pos.y, 5.0, 'the reset put the player at y %s, as on the superflat grass' % pos.y)
+    under = self.game.block((int(pos.x // 1), int(pos.y // 1) - 1, int(pos.z // 1)))
+    self.assertNotEqual('minecraft:air', under.id, 'the player stands on air')
+
+
+class WorldTerrainThenFlatTests(GameTestCase):
+  """The class after one with a world of its own gets the run's superflat world back, the player on its grass."""
+
+  def testTheSuperflatWorldAgain(self) -> None:
+    self.assertEqual('flat', self.game.request('world.get')['type'], "not the run's superflat world")
+    self.assertEqual(4.0, self.game.player().pos.y, "the reset didn't put the player on the superflat grass")

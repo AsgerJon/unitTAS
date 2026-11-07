@@ -161,6 +161,18 @@ that, so take the precautions that needs. The report says which, on a line befor
 `world 3: fresh for GiveTests (the kept world put back, opened in 5.1 s)` or
 `world 3, shared: GiveTests runs in it as ChatTests left it`; `worldNumber()` tells a test.
 
+**A class that needs real terrain** (a map, a cartography table, a structure) asks for a world of its own:
+`@TasWorld(type = "default", seed = 1234)` in Java, `world = {'type': 'default', 'seed': 1234}` in Python. Most tests
+are fine in the superflat world; this is for the few that aren't. The class's world is made fresh for it with those
+settings (the type `default`, `flat`, `large_biomes` or `amplified`; the seed, the run's own by default; a generator's
+options; whether structures are made), in a save folder of its own, `saves/unittas-class`, so the run's superflat
+world and its kept copy are never touched. It gets the same steady settings and world hooks as any fresh world. The
+reset then puts the player where the game put it when the world was made, a safe spot at its spawn, since real
+terrain has no fixed height to stand at. The class after it gets the superflat world back. With `@SharedWorld`
+(`shared_world = True`) as well, a class runs on in the world the class before it left, if that class asked for the
+same world. The report's line: `world 4: fresh for MapTests, made as it asks (type default, seed 1234; made in
+9.2 s)`. A multiplayer class can't ask for one yet: its server's world is the run's superflat one.
+
 **Within a class**, its tests share the world. Before each test unitTAS puts the player back, and only this: at
 0.5 4 0.5 looking south in the overworld, in creative and not flying, out of any bed, not burning or riding, an empty
 inventory, no experience, hotbar slot 1 selected, no effects, full health and food; the difficulty back at Easy; no
@@ -273,6 +285,8 @@ public class GiveTests extends TasTestCase {
   `Class.setUpClass` line, and the class's tests don't run); `skipTest` in setUpClass skips them all.
 - `@SharedWorld` on a class: it runs in the world as the class before it left it (above); `worldNumber()` is the
   world a test runs in, as the report numbers them.
+- `@TasWorld(type = "default", seed = 1234)` on a class: a world of its own, with real terrain, made fresh for it
+  (above).
 - `@ExpectedFailure("why")` on a test (or on its class), as unittest's `expectedFailure`: a failed assert or an
   exception from the test itself is an `expected failure`, and the run can still end OK; a pass is an
   `unexpected success`, which fails the run (the mark has done its work and should go). setUp and tearDown stay
@@ -337,7 +351,8 @@ class GiveTests(GameTestCase):
 - `command` gives back the command's `result` (1 for success in 1.7.10), `lines` (the chat lines that came in while it
   ran, plain) and `errors` (the red ones among them). A refusal's text is checked with a substring:
   `any('higher than the maximum' in line for line in said.errors)`.
-- The levels are the Java runner's. Each class gets the kept world back unless it says `shared_world = True`. The
+- The levels are the Java runner's. Each class gets the kept world back unless it says `shared_world = True`, and
+  a class that needs real terrain says `world = {'type': 'default', 'seed': 1234}` (above). The
   player is reset before every test, whatever its own `setUp` does. `setUpClass` (which calls
   `super().setUpClass()` first, as unittest has it) runs in the class's world. `self.chat()` and `self.sounds()` are
   this test's.

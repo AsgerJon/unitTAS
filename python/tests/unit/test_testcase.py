@@ -67,6 +67,26 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
     shots = [request['args']['file'] for request in self.asked if request['op'] == 'screenshot']
     self.assertEqual([os.path.join(self.results, 'screenshots', 'ATests.test_2_fails.png')], shots)
 
+  def test_a_class_with_a_world_of_its_own(self) -> None:
+    """world = {...}: the class gets that world, made fresh for it; the next class, the run's flat world again."""
+    self.run.begin()
+    result = self.runClasses(gamecases.TerrainTests, gamecases.AfterTerrainTests)
+    self.assertEqual((0, 0), (len(result.failures), len(result.errors)), result.failures + result.errors)
+    creates = [request['args'] for request in self.asked if request['op'] == 'world.create']
+    self.assertEqual(('unittas-class', 'default', 1234), (creates[-1]['folder'], creates[-1]['type'], creates[-1]['seed']))
+    lines = self.report()
+    self.assertTrue(any(line.startswith('world 2: fresh for TerrainTests, made as it asks (type default, seed 1234')
+                        for line in lines), lines)
+    self.assertTrue(any(line.startswith('world 3: fresh for AfterTerrainTests (the kept world put back')
+                        for line in lines), lines)
+
+  def test_a_multiplayer_class_can_t_ask_for_a_world_yet(self) -> None:
+    self.run.begin()
+    self.run.multiplayerAllowed = True
+    result = self.runClasses(gamecases.MpTerrainTests)
+    self.assertEqual(1, len(result.errors), result.errors)
+    self.assertIn("its server's world", result.errors[0][1])
+
   def test_a_test_reads_its_own_chat(self) -> None:
     self.run.begin()
     self.fake.event('chat', plain='before the test', formatted='x', json='{}')
