@@ -87,10 +87,12 @@ class ValuesTests(unittest.TestCase):
   def test_03_entities(self) -> None:
     pig = self.seen(Entity, self.request('entity.spawn', {'type': 'Pig', 'pos': toJson(Vec3(4.5, 4.0, 4.5))}))
     self.assertEqual('Pig', pig.type)
-    self.assertIsNotNone(pig.health)
+    self.assertTrue(pig.living)
+    self.assertGreater(pig.health, 0.0)
     self.seen(Entity, self.request('entity.get', {'entity': pig.entity}))
     arrow = self.seen(Entity, self.request('entity.spawn', {'type': 'Arrow', 'pos': [6.5, 6.0, 6.5]}))
-    self.assertIsNone(arrow.health, 'an arrow is not living')
+    self.assertFalse(arrow.living, 'an arrow is not living')
+    self.assertEqual(0.0, arrow.health)
     for each in self.request('entity.list', {'near': {'pos': 'player', 'radius': 16}}):
       self.seen(Entity, each)
 
@@ -98,7 +100,7 @@ class ValuesTests(unittest.TestCase):
     server = self.seen(Player, self.request('player.get'))
     client = self.seen(Player, self.request('player.get', side='client'))
     self.assertEqual(server.entity, client.entity)
-    self.assertIsNone(server.camera)
+    self.assertEqual(-1, server.camera, 'the server side has no camera')
     self.assertEqual(0, client.camera)
     self.request('command.run', {'command': '/effect @p 1 30 1'})
     self.assertTrue(self.seen(Player, self.request('player.get')).effects)
@@ -111,7 +113,7 @@ class ValuesTests(unittest.TestCase):
     self.seen(Sound, self.event('sound', mark, lambda event: event.get('known')))
     self.request('sound.play', {'id': 'minecraft:wobble.nothing'})
     unknown = self.seen(Sound, self.event('sound', mark, lambda event: not event.get('known')))
-    self.assertIsNotNone(unknown.callers)
+    self.assertTrue(unknown.callers, 'a sound the game lacks names who asked for it')
     self.request('events.set', {'log': 'info'})
     self.request('log.write', {'message': 'a line for the values'})
     self.seen(LogLine, self.event('log', mark, lambda event: event.get('message') == 'a line for the values'))

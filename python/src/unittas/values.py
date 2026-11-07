@@ -4,11 +4,12 @@ as frozen EZData: equal when their fields are, hashable, and shown by
 their fields. The JSON edge, reading them from answers and writing them
 into requests, is 'codec'.
 
-Until worktoy has nullable fields, a value the wire may leave null
-keeps a stand-in in its field (an empty string, -1, False) and gives the
-None through a property beside it: 'Entity.customName' is None where the
-field 'customNameText' is ''. An empty slot is Item.EMPTY, as modern
-Minecraft's ItemStack.EMPTY is.
+No value is ever None. A text the wire leaves out is '' (an entity's
+'customName' with no name tag); an id or a mode it leaves out is -1,
+which no entity id and no camera mode is ('riding' for one that rides
+nothing: 1.7.10 numbers its entities from 0); an entity that isn't
+living has 'health' 0.0, and 'living' says which. An empty slot is
+Item.EMPTY, as modern Minecraft's ItemStack.EMPTY is.
 
 - Vec3, BlockPos, Look: places and directions (5.1).
 - Item, Block: things (5.3, 5.4), their NBT as SNBT with a typed tree.
@@ -28,14 +29,6 @@ from . import snbt
 
 def _parsed(text: str):
   return snbt.loads(text) if text else None
-
-
-def _orNone(text: str):
-  return text if text else None
-
-
-def _id(number: int):
-  return number if number >= 0 else None
 
 
 class Vec3(EZData, frozen=True):
@@ -115,8 +108,9 @@ class Inventory(EZData, frozen=True):
 
 class Entity(EZData, frozen=True):
   """
-  An entity's summary. 'customName', 'riding', 'health' and 'maxHealth'
-  are None where the wire has none (health: an entity that isn't living).
+  An entity's summary. 'customName' is '' for an entity with no name
+  tag, 'riding' -1 for one that rides nothing, and 'health' and
+  'maxHealth' 0.0 for one that isn't living.
   """
   entity = EZField[int](0)
   type = EZField[str]('')
@@ -129,32 +123,12 @@ class Entity(EZData, frozen=True):
   alive = EZField[bool](True)
   onGround = EZField[bool](False)
   name = EZField[str]('')
-  customNameText = EZField[str]('')
-  ridingId = EZField[int](-1)
+  customName = EZField[str]('')
+  riding = EZField[int](-1)
   fireTicks = EZField[int](0)
   living = EZField[bool](False)
-  healthValue = EZField[float](0.0)
-  maxHealthValue = EZField[float](0.0)
-
-  @property
-  def customName(self):
-    """Its name tag, or None."""
-    return _orNone(self.customNameText)
-
-  @property
-  def riding(self):
-    """The entity id it rides, or None."""
-    return _id(self.ridingId)
-
-  @property
-  def health(self):
-    """Its health, or None."""
-    return self.healthValue if self.living else None
-
-  @property
-  def maxHealth(self):
-    """Its most health, or None."""
-    return self.maxHealthValue if self.living else None
+  health = EZField[float](0.0)
+  maxHealth = EZField[float](0.0)
 
 
 class Effect(EZData, frozen=True):
@@ -168,8 +142,9 @@ class Effect(EZData, frozen=True):
 
 class Player(EZData, frozen=True):
   """
-  A player, as player.get gives it on either side. 'riding' is None when
-  it rides nothing, 'camera' None but on the client side.
+  A player, as player.get gives it on either side. 'riding' is -1 when
+  it rides nothing, and 'camera' -1 on the server side, which has none
+  (0 is first person).
   """
   entity = EZField[int](0)
   name = EZField[str]('')
@@ -192,65 +167,40 @@ class Player(EZData, frozen=True):
   sneaking = EZField[bool](False)
   sprinting = EZField[bool](False)
   sleeping = EZField[bool](False)
-  ridingId = EZField[int](-1)
+  riding = EZField[int](-1)
   fireTicks = EZField[int](0)
   air = EZField[int](0)
   fallDistance = EZField[float](0.0)
   arrows = EZField[int](0)
   effects = EZField[tuple]()
-  cameraMode = EZField[int](-1)
-
-  @property
-  def riding(self):
-    """The entity id it rides, or None."""
-    return _id(self.ridingId)
-
-  @property
-  def camera(self):
-    """The client's camera mode (0 first person), or None."""
-    return _id(self.cameraMode)
+  camera = EZField[int](-1)
 
 
 class ChatLine(EZData, frozen=True):
-  """A chat line the client was shown; 'kind' is None in 1.7.10, which has none."""
+  """A chat line the client was shown; 'kind' is '' in 1.7.10, which has none."""
   plain = EZField[str]('')
   formatted = EZField[str]('')
   json = EZField[str]('')
-  kindText = EZField[str]('')
-
-  @property
-  def kind(self):
-    """The line's kind (from 1.8), or None."""
-    return _orNone(self.kindText)
+  kind = EZField[str]('')
 
 
 class Sound(EZData, frozen=True):
-  """A sound the client was asked to play; 'callers' (who asked) is there only for one the game doesn't have."""
+  """A sound the client was asked to play; 'callers' (who asked) only for one the game doesn't have, else ''."""
   id = EZField[str]('')
   known = EZField[bool](True)
-  callersText = EZField[str]('')
+  callers = EZField[str]('')
   volume = EZField[float](1.0)
   pitch = EZField[float](1.0)
   pos = EZField[Vec3]()
 
-  @property
-  def callers(self):
-    """Who asked for a sound the game lacks, or None."""
-    return _orNone(self.callersText)
-
 
 class LogLine(EZData, frozen=True):
-  """A line of the game's log; 'thrown' (its exception, class and message) is None for most."""
+  """A line of the game's log; 'thrown' (its exception, class and message) is '' for most."""
   level = EZField[str]('')
   logger = EZField[str]('')
   thread = EZField[str]('')
   message = EZField[str]('')
-  thrownText = EZField[str]('')
-
-  @property
-  def thrown(self):
-    """The line's exception, or None."""
-    return _orNone(self.thrownText)
+  thrown = EZField[str]('')
 
 
 class Screen(EZData, frozen=True):

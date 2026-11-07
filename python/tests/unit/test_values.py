@@ -148,14 +148,14 @@ class EntityTests(unittest.TestCase):
     self.assertEqual('net.minecraft.entity.passive.EntityPig', pig.className)
     self.assertEqual(Vec3(3.5, 4.0, 3.5), pig.pos)
     self.assertEqual(10.0, pig.health)
-    self.assertIsNone(pig.customName)
-    self.assertIsNone(pig.riding)
+    self.assertEqual('', pig.customName, 'no name tag: an empty string')
+    self.assertEqual(-1, pig.riding, 'rides nothing: -1, no entity id')
     self.assertEqual(PIG, toJson(pig))
 
   def test_one_that_isn_t_living(self) -> None:
     arrow = fromJson(Entity, ARROW)
-    self.assertIsNone(arrow.health)
-    self.assertIsNone(arrow.maxHealth)
+    self.assertFalse(arrow.living)
+    self.assertEqual((0.0, 0.0), (arrow.health, arrow.maxHealth), 'not living: 0.0')
     self.assertEqual('Bob', arrow.customName)
     self.assertEqual(412, arrow.riding)
     self.assertEqual(ARROW, toJson(arrow))
@@ -181,8 +181,8 @@ class PlayerTests(unittest.TestCase):
     self.assertEqual('Dev', player.name)
     self.assertEqual('creative', player.gameMode)
     self.assertEqual((Effect('potion.moveSpeed', 1, 1, 600, False),), player.effects)
-    self.assertIsNone(player.riding)
-    self.assertIsNone(player.camera, 'the server side has no camera')
+    self.assertEqual(-1, player.riding)
+    self.assertEqual(-1, player.camera, 'the server side has no camera')
     self.assertEqual(PLAYER, toJson(player))
 
   def test_the_client_s_camera(self) -> None:
@@ -197,7 +197,7 @@ class EventValueTests(unittest.TestCase):
     wire = {'plain': 'Given [Red Wool] * 1', 'formatted': '§fGiven [Red Wool] * 1§r', 'json': '{"text":"x"}'}
     line = fromJson(ChatLine, wire)
     self.assertEqual('Given [Red Wool] * 1', line.plain)
-    self.assertIsNone(line.kind, '1.7.10 has no kind')
+    self.assertEqual('', line.kind, '1.7.10 has no kind')
     self.assertEqual(wire, toJson(line))
 
   def test_a_sound(self) -> None:
@@ -205,7 +205,7 @@ class EventValueTests(unittest.TestCase):
             'pos': [0.5, 4.0, 0.5]}
     sound = fromJson(Sound, wire)
     self.assertEqual(Vec3(0.5, 4.0, 0.5), sound.pos)
-    self.assertIsNone(sound.callers, 'a sound the game has: no callers asked for')
+    self.assertEqual('', sound.callers, 'a sound the game has: no callers asked for')
     self.assertEqual(wire, toJson(sound))
     missing = dict(wire, id='minecraft:mob.wobble', known=False, **{'from': 'EntityWobble.onUpdate'})
     self.assertEqual('EntityWobble.onUpdate', fromJson(Sound, missing).callers)
@@ -214,7 +214,7 @@ class EventValueTests(unittest.TestCase):
   def test_a_log_line(self) -> None:
     wire = {'level': 'WARN', 'logger': 'FML', 'thread': 'Client thread', 'message': 'a warning', 'thrown': None}
     line = fromJson(LogLine, wire)
-    self.assertIsNone(line.thrown)
+    self.assertEqual('', line.thrown)
     self.assertEqual(wire, toJson(line))
     thrown = fromJson(LogLine, dict(wire, thrown='java.lang.IllegalStateException: no'))
     self.assertEqual('java.lang.IllegalStateException: no', thrown.thrown)

@@ -81,7 +81,7 @@ class OpenSave(EZData, frozen=True):
 def _logged(line) -> str:
   """A log line as TasLogErrors words one: '[logger] message (thrown)', the message cut at 200."""
   message = line.message if len(line.message) <= 200 else line.message[:200] + '...'
-  return '[%s] %s%s' % (line.logger, message, ' (%s)' % line.thrownText if line.thrownText else '')
+  return '[%s] %s%s' % (line.logger, message, ' (%s)' % line.thrown if line.thrown else '')
 
 
 class _Line:

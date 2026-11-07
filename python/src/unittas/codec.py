@@ -159,10 +159,10 @@ def _entity(data: Any) -> Entity:
     pos=_vec3(_need(body, 'pos', list, what)), look=_look(_need(body, 'look', dict, what)),
     motion=_vec3(_need(body, 'motion', list, what)), dimension=_need(body, 'dimension', str, what),
     alive=_need(body, 'alive', bool, what), onGround=_need(body, 'on_ground', bool, what),
-    name=_need(body, 'name', str, what), customNameText=_maybe(body, 'custom_name', str, what, ''),
-    ridingId=_ridingId(body, what), fireTicks=_need(body, 'fire_ticks', int, what), living=living,
-    healthValue=_need(body, 'health', float, what) if living else 0.0,
-    maxHealthValue=_need(body, 'max_health', float, what) if living else 0.0)
+    name=_need(body, 'name', str, what), customName=_maybe(body, 'custom_name', str, what, ''),
+    riding=_ridingId(body, what), fireTicks=_need(body, 'fire_ticks', int, what), living=living,
+    health=_need(body, 'health', float, what) if living else 0.0,
+    maxHealth=_need(body, 'max_health', float, what) if living else 0.0)
 
 
 def _riding(ridingId: int) -> Any:
@@ -173,10 +173,10 @@ def _entityJson(entity: Entity) -> dict:
   out = {'entity': entity.entity, 'type': entity.type, 'class': entity.className, 'uuid': entity.uuid,
          'pos': _vec3Json(entity.pos), 'look': _lookJson(entity.look), 'motion': _vec3Json(entity.motion),
          'dimension': entity.dimension, 'alive': entity.alive, 'on_ground': entity.onGround, 'name': entity.name,
-         'custom_name': entity.customName, 'riding': _riding(entity.ridingId), 'fire_ticks': entity.fireTicks}
+         'custom_name': entity.customName or None, 'riding': _riding(entity.riding), 'fire_ticks': entity.fireTicks}
   if entity.living:
-    out['health'] = entity.healthValue
-    out['max_health'] = entity.maxHealthValue
+    out['health'] = entity.health
+    out['max_health'] = entity.maxHealth
   return out
 
 
@@ -208,10 +208,10 @@ def _player(data: Any) -> Player:
     onGround=_need(body, 'on_ground', bool, what), flying=_need(body, 'flying', bool, what),
     mayFly=_need(body, 'may_fly', bool, what), sneaking=_need(body, 'sneaking', bool, what),
     sprinting=_need(body, 'sprinting', bool, what), sleeping=_need(body, 'sleeping', bool, what),
-    ridingId=_ridingId(body, what), fireTicks=_need(body, 'fire_ticks', int, what), air=_need(body, 'air', int, what),
+    riding=_ridingId(body, what), fireTicks=_need(body, 'fire_ticks', int, what), air=_need(body, 'air', int, what),
     fallDistance=_need(body, 'fall_distance', float, what), arrows=_need(body, 'arrows', int, what),
     effects=tuple(_effect(effect) for effect in _need(body, 'effects', list, what)),
-    cameraMode=_maybe(body, 'camera', int, what, -1))
+    camera=_maybe(body, 'camera', int, what, -1))
 
 
 def _playerJson(player: Player) -> dict:
@@ -222,11 +222,11 @@ def _playerJson(player: Player) -> dict:
          'xp': {'level': player.xpLevel, 'progress': player.xpProgress, 'total': player.xpTotal},
          'on_ground': player.onGround, 'flying': player.flying, 'may_fly': player.mayFly,
          'sneaking': player.sneaking, 'sprinting': player.sprinting, 'sleeping': player.sleeping,
-         'riding': _riding(player.ridingId), 'fire_ticks': player.fireTicks, 'air': player.air,
+         'riding': _riding(player.riding), 'fire_ticks': player.fireTicks, 'air': player.air,
          'fall_distance': player.fallDistance, 'arrows': player.arrows,
          'effects': [_effectJson(effect) for effect in player.effects]}
-  if player.camera is not None:
-    out['camera'] = player.cameraMode
+  if player.camera >= 0:
+    out['camera'] = player.camera
   return out
 
 
@@ -239,8 +239,8 @@ def _chatLine(data: Any) -> ChatLine:
 
 def _chatLineJson(line: ChatLine) -> dict:
   out = {'plain': line.plain, 'formatted': line.formatted, 'json': line.json}
-  if line.kindText:
-    out['kind'] = line.kindText
+  if line.kind:
+    out['kind'] = line.kind
   return out
 
 
@@ -253,7 +253,7 @@ def _sound(data: Any) -> Sound:
 
 
 def _soundJson(sound: Sound) -> dict:
-  return {'id': sound.id, 'known': sound.known, 'from': sound.callers, 'volume': sound.volume, 'pitch': sound.pitch,
+  return {'id': sound.id, 'known': sound.known, 'from': sound.callers or None, 'volume': sound.volume, 'pitch': sound.pitch,
           'pos': _vec3Json(sound.pos)}
 
 
@@ -267,7 +267,7 @@ def _logLine(data: Any) -> LogLine:
 def _logLineJson(line: LogLine) -> dict:
   #  'thrown' is always there, null for none, as the probe sends it
   return {'level': line.level, 'logger': line.logger, 'thread': line.thread, 'message': line.message,
-          'thrown': line.thrown}
+          'thrown': line.thrown or None}
 
 
 def _screen(data: Any) -> Any:
