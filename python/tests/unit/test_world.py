@@ -18,10 +18,11 @@ from worktoy.desc import FixBox
 from mcdex import MCBiomes, MCBlocks, MCGameRules, MCItems, Version
 
 from fakeprobe import FakeError
+from test_levels import writeLevel
 from test_run import FakeRun
 from test_values import PLAYER
 from unittas._test_world import World
-from unittas.errors import Missing
+from unittas.errors import Missing, NeedFailed, UnknownVersion
 from unittas.gamemode import GameMode
 from unittas.values import BlockPos, Vec3
 from unittas.worldkind import WorldKind
@@ -615,6 +616,128 @@ class EnteringTests(FakeRun, unittest.TestCase):
     self.assertEqual(3, len(made['layers']))
     self.assertEqual({'rules': {'doDaylightCycle': False}},
                      self.ops('world.rules.set')[-1])
+
+  def savedMap(self, version: str = '') -> str:
+    """A map as a test module keeps one: a folder with its level.dat."""
+    folder = os.path.join(self.scratch, 'maps', 'house')
+    writeLevel(folder, version)
+    os.makedirs(os.path.join(folder, 'region'), exist_ok=True)
+    with open(os.path.join(folder, 'region', 'r.0.0.mca'), 'wb') as file:
+      file.write(b'the map as saved')
+    return folder
+
+  def houseTests(self, folder: str, fresh: bool = False) -> type:
+    setUps = self.setUps
+
+    class House(World):
+      save = FixBox[str](folder)
+
+      def setUp(self) -> None:
+        setUps.append('house')
+
+    if fresh:
+      House = type('FreshHouse', (House,), {
+        'fresh': FixBox[bool](True)})
+
+    class Tests:
+      house = House()
+
+      @house
+      def test_a(self) -> None:
+        pass
+
+      @house
+      def test_b(self) -> None:
+        pass
+
+    return Tests
+
+  def test_a_saved_map_is_copied_and_opened(self) -> None:
+    """Copied fresh into the run's own folder; the original untouched."""
+    self.handlers['world.get'] = lambda args, side: {'spawn': [5, 64, -3]}
+    self.handlers['world.rules.set'] = lambda args, side: {}
+    folder = self.savedMap()
+    tests = self.houseTests(folder)
+    self.run.begin()
+    creates = len(self.ops('world.create'))
+    self.run.enterClass('Tests')
+    self.run.enterWorld(tests, 'test_a')
+    self.assertEqual(creates, len(self.ops('world.create')), 'not made')
+    self.assertEqual('unittas-world', self.ops('world.open')[-1]['folder'])
+    copied = os.path.join(self.gameDir, 'saves', 'unittas-world')
+    with open(os.path.join(copied, 'region', 'r.0.0.mca'), 'rb') as file:
+      self.assertEqual(b'the map as saved', file.read())
+    house = vars(tests)['house']
+    self.assertEqual(Vec3(12.5, 70.0, -3.5), house.start)
+    self.assertEqual(BlockPos(5, 64, -3), house.spawn)
+    self.assertEqual(['house'], self.setUps)
+    self.assertIn("the saved map %s" % folder, self.run.worldNote)
+    #  the test writes into the copy; the map stays as saved
+    with open(os.path.join(copied, 'region', 'r.0.0.mca'), 'wb') as file:
+      file.write(b'changed by a test')
+    with open(os.path.join(folder, 'region', 'r.0.0.mca'), 'rb') as file:
+      self.assertEqual(b'the map as saved', file.read())
+
+  def test_a_saved_map_beside_its_module(self) -> None:
+    """A relative 'save' is beside the module that declares the World."""
+    class Elsewhere(World):
+      save = FixBox[str]('maps/no-such-map')
+
+    expected = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            'maps', 'no-such-map')
+    with self.assertRaises(FileNotFoundError) as raised:
+      Elsewhere().savedFolder()
+    self.assertIn(expected, str(raised.exception))
+
+  def test_a_saved_map_s_own_options_are_refused(self) -> None:
+    """Its kind, seed and layers are the map's, not the World's."""
+    folder = self.savedMap()
+
+    class Seeded(World):
+      save = FixBox[str](folder)
+      seed = FixBox[int](1234)
+
+    with self.assertRaises(TypeError) as raised:
+      Seeded().savedFolder()
+    self.assertIn('seed', str(raised.exception))
+
+  def test_a_map_newer_than_the_game_fails_its_check(self) -> None:
+    """Its sanity check (SPEC.md 17.4): a FAIL, before anything opens."""
+    tests = self.houseTests(self.savedMap('1.12.2'))
+    self.run.begin()
+    self.run.enterClass('Tests')
+    opens = len(self.ops('world.open'))
+    with self.assertRaises(NeedFailed) as raised:
+      self.run.enterWorld(tests, 'test_a')
+    self.assertIn('1.12.2', str(raised.exception))
+    self.assertIn('1.7.10', str(raised.exception))
+    self.assertEqual(opens, len(self.ops('world.open')))
+
+  def test_a_map_saved_by_a_version_mcdex_lacks_has_no_result(self) -> None:
+    tests = self.houseTests(self.savedMap('26.4-snapshot-1'))
+    self.run.begin()
+    self.run.enterClass('Tests')
+    with self.assertRaises(UnknownVersion):
+      self.run.enterWorld(tests, 'test_a')
+
+  def test_an_older_map_opens(self) -> None:
+    """1.8.9's map in a 1.12.2 game would be upgraded by the game itself."""
+    self.handlers['world.get'] = lambda args, side: {'spawn': [0, 4, 0]}
+    tests = self.houseTests(self.savedMap('1.7.2'))
+    self.run.begin()
+    self.run.enterClass('Tests')
+    self.run.enterWorld(tests, 'test_a')
+    self.assertEqual('unittas-world', self.ops('world.open')[-1]['folder'])
+
+  def test_a_fresh_saved_map_keeps_its_setUp(self) -> None:
+    self.handlers['world.get'] = lambda args, side: {'spawn': [0, 4, 0]}
+    tests = self.houseTests(self.savedMap(), fresh=True)
+    self.run.begin()
+    self.run.enterClass('Tests')
+    self.run.enterWorld(tests, 'test_a')
+    self.run.enterWorld(tests, 'test_b')
+    self.assertEqual(['house'], self.setUps)
+    self.assertTrue(os.path.isdir(self.run.setupFolder()))
 
   def test_a_world_s_reads_raise_until_it_is_entered(self) -> None:
     """Outside its tests, a world has no start or spawn."""

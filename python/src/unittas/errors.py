@@ -163,11 +163,12 @@ class UnknownVersion(NoResult):
     The version as the game's hello named it.
   """
 
-  def __init__(self, minecraft: str) -> None:
+  def __init__(self, minecraft: str,
+               where: str = "the version this game's hello names") -> None:
     import mcdex  # here, not at the top: importing it takes about 0.7 s
-    infoSpec = ("mcdex %s knows no release %r, the version this game's "
-                "hello names, so no mcdex thing has an id there")
-    NoResult.__init__(self, infoSpec % (mcdex.__version__, minecraft))
+    infoSpec = ("mcdex %s knows no release %r, %s, so no mcdex thing has an "
+                "id there")
+    NoResult.__init__(self, infoSpec % (mcdex.__version__, minecraft, where))
     self.minecraft = minecraft
 
 

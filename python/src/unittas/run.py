@@ -40,7 +40,8 @@ from typing import TYPE_CHECKING
 
 from worktoy.ezdata import EZData, EZField
 
-from .errors import NO_RESULT_ERRORS, LinkError, NoResult, NotReady, UnitTasError, whyNoResult
+from .errors import (NO_RESULT_ERRORS, LinkError, NeedFailed, NoResult, NotReady, UnitTasError, UnknownVersion,
+                     whyNoResult)
 from .gamefiles import copyExactly, removeTree
 from .reset import reset
 from .values import BlockPos, Vec3
@@ -366,21 +367,33 @@ class Run:
     """A World made fresh for the class 'name', entered, its setUp run; a fresh one's copy kept after it."""
     started = time.monotonic()
     #  in the game's version, the mods' declarations too; a member it lacks is Missing, the world's sanity check
-    args = world.createArgs(self.game.version, self.game.declared())
-    rules = world.ruleArgs(self.game.version, self.game.declared())
+    version, declared = self.game.version, self.game.declared()
+    rules = world.ruleArgs(version, declared)
+    if world.save:
+      #  a saved map: its own folder, checked against the game's version before anything closes or opens
+      source = world.savedFolder()
+      self._checkSaved(world, source, version)
+      args = {}
+    else:
+      args = world.createArgs(version, declared)
     if self.singleplayerOpen:
       self._closeOwnWorld()
     folder = os.path.join(self.gameDir, 'saves', WORLD_FOLDER)
     if os.path.lexists(folder):
       removeTree(folder)
-    made = self._load('world.create', dict(args, folder=WORLD_FOLDER), "the world %s" % world.label())
+    if world.save:
+      #  copied fresh for each use: the map itself is never opened, a test writes only into its copy
+      copyExactly(source, folder)
+      self._load('world.open', {'folder': WORLD_FOLDER}, "the world %s" % world.label())
+      spawn = self.game.request('world.get')['spawn']
+    else:
+      spawn = self._load('world.create', dict(args, folder=WORLD_FOLDER), "the world %s" % world.label())['spawn']
     self.singleplayerOpen = True
     self.worldOpen = True
     #  no class shares a World's terrain
     self.classWorld = {'World': world.label()}
     pos = self.game.request('player.get', None, 'server')['pos']
     start = (float(pos[0]), float(pos[1]), float(pos[2]))
-    spawn = made['spawn']
     self.worldEntered = (start, (int(spawn[0]), int(spawn[1]), int(spawn[2])))
     self.game.request('world.prepare')
     if rules:
@@ -400,13 +413,41 @@ class Run:
       copyExactly(folder, self.setupFolder())
       self._openWorld(world)
     self.worldNumber += 1
-    asked = ', '.join('%s %s' % (key, value) for key, value in args.items() if key != 'layers')
+    if world.save:
+      asked = 'the saved map %s' % source
+    else:
+      asked = ', '.join('%s %s' % (key, value) for key, value in args.items() if key != 'layers')
     if 'layers' in args:
       asked += ', layers %s' % ' '.join('%dx%s:%d' % (each['count'], each['id'], each['meta']) for each in args['layers'])
     if rules:
       asked += ', rules %s' % ' '.join('%s=%s' % pair for pair in rules.items())
-    self.worldNote = 'world %d: %s for %s, made as it says (%s; made in %.1f s)' % (
-      self.worldNumber, world.label(), name, asked, time.monotonic() - started)
+    if world.save:
+      self.worldNote = 'world %d: %s for %s, opened from a fresh copy of %s (in %.1f s)' % (
+        self.worldNumber, world.label(), name, asked, time.monotonic() - started)
+    else:
+      self.worldNote = 'world %d: %s for %s, made as it says (%s; made in %.1f s)' % (
+        self.worldNumber, world.label(), name, asked, time.monotonic() - started)
+
+  def _checkSaved(self, world: Any, source: str, version: Any) -> None:
+    """
+    A saved map's sanity check (SPEC.md 17.4): a map saved by a newer version than the game's can't be opened by it,
+    a FAIL (NeedFailed) naming both; one saved by a version mcdex has no release for can't be judged, no result
+    (UnknownVersion). An older map opens, the game upgrading it by its own means; one that doesn't say (before 1.9)
+    is older than any game that writes the version.
+    """
+    from mcdex import Version
+    from worktoy.waitaminute.keenum import KeeResolveError
+    from .levels import savedBy
+    savedName = savedBy(source)
+    if not savedName:
+      return
+    try:
+      saved = Version(savedName)
+    except KeeResolveError as error:
+      raise UnknownVersion(savedName, "the version the saved map %s was saved by" % source) from error
+    if saved > version:
+      raise NeedFailed("%s: the saved map %s was saved by %s, newer than this game's %s; a game opens saves as old as "
+                       "itself or older" % (world.label(), source, savedName, version.value))
 
   def _openWorld(self, world: Any) -> None:
     """A fresh World's copy kept after its setUp, opened and entered again (its setUp isn't run again)."""

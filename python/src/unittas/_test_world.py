@@ -150,15 +150,15 @@ class World(BaseObject):
     TypeError
       Layers on a world that isn't flat; a layer that isn't an MCBlocks
       member with a thickness, or one told apart by block entity data.
-    NotImplementedError
-      A saved map ('save'): SPEC.md 17.7 step 3.
+    TypeError
+      A saved map ('save'), which is opened, not made.
     """
     from .things import blockOf, resolve
     if self.save:
-      infoSpec = """The world '%s' is the saved map '%s': saved maps come
-      with SPEC.md 17.7 step 3."""
+      infoSpec = """The world '%s' is the saved map '%s': it's opened from
+      a fresh copy (savedFolder), not made."""
       info = infoSpec % (self.label(), self.save)
-      raise NotImplementedError(' '.join(info.split()))
+      raise TypeError(' '.join(info.split()))
     args = {'type': self.kind.value, 'seed': self.seed,
             'game_mode': self.gameMode.value, 'structures': self.structures}
     if not self.layers:
@@ -181,6 +181,45 @@ class World(BaseObject):
     args['layers'] = layers
     args['biome'] = resolve(self.flatBiome, version, declared).text()
     return args
+
+  def savedFolder(self) -> str:
+    """
+    A saved map's folder (SPEC.md 17.4): 'save' beside the module that
+    declares this World's class, or as given when absolute. The run
+    copies it fresh for each use and opens the copy, never the map.
+
+    Raises
+    ------
+    TypeError
+      This World is no saved map, or it sets options that are the map's
+      own (kind, seed, layers, flatBiome, gameMode, structures).
+    FileNotFoundError
+      No save is there (no level.dat).
+    """
+    import os
+    import sys
+    if not self.save:
+      raise TypeError('%s is no saved map' % self.label())
+    defaults = (('kind', WorldKind.Default), ('seed', 0), ('layers', ()),
+                ('flatBiome', MCBiomes.Plains),
+                ('gameMode', GameMode.Creative), ('structures', True))
+    own = [name for name, value in defaults if getattr(self, name) != value]
+    if own:
+      raise TypeError("%s is the saved map %s, whose %s are the map's own, "
+                      "not the World's to set"
+                      % (self.label(), self.save, ', '.join(own)))
+    module = sys.modules.get(type(self).__module__)
+    path = getattr(module, '__file__', None)
+    if path is None:
+      raise TypeError('%s is declared in %s, which has no file to find '
+                      'its map beside'
+                      % (self.label(), type(self).__module__))
+    folder = os.path.normpath(os.path.join(
+      os.path.dirname(os.path.abspath(path)), self.save))
+    if not os.path.isfile(os.path.join(folder, 'level.dat')):
+      raise FileNotFoundError('%s: no saved map at %s (no level.dat there)'
+                              % (self.label(), folder))
+    return folder
 
   def ruleArgs(self, version: Version,
                declared: Optional[dict] = None) -> dict:
