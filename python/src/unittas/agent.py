@@ -833,10 +833,9 @@ class Agent(BaseObject):
     for member, look in candidates:
       best, seen = None, None
       for variant in look['variants']:
-        score = self._likeness(views, variant['faces'], look['tint'],
-                               squares)
+        score = self._likeness(views, variant, look['tint'], squares)
         if score is not None and (best is None or score > best):
-          best, seen = score, variant['faces']
+          best, seen = score, variant
       if best is not None:
         scored.append((best, member, self._signature(seen, look['tint'])))
     return self._decide(pos, scored, len(views))
@@ -874,19 +873,27 @@ class Agent(BaseObject):
             "%s isn't drawn as a full cube: identify knows full cubes so "
             "far (SPEC.md 15.4)" % label)
         continue
-      #  the member's variants: the metas mcdex reads back as it (a
-      #  furnace's facings; not wool's other colours)
+      #  the member's variants: the metas or states mcdex reads back as
+      #  it (a furnace's facings; not 1.7.10 wool's other colours)
       variants = [variant for variant in look['variants']
-                  if self._isIt(member, block.id, variant['metas'])]
+                  if self._isIt(member, block.id, variant)]
       if variants:
         out.append((member, dict(look, variants=variants)))
     return out
 
-  def _isIt(self, member: Any, kind: str, metas: list) -> bool:
-    """Whether mcdex reads the block 'kind' at any of 'metas' as 'member'."""
-    for meta in metas:
+  def _isIt(self, member: Any, kind: str, variant: dict) -> bool:
+    """
+    Whether mcdex reads the block 'kind' as 'member' at any of the
+    variant's metas (before 1.13) or states (from it).
+    """
+    if 'states' in variant:
+      blocks = [Block(kind, -1, state=tuple(sorted(state.items())))
+                for state in variant['states']]
+    else:
+      blocks = [Block(kind, meta) for meta in variant['metas']]
+    for block in blocks:
       try:
-        if member in self.__game__.membersOf(Block(kind, meta)):
+        if member in self.__game__.membersOf(block):
           return True
       except ValueError:  # mcdex needs its block entity's data to say
         continue
@@ -905,33 +912,40 @@ class Agent(BaseObject):
         self.__textures__[name] = (texture['width'],
                                    tuple(texture['pixels']))
 
-  def _likeness(self, views: list, faces: dict, tint: int,
+  def _likeness(self, views: list, variant: dict, tint: int,
                 squares: dict) -> Optional[float]:
-    """A variant's likeness to the views: each face's, by its pixels."""
+    """
+    A variant's likeness to the views: each face's, by its pixels; each
+    face squared as its corners say, where the game gives them, and
+    tinted as the variant's tints say, or as the block's tint does.
+    """
     total = weight = 0.0
+    tints = variant.get('tints', {})
     for at, view in enumerate(views):
       for face, count in view.faces.items():
-        texture = self.__textures__.get(faces.get(face, ''))
+        texture = self.__textures__.get(variant['faces'].get(face, ''))
         if texture is None:
           continue
         size, pixels = texture
-        key = (at, face, size)
+        corners = variant.get('corners', {}).get(face)
+        key = (at, face, size, json.dumps(corners))
         if key not in squares:
-          squares[key] = view.square(face, size)
-        score = likeness(squares[key], pixels, tint)
+          squares[key] = view.square(face, size, corners)
+        score = likeness(squares[key], pixels, tints.get(face, tint))
         if score is not None:
           total += score * count
           weight += count
     return total / weight if weight else None
 
   @staticmethod
-  def _signature(faces: dict, tint: int) -> str:
+  def _signature(variant: dict, tint: int) -> str:
     """
     What a candidate looks like where it looks most like the views: its
-    best variant's faces and its tint. Two candidates alike there look
-    the same (1.7.10's infested stone has stone's look among its own).
+    best variant's faces, tints and corners, and its tint. Two candidates
+    alike there look the same (infested stone has stone's look).
     """
-    return json.dumps([tint, faces], sort_keys=True)
+    return json.dumps([tint, variant['faces'], variant.get('tints', {}),
+                       variant.get('corners', {})], sort_keys=True)
 
   def _decide(self, pos: BlockPos, scored: list, views: int) -> Any:
     """The best look's member, if it beats the next look by MARGIN."""

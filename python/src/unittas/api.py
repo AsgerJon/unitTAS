@@ -513,11 +513,12 @@ class Game:
   def blockFaces(self, blocks: list, pos: Any) -> tuple:
     """
     How each block (a Block) looks in the running game (block.faces, SPEC.md 15.4): for each, in order, its
-    {'cube', 'tint', 'variants': [{'meta', 'faces': {face: icon}}]}, its tint as at 'pos'; or {'error': ...} for a
-    block the game doesn't have.
+    {'cube', 'tint', 'variants': [...]}, its tint as at 'pos'; or {'error': ...} for a block the game doesn't have.
+    A variant is {'metas', 'faces': {face: icon}} before 1.13, and {'states', 'faces', 'tints', 'corners'} from it
+    (PROTOCOL.md 8.10). A block is asked for by its id, and its meta where it has one.
     """
-    answer = self.request('block.faces', {'pos': _blockPos(pos),
-                                          'blocks': [{'id': each.id, 'meta': each.meta} for each in blocks]})
+    asked = [dict({'id': each.id}, **({'meta': each.meta} if each.meta >= 0 else {})) for each in blocks]
+    answer = self.request('block.faces', {'pos': _blockPos(pos), 'blocks': asked})
     return tuple(answer['blocks'])
 
   def textures(self, icons: list) -> dict:

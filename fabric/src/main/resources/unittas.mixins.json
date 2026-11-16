@@ -9,6 +9,8 @@
 		"AbstractContainerScreenAccess",
 		"ChatScreenAccess",
 		"CommandSuggestionsAccess",
+		"GameRendererAccess",
+		"LevelExtractorAccess",
 		"MinecraftAccess",
 		"MixinChatComponent",
 		"MixinGui",
@@ -17,7 +19,8 @@
 		"MixinMouseHandler",
 		"MixinSoundManager",
 		"SuggestionsListAccess",
-		"TrapDoorBlockAccess"
+		"TrapDoorBlockAccess",
+		"WeightedVariantsAccess"
 	],
 	"injectors": {
 		"defaultRequire": 1

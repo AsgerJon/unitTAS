@@ -99,6 +99,11 @@ def _all(icon: str) -> dict:
                                   'east')}
 
 
+def _every(colour: int) -> dict:
+  return {face: colour for face in ('down', 'up', 'north', 'south', 'west',
+                                    'east')}
+
+
 def _facing(top: str, side: str, front: str, meta: int) -> dict:
   """A furnace's or a dispenser's faces at a facing meta (2 to 5)."""
   faces = {'down': top, 'up': top}
@@ -126,6 +131,47 @@ LOOKS = {
 }
 
 
+def _faced(top: str, side: str, front: str, facing: str) -> dict:
+  """A furnace's faces, 26.3's textures, facing north, south, west or east."""
+  faces = {'down': top, 'up': top}
+  for face in ('north', 'south', 'west', 'east'):
+    faces[face] = front if face == facing else side
+  return faces
+
+
+def _drawn(key: Any, faces: dict, states: tuple = ({},),
+           tints: Any = None, mirrored: bool = False) -> dict:
+  """One way 26.3 draws a block: its key here, for the fake's own walls."""
+  return {'key': key, 'states': [dict(each) for each in states],
+          'faces': faces, 'tints': dict(tints or {}), 'mirrored': mirrored}
+
+
+_FURNACE = ('minecraft:block/furnace_top', 'minecraft:block/furnace_side',
+            'minecraft:block/furnace_front')
+#  How the fake's blocks look from 1.13 on, as 26.3's block.faces answers:
+#  by id, each way the block is drawn (its key in the fake's metas, the
+#  first unless one is set): its states, its faces' textures, the faces
+#  drawn tinted and with what colour, and whether its textures are drawn
+#  mirrored (26.3 draws stone one way or the other, at random)
+LOOKS_26 = {
+  'minecraft:stone': [
+    _drawn('plain', _all('minecraft:block/stone')),
+    _drawn('mirrored', _all('minecraft:block/stone'), mirrored=True)],
+  'minecraft:cobblestone': [_drawn('plain',
+                                   _all('minecraft:block/cobblestone'))],
+  'minecraft:furnace': [
+    _drawn(facing, _faced(*_FURNACE, facing),
+           states=({'facing': facing, 'lit': 'false'},))
+    for facing in ('north', 'south', 'west', 'east')],
+  #  one texture, two tints: told apart by their colours alone
+  'minecraft:oak_leaves': [_drawn('plain', _all('minecraft:block/leaves'),
+                                  tints=_every(0x48B518))],
+  'minecraft:spruce_leaves': [_drawn('plain',
+                                     _all('minecraft:block/leaves'),
+                                     tints=_every(0x619961))],
+}
+
+
 #  Where a texel (u, v) of each face is, from the block's least corner, as
 #  1.7.10 draws it: a side face's texture upright and unmirrored to one
 #  facing it, the top's and the bottom's along x and z.
@@ -135,6 +181,19 @@ FACE_POINT = {
   'south': lambda u, v: (u, 1.0 - v, 1.0),
   'west': lambda u, v: (0.0, 1.0 - v, u),
   'east': lambda u, v: (1.0, 1.0 - v, 1.0 - u)}
+
+
+def corners(face: str, mirrored: bool = False) -> list:
+  """
+  A face's corners as 26.3's block.faces gives them, [x, y, z, u, v]
+  each: where in the block, and where on its texture; mirrored, the
+  texture's left and right the other way.
+  """
+  out = []
+  for u, v in ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)):
+    x, y, z = FACE_POINT[face](1.0 - u if mirrored else u, v)
+    out.append([x, y, z, u, v])
+  return out
 
 
 def faceCamera(pos: tuple, face: str, eye: tuple, rect: tuple,
@@ -224,6 +283,10 @@ class FakePlayer:
     #  the blocks' metas, by place (a furnace's facing); how blocks look
     self.metas = {}
     self.looks = dict(LOOKS)
+    #  whether its game is 1.13's or later: blocks without metas, drawn as
+    #  LOOKS_26 says, a variant's key in metas
+    self.flattened = False
+    self.looks26 = dict(LOOKS_26)
     #  its feet's height and its motion up, whether it stands on something
     self.y = GROUND
     self.my = 0.0
@@ -556,15 +619,26 @@ class FakePlayer:
 
   # -------------------------------------------------------------- containers
 
-  def worldFaces(self, pos: tuple) -> Any:
-    """The faces the block at 'pos' shows, by its id and meta; None."""
+  def worldLook(self, pos: tuple) -> Any:
+    """
+    How the block at 'pos' is drawn: its faces, the tinted ones' tints and
+    whether it is mirrored; by its id and meta (or, flattened, the key of
+    the way it is drawn); None for no look.
+    """
+    if self.flattened:
+      drawn = self.looks26.get(self.walls.get(pos), ())
+      key = self.metas.get(pos)
+      for each in drawn:
+        if key is None or each['key'] == key:
+          return each['faces'], each['tints'], each['mirrored']
+      return None
     meta = self.metas.get(pos, 0)
     for (kind, _), variants in self.looks.items():
       if kind != self.walls.get(pos):
         continue
       for variant, faces in variants:
         if variant == meta:
-          return faces
+          return faces, {}, False
     return None
 
   def slotsShown(self) -> list:
@@ -792,15 +866,18 @@ class FakePlayer:
       mine = (not self.blind and target is not None and
               tuple(target['block']) == pos)
       eye = (self.x, self.y + EYE, self.z)
-      faces = self.worldFaces(pos) if mine else None
-      texture = _texture(faces[target['face']]) if faces else None
+      look = self.worldLook(pos) if mine else None
+      texture = _texture(look[0][target['face']]) if look else None
+      tint = look[1].get(target['face'], 0xFFFFFF) if look else 0xFFFFFF
       data = bytearray()
       for y in range(48):
         for x in range(64):
           inside = 24 <= x < 40 and 16 <= y < 32
           if inside and texture:
-            argb = texture[(y - 16) * 16 + (x - 24)]
-            data += bytes(int(((argb >> shift) & 255) * self.light)
+            across = 15 - (x - 24) if look[2] else x - 24
+            argb = texture[(y - 16) * 16 + across]
+            data += bytes(int(((argb >> shift) & 255) * self.light *
+                              ((tint >> shift) & 255) / 255)
                           for shift in (16, 8, 0))
           else:
             data += bytes((200, 40, 40) if inside and mine else (90, 90, 90))
@@ -820,6 +897,19 @@ class FakePlayer:
 
     def blockFaces(args: dict) -> dict:
       out = []
+      if self.flattened:
+        for block in args['blocks']:
+          if 'meta' in block:
+            raise FakeError('BadRequest', "26.3's blocks have no meta",
+                            field='blocks')
+          variants = [{'states': each['states'], 'faces': each['faces'],
+                       'tints': each['tints'],
+                       'corners': {face: corners(face, each['mirrored'])
+                                   for face in each['faces']}}
+                      for each in self.looks26.get(block['id'], ())]
+          out.append({'cube': bool(variants), 'tint': 0xFFFFFF,
+                      'variants': variants})
+        return {'blocks': out}
       for block in args['blocks']:
         variants = [{'metas': [m], 'faces': faces}
                     for (kind, _), each in sorted(self.looks.items())

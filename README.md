@@ -524,7 +524,9 @@ class LeverAndChestTests(ScenarioTestCase):
 - **Outcomes:** an action the agent can't complete (no way there, out of reach, the tick budget spent, slipped off a
   ladder) raises `TesttimeError`, the test's ERROR, naming the step and what the agent saw. An examination that finds
   the world wrong is the test's FAIL. A game that stops ticking is `NO RESULT`, as ever.
-- **Today** the agent plays 1.7.10. 26.3's probe has no `player.perceive` or `view.block` yet.
+- **Today** the agent plays 1.7.10 and 26.3: walking, verbs, containers, `examine()` and `identify()` pass their game
+  tests on both (26.3 draws a block one of several ways at random, stone plain or mirrored: `identify()` compares
+  each). A scenario run on 26.3 (`unittas run`) comes with SPEC.md 19.7 step 4.
 
 ## A mod's own part
 

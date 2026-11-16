@@ -1,17 +1,20 @@
 """
-Blocks identified from their looks alone in the development client
-(SPEC.md 15.4's identify, 15.6 step 6): the agent looks at a block from
-each side, sets each face square and compares it with every full cube's
-faces as the running game draws them, from its own resource pack. A
-furnace, a crafting table and red wool, among all blocks;
-stone among all is said to look as infested stone does (1.7.10 draws
-that with stone's texture: no player tells them apart by looks); stone
-among a given few, bedrock (stone's pattern, darker and starker) among
-them; a crafting table among a given few. Each decision's scores are
-kept beside the results (identify/notes.txt), with the views' frames.
+Blocks identified from their looks alone on the run's port (SPEC.md
+15.4's identify, 15.6 step 6, 19.7 step 3c): the agent looks at a block
+from each side, sets each face square and compares it with every full
+cube's faces as the running game draws them, from its own resource pack
+(26.3: each way it draws a block, stone plain or mirrored, each face as
+its corners and tint say). A furnace, a crafting table and red wool,
+among all blocks; stone among all is said to look as infested stone does
+(both versions draw that with stone's texture: no player tells them
+apart by looks); stone among a given few, bedrock (stone's pattern,
+darker and starker) among them; a crafting table among a given few.
+Each decision's scores are kept beside the results (identify/notes.txt),
+with the views' frames. Places written as in 1.7.10's flat world and
+moved to the port's (ports.at).
 
   python -m unittas.selftest test_identify.
-  (through the watcher: "probe test_identify.")
+  (through the watcher: "probe test_identify.", "probe test_identify on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -23,16 +26,15 @@ import unittest
 
 from mcdex import MCBlocks
 
-from probegame import READY_SECONDS, ROOT, results
+from ports import at, block, probeGame, start
+from probegame import READY_SECONDS
 from unittas.agent import Agent
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.errors import TesttimeError
 from unittas.reset import reset
 from unittas.run import Run
-from unittas.values import Block, BlockPos
 
-PLACE = BlockPos(3, 4, 6)
+PLACE = at(3, 4, 6)
 
 
 class _Noted:
@@ -50,10 +52,10 @@ class IdentifyTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'identify')
+    cls.launched = probeGame('identify')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -69,7 +71,7 @@ class IdentifyTests(unittest.TestCase):
     cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
 
   def tearDown(self) -> None:
     self.game.setBlock(PLACE, MCBlocks.Air)
@@ -87,11 +89,11 @@ class IdentifyTests(unittest.TestCase):
 
   def test_b_a_furnace(self) -> None:
     """
-    Facing south, meta 3: 1.7.10 sets a furnace's facing itself as it is
-    added, south with nothing around (a meta 5 asked for isn't kept).
+    Facing south: 1.7.10 sets a furnace's facing itself as it is added,
+    south with nothing around (a meta 5 asked for isn't kept).
     """
     self.assertIs(MCBlocks.Furnace,
-                  self.identified(Block('minecraft:furnace', 3)))
+                  self.identified(block('furnace facing south')))
 
   def test_c_a_crafting_table(self) -> None:
     self.assertIs(MCBlocks.CraftingTable,

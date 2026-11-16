@@ -186,6 +186,28 @@ class SquaredUpTests(unittest.TestCase):
     #  texels 0 and 1 of 32 both fall in the frame's first pixel
     self.assertEqual(square[0], square[1])
 
+  def test_where_its_corners_say(self) -> None:
+    """
+    26.3's block.faces gives where a face's texture lies on it, its
+    quad's corners ([x, y, z, u, v] each): the north face as 1.7.10 draws
+    it squares as without them; mirrored, the texels come the other way.
+    """
+    view = self.drawn('north', (3.5, 5.62, 3.0))
+    upright = [[1, 1, 0, 0, 0], [0, 1, 0, 1, 0], [0, 0, 0, 1, 1],
+               [1, 0, 0, 0, 1]]
+    mirrored = [[0, 1, 0, 0, 0], [1, 1, 0, 1, 0], [1, 0, 0, 1, 1],
+                [0, 0, 0, 0, 1]]
+    self.assertEqual(view.square('north'),
+                     view.square('north', corners=upright))
+    texels = tuple(((15 - i) * 16, j * 16, 99) for j in range(16)
+                   for i in range(16))
+    self.assertEqual(texels, view.square('north', corners=mirrored))
+
+  def test_corners_that_are_no_face(self) -> None:
+    view = self.drawn('north', (3.5, 5.62, 3.0))
+    with self.assertRaisesRegex(ValueError, 'corners'):
+      view.square('north', corners=[[0, 0, 0, 0, 0]] * 4)
+
 
 if __name__ == '__main__':
   unittest.main()

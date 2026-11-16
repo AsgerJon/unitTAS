@@ -15,7 +15,7 @@ from . import png
 from .values import BlockPos, Look, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
-  from typing import Any, Optional
+  from typing import Any, Callable, Optional
 
 
 #  Where a texel (u, v) of each face is, from the block's least corner, as
@@ -33,6 +33,39 @@ _FACE_SEEN = {
   'down': lambda x, y, z: y < 0.0, 'up': lambda x, y, z: y > 1.0,
   'north': lambda x, y, z: z < 0.0, 'south': lambda x, y, z: z > 1.0,
   'west': lambda x, y, z: x < 0.0, 'east': lambda x, y, z: x > 1.0}
+
+
+def _onFace(corners: list) -> Callable:
+  """
+  Where a texel (u, v) of a face is, from the block's least corner, by
+  the face's quad's corners as 26.3's block.faces gives them ([x, y, z,
+  u, v] each, in order around it): a mirrored or turned texture is drawn
+  as its corners say.
+
+  Raises
+  ------
+  ValueError
+    Not four corners of five numbers, or the texture has no area on them.
+  """
+  if len(corners) != 4 or any(len(each) != 5 for each in corners):
+    raise ValueError('a face\'s corners are four [x, y, z, u, v], not %r' % (
+      corners,))
+  first, second, _, last = [[float(n) for n in each] for each in corners]
+  du1, dv1 = second[3] - first[3], second[4] - first[4]
+  du3, dv3 = last[3] - first[3], last[4] - first[4]
+  det = du1 * dv3 - du3 * dv1
+  if abs(det) < 1e-9:
+    raise ValueError('the corners %r are no face: the texture has no area '
+                     'on them' % (corners,))
+
+  def at(u: float, v: float) -> tuple:
+    #  (u, v) from the first corner, along the second's and the last's
+    a = ((u - first[3]) * dv3 - (v - first[4]) * du3) / det
+    b = (du1 * (v - first[4]) - dv1 * (u - first[3])) / det
+    return tuple(first[i] + a * (second[i] - first[i]) +
+                 b * (last[i] - first[i]) for i in range(3))
+
+  return at
 
 
 def _apply(matrix: list, vector: list) -> list:
@@ -271,17 +304,21 @@ class BlockView(BaseObject):
     up = vy + (clip[1] / clip[3] + 1) / 2 * vh
     return across, self.height - up
 
-  def square(self, face: str, size: int = 16) -> tuple:
+  def square(self, face: str, size: int = 16,
+             corners: Optional[list] = None) -> tuple:
     """
     The face set square (SPEC.md 15.4): for each of a size by size
     texture's texels, row by row from the top as the game draws it, the
     frame's pixel at the texel's middle, (r, g, b), when that pixel is
     the block's; None where it isn't (hidden, or off the frame), and for
-    every texel of a face turned away from the eye.
+    every texel of a face turned away from the eye. The texture lies on
+    the face as 1.7.10 draws it, or as its quad's 'corners' say (26.3's
+    block.faces: stone drawn mirrored).
     """
     if face not in _FACE_POINT:
       raise ValueError('a face is one of %s, not %r' % (
         ', '.join(_FACE_POINT), face))
+    point = _FACE_POINT[face] if corners is None else _onFace(corners)
     pos, eye = self.__pos__, self.__answer__['camera']['pos']
     if not self.__rect__ or not _FACE_SEEN[face](
         eye[0] - pos.x, eye[1] - pos.y, eye[2] - pos.z):
@@ -291,7 +328,7 @@ class BlockView(BaseObject):
     out = []
     for j in range(size):
       for i in range(size):
-        dx, dy, dz = _FACE_POINT[face]((i + 0.5) / size, (j + 0.5) / size)
+        dx, dy, dz = point((i + 0.5) / size, (j + 0.5) / size)
         at = self.project(pos.x + dx, pos.y + dy, pos.z + dz)
         if at is None:
           out.append(None)

@@ -1,13 +1,16 @@
 """
-How blocks look in the development client, from its resource pack
-(SPEC.md 15.4's identify): block.faces gives each face's icon for each
-meta (a furnace's facings, wool's colours, alike metas together),
-texture.get each icon's pixels; a view's
-face squared up has the block's pixels where the camera says. The
-answers are kept beside the results (looks/answers.json).
+How blocks look on the run's port, from its resource pack (SPEC.md
+15.4's identify, 19.7 step 3c): block.faces gives each face's texture
+for each meta (1.7.10: a furnace's facings, wool's colours, alike metas
+together) or each state, each way the game draws it (26.3: stone plain or
+mirrored, turned or not; each face's corners, where its texture lies on
+it, and its tint); texture.get each texture's pixels; a view's face
+squared up has the block's pixels where the camera says. The answers
+are kept beside the results (looks/answers.json). Places written as in
+1.7.10's flat world and moved to the port's (ports.at).
 
   python -m unittas.selftest test_looks.
-  (through the watcher: "probe test_looks.")
+  (through the watcher: "probe test_looks.", "probe test_looks on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -20,23 +23,49 @@ import unittest
 
 from mcdex import MCBlocks
 
-from probegame import READY_SECONDS, ROOT, results
+from ports import FABRIC_26_3, FORGE_1_7_10, at, port, probeGame, start
+from probegame import READY_SECONDS
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.reset import reset
-from unittas.values import Block, BlockPos
+from unittas.things import blockOf
+from unittas.values import Block
 
-PLACE = BlockPos(0, 5, 3)
+PLACE = at(0, 5, 3)
+#  each version's textures, by what they are: 1.7.10's icon names, 26.3's
+#  texture names
+TEXTURES = {
+  'stone': {FORGE_1_7_10: 'stone', FABRIC_26_3: 'minecraft:block/stone'},
+  'furnace front': {FORGE_1_7_10: 'furnace_front_off',
+                    FABRIC_26_3: 'minecraft:block/furnace_front'},
+  'red wool': {FORGE_1_7_10: 'wool_colored_red',
+               FABRIC_26_3: 'minecraft:block/red_wool'},
+  'none': {FORGE_1_7_10: 'no_such', FABRIC_26_3: 'minecraft:block/no_such'},
+}
+#  which of a block's metas (1.7.10) or states (26.3) a look is drawn for
+DRAWN_FOR = {
+  'furnace facing east': {FORGE_1_7_10: [[5]],
+                          FABRIC_26_3: [[{'facing': 'east', 'lit': 'false'}]]},
+  'red wool': {FORGE_1_7_10: [[14]], FABRIC_26_3: [[{}]]},
+}
+
+
+def texture(what: str) -> str:
+  return TEXTURES[what][port()]
+
+
+def drawnFor(variant: dict) -> list:
+  """The metas or the states a look is drawn for."""
+  return variant['metas'] if 'metas' in variant else variant['states']
 
 
 class LooksTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'looks')
+    cls.launched = probeGame('looks')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -55,37 +84,57 @@ class LooksTests(unittest.TestCase):
       cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
 
   def test_a_faces(self) -> None:
-    looks = self.game.blockFaces(
-      [Block('minecraft:stone', 0), Block('minecraft:furnace', 0),
-       Block('minecraft:wool', 14), Block('minecraft:lever', 0),
-       Block('minecraft:nothing_such', 0)], PLACE)
+    game = self.game
+    blocks = [blockOf(member, game.version, game.declared())[0]
+              for member in (MCBlocks.Stone, MCBlocks.Furnace,
+                             MCBlocks.RedWool, MCBlocks.Lever)]
+    blocks.append(Block('minecraft:nothing_such', blocks[0].meta))
+    looks = game.blockFaces(blocks, PLACE)
     self.kept['faces'] = looks
     stone, furnace, wool, lever, nothing = looks
     self.assertTrue(stone['cube'])
-    self.assertEqual({'stone'}, set(stone['variants'][0]['faces'].values()))
-    self.assertEqual(list(range(16)), sorted(
-      meta for variant in stone['variants'] for meta in variant['metas']))
-    east = [variant['metas'] for variant in furnace['variants']
-            if variant['faces']['east'] == 'furnace_front_off']
-    self.assertEqual([[5]], east)
-    red = [variant['metas'] for variant in wool['variants']
-           if variant['faces']['north'] == 'wool_colored_red']
-    self.assertEqual([[14]], red)
+    self.assertEqual({texture('stone')}, {
+      icon for variant in stone['variants']
+      for icon in variant['faces'].values()})
+    if port() == FORGE_1_7_10:
+      self.assertEqual(list(range(16)), sorted(
+        meta for variant in stone['variants'] for meta in variant['metas']))
+    else:
+      #  26.3 draws stone four ways at random: plain or mirrored, turned
+      #  half round or not; each face's corners in the block and on its
+      #  texture, 0 to 1
+      self.assertEqual(4, len(stone['variants']), stone['variants'])
+      self.assertEqual([[{}]] * 4, [drawnFor(each)
+                                    for each in stone['variants']])
+      for variant in stone['variants']:
+        for corners in variant['corners'].values():
+          self.assertEqual(4, len(corners))
+          for corner in corners:
+            self.assertEqual(5, len(corner))
+            self.assertTrue(all(-1e-6 <= n <= 1 + 1e-6 for n in corner),
+                            corner)
+    east = [drawnFor(variant) for variant in furnace['variants']
+            if variant['faces']['east'] == texture('furnace front')]
+    self.assertEqual(DRAWN_FOR['furnace facing east'][port()], east)
+    red = [drawnFor(variant) for variant in wool['variants']
+           if variant['faces']['north'] == texture('red wool')]
+    self.assertEqual(DRAWN_FOR['red wool'][port()], red)
     self.assertFalse(lever['cube'])
     self.assertIn('error', nothing)
 
   def test_b_textures(self) -> None:
-    icons = self.game.textures(['stone', 'furnace_front_off', 'no_such'])
+    names = [texture('stone'), texture('furnace front'), texture('none')]
+    icons = self.game.textures(names)
     self.kept['textures'] = {name: {key: value for key, value in
                                     each.items() if key != 'pixels'}
                              for name, each in icons.items()}
-    stone = icons['stone']
+    stone = icons[texture('stone')]
     self.assertEqual((16, 16, 256), (stone['width'], stone['height'],
                                      len(stone['pixels'])))
-    self.assertIn('error', icons['no_such'])
+    self.assertIn('error', icons[texture('none')])
 
   def test_c_a_face_squared_up(self) -> None:
     self.game.setBlock(PLACE, MCBlocks.Stone)

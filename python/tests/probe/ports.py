@@ -71,6 +71,9 @@ BLOCKS = {
     FORGE_1_7_10: Block('minecraft:chest', 3, True, '{Items:[{Slot:0b,id:35s,Count:3b,Damage:6s}]}'),
     FABRIC_26_3: Block('minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",count:3}]}',
                        (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))},
+  #  a furnace facing south: 1.7.10 sets a furnace's facing itself as it is added, south with nothing around (meta 3)
+  'furnace facing south': {FORGE_1_7_10: Block('minecraft:furnace', 3),
+                           FABRIC_26_3: Block('minecraft:furnace', -1, state=(('facing', 'south'), ('lit', 'false')))},
   #  a gate shut across the way along z
   'fence gate': {FORGE_1_7_10: Block('minecraft:fence_gate', 0),
                  FABRIC_26_3: Block('minecraft:oak_fence_gate', -1, state=(('facing', 'south'), ('in_wall', 'false'),

@@ -6,7 +6,10 @@ texture.get as the running game does. Views from each side it can see
 the block from, each face squared up and compared with each candidate's
 faces (each variant: a furnace's facings); the best beats the next by
 the margin, or a TesttimeError says the scores. Two candidates that look
-the same are said so; air is known by touch.
+the same are said so; air is known by touch. From 1.13 on (26.3's
+shape), a block's looks come by its states, not its metas: each way the
+game draws it (stone plain or mirrored), its faces' tints and where each
+face's texture lies on it.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -139,6 +142,48 @@ class IdentifyTests(PlayedTests):
       self.agent.identify(PLACE, among=[MCBlocks.Stone, MCBlocks.Lever])
     with self.assertRaises(Missing):
       self.agent.identify(PLACE, among=[MCBlocks.Stone, MCBlocks.Barrier])
+
+
+class FlattenedIdentifyTests(PlayedTests):
+  """
+  Identify against a game from 1.13 on, as 26.3's block.faces answers:
+  the blocks asked for by id alone (no meta), each look its states, and
+  its faces' tints and corners, which the squaring follows.
+  """
+
+  MINECRAFT = '26.3'
+  NAMES = 'mojang'
+
+  def setUp(self) -> None:
+    PlayedTests.setUp(self)
+    self.player.flattened = True
+    folder = tempfile.mkdtemp(prefix='unittas-identify-')
+    self.addCleanup(shutil.rmtree, folder, True)
+    self.agent = Agent(self.agent.game, frames=folder)
+
+  def put(self, block: str, drawn: str = None) -> None:
+    """The block at the place, drawn the way 'drawn' names (LOOKS_26)."""
+    self.player.walls[(3, 4, 6)] = block
+    if drawn is not None:
+      self.player.metas[(3, 4, 6)] = drawn
+
+  def test_a_furnace_by_its_states(self) -> None:
+    self.put('minecraft:furnace', 'east')
+    self.assertIs(MCBlocks.Furnace, self.agent.identify(
+      PLACE, among=[MCBlocks.Stone, MCBlocks.Furnace,
+                    MCBlocks.Cobblestone]))
+
+  def test_stone_drawn_mirrored(self) -> None:
+    """Squared by its corners, the mirrored face is stone's texture."""
+    self.put('minecraft:stone', 'mirrored')
+    self.assertIs(MCBlocks.Stone, self.agent.identify(
+      PLACE, among=[MCBlocks.Stone, MCBlocks.Cobblestone]))
+
+  def test_told_apart_by_their_tints(self) -> None:
+    """Oak's and spruce's leaves here share a texture; their tints differ."""
+    self.put('minecraft:spruce_leaves')
+    self.assertIs(MCBlocks.SpruceLeaves, self.agent.identify(
+      PLACE, among=[MCBlocks.OakLeaves, MCBlocks.SpruceLeaves]))
 
 
 if __name__ == '__main__':

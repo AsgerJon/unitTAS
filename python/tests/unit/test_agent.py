@@ -38,6 +38,10 @@ SPENT = 1285
 class PlayedTests(unittest.TestCase):
   """An agent playing a fake player (fakeplayer.py): its tests' base."""
 
+  #  the version the fake's game says it is, and its names
+  MINECRAFT = '1.7.10'
+  NAMES = 'mcp'
+
   def setUp(self) -> None:
     folder = tempfile.mkdtemp(prefix='unittas-agent-')
     self.addCleanup(shutil.rmtree, folder, True)
@@ -45,7 +49,8 @@ class PlayedTests(unittest.TestCase):
     self.addCleanup(listener.close)
     expected = listener.prepare(folder, 'alice', Role.CLIENT)
     fake = FakeProbe(expected.startFile,
-                     extra={'names': 'mcp', 'minecraft': '1.7.10'})
+                     extra={'names': self.NAMES,
+                            'minecraft': self.MINECRAFT})
     thread, box = inThread(fake.connect)
     connection = listener.accept(timeout=10)
     thread.join(10)

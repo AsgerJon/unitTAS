@@ -457,7 +457,7 @@ final class FabricThings {
 
 	// ---------------------------------------------------------------- blocks
 
-	private static BlockPos blockPos(Call call) throws ProbeException {
+	static BlockPos blockPos(Call call) throws ProbeException {
 		JsonElement given = call.args.get("pos");
 		if (given == null || !given.isJsonArray() || given.getAsJsonArray().size() != 3) {
 			throw ProbeException.badRequest("pos", "pos is [x, y, z]");
