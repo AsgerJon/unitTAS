@@ -337,7 +337,7 @@ def _target(data: Any) -> Target:
     if face not in FACES:
       raise ValueError('a target\'s "face" is one of %s, not %r' % (', '.join(FACES), face))
     return Target(kind='block', pos=_blockPos(body['block']), face=face, id=_need(body, 'id', str, what),
-                  meta=_need(body, 'meta', int, what), hit=hit)
+                  meta=_maybe(body, 'meta', int, what, -1), hit=hit, state=_state(body, what))
   if 'entity' in body:
     return Target(kind='entity', entity=_need(body, 'entity', int, what), type=_need(body, 'type', str, what),
                   hit=hit)
@@ -346,8 +346,12 @@ def _target(data: Any) -> Target:
 
 def _targetJson(target: Target) -> Any:
   if target.kind == 'block':
-    return {'block': _blockPosJson(target.pos), 'face': target.face, 'hit': _vec3Json(target.hit), 'id': target.id,
-            'meta': target.meta}
+    out = {'block': _blockPosJson(target.pos), 'face': target.face, 'hit': _vec3Json(target.hit), 'id': target.id}
+    if target.meta >= 0:
+      out['meta'] = target.meta
+    if target.state:
+      out['state'] = dict(target.state)
+    return out
   if target.kind == 'entity':
     return {'entity': target.entity, 'type': target.type, 'hit': _vec3Json(target.hit)}
   return None
@@ -357,15 +361,20 @@ def _nearBlock(data: Any) -> NearBlock:
   body = _object(data, NearBlock)
   what = 'a block near'
   return NearBlock(_blockPos(_need(body, 'pos', list, what)), _need(body, 'id', str, what),
-                   _need(body, 'meta', int, what), tuple(_box(box) for box in _need(body, 'boxes', list, what)),
+                   _maybe(body, 'meta', int, what, -1), tuple(_box(box) for box in _need(body, 'boxes', list, what)),
                    _need(body, 'liquid', bool, what), _need(body, 'climbable', bool, what),
-                   _need(body, 'opens', bool, what))
+                   _need(body, 'opens', bool, what), _state(body, what))
 
 
 def _nearBlockJson(block: NearBlock) -> dict:
-  return {'pos': _blockPosJson(block.pos), 'id': block.id, 'meta': block.meta,
-          'boxes': [_boxJson(box) for box in block.boxes], 'liquid': block.liquid, 'climbable': block.climbable,
-          'opens': block.opens}
+  out = {'pos': _blockPosJson(block.pos), 'id': block.id}
+  if block.meta >= 0:
+    out['meta'] = block.meta
+  if block.state:
+    out['state'] = dict(block.state)
+  out.update({'boxes': [_boxJson(box) for box in block.boxes], 'liquid': block.liquid, 'climbable': block.climbable,
+              'opens': block.opens})
+  return out
 
 
 def _perception(data: Any) -> Perception:

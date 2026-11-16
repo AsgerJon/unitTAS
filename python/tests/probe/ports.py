@@ -20,6 +20,7 @@ from probegame import ROOT, results
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
 from unittas.selftest import PORTS
+from unittas.values import Block, BlockPos, Vec3
 
 FORGE_1_7_10, FABRIC_26_3 = PORTS
 #  where the reset puts the player in each port's flat test world: on its grass, at y 3 in 1.7.10 and y -61 in 26.3
@@ -38,6 +39,35 @@ COMMANDS = {
 CODES = {'space': {FORGE_1_7_10: 57, FABRIC_26_3: 44}}
 
 
+def _door(kind: str, half: str) -> Block:
+  """26.3's door half, shut, facing south: its box along the block's north edge, as 1.7.10's meta 1 has it."""
+  return Block('minecraft:' + kind, -1, state=(('facing', 'south'), ('half', half), ('hinge', 'left'),
+                                               ('open', 'false'), ('powered', 'false')))
+
+
+#  the blocks a scene needs whose state is the version's own (mcdex names a block, not its state), by what they are
+BLOCKS = {
+  #  on a block west of it: its box along its west edge
+  'ladder facing east': {FORGE_1_7_10: Block('minecraft:ladder', 5),
+                         FABRIC_26_3: Block('minecraft:ladder', -1,
+                                            state=(('facing', 'east'), ('waterlogged', 'false')))},
+  #  on a block south of it: its box along its south edge
+  'ladder facing north': {FORGE_1_7_10: Block('minecraft:ladder', 2),
+                          FABRIC_26_3: Block('minecraft:ladder', -1,
+                                             state=(('facing', 'north'), ('waterlogged', 'false')))},
+  #  a door shut across the way along z, its box along the north edge; its upper half set first (a lower half alone
+  #  falls apart)
+  'wooden door, lower': {FORGE_1_7_10: Block('minecraft:wooden_door', 1), FABRIC_26_3: _door('oak_door', 'lower')},
+  'wooden door, upper': {FORGE_1_7_10: Block('minecraft:wooden_door', 8), FABRIC_26_3: _door('oak_door', 'upper')},
+  'iron door, lower': {FORGE_1_7_10: Block('minecraft:iron_door', 1), FABRIC_26_3: _door('iron_door', 'lower')},
+  'iron door, upper': {FORGE_1_7_10: Block('minecraft:iron_door', 8), FABRIC_26_3: _door('iron_door', 'upper')},
+  #  a gate shut across the way along z
+  'fence gate': {FORGE_1_7_10: Block('minecraft:fence_gate', 0),
+                 FABRIC_26_3: Block('minecraft:oak_fence_gate', -1, state=(('facing', 'south'), ('in_wall', 'false'),
+                                                                          ('open', 'false'), ('powered', 'false')))},
+}
+
+
 def port() -> str:
   """The run's port: UNITTAS_PROBE_PORT, 1.7.10 Forge without it."""
   named = os.environ.get('UNITTAS_PROBE_PORT') or FORGE_1_7_10
@@ -54,6 +84,29 @@ def start() -> tuple:
 def command(what: str) -> str:
   """The command that does 'what', as the port's version reads it."""
   return COMMANDS[what][port()]
+
+
+def block(what: str) -> Block:
+  """A scene's block whose state is the version's own, as the port's version has it."""
+  return BLOCKS[what][port()]
+
+
+def lift(y: float) -> float:
+  """
+  A height in 1.7.10's flat test world (its start's feet at y 4), as the port's: moved by the difference between
+  their starts (26.3's feet are at y -60), so a test written in 1.7.10's places runs on any port.
+  """
+  return y - 4.0 + start()[1]
+
+
+def at(x: int, y: int, z: int) -> BlockPos:
+  """A block's place written in 1.7.10's flat world, on the port's."""
+  return BlockPos(x, int(lift(y)), z)
+
+
+def point(x: float, y: float, z: float) -> Vec3:
+  """A point written in 1.7.10's flat world, on the port's."""
+  return Vec3(x, lift(y), z)
 
 
 def code(key: str) -> int:

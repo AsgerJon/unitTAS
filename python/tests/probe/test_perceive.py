@@ -1,16 +1,19 @@
 """
-What the player perceives (player.perceive, SPEC.md 15.6 step 1) in the
-development client, on flat ground: the crosshair's target by the game's
+What the player perceives (player.perceive, SPEC.md 15.6 step 1) on the
+run's port (19.7), on flat ground: the crosshair's target by the game's
 own pick (the ground below, a wall's face ahead, a minecart, nothing
 when looking up), the player's eye, box and reach, running into a wall
 as the game collides it, and the blocks around it as the game collides
 with them (the ground, a wall, a flower and water that stop nothing, a
-ladder that is climbed). The answers seen are saved as
-<results>/perceive/perceptions.json, the unit tests' fixtures
-(python/tests/unit/fixtures/perceptions.json, copied from a run).
+ladder that is climbed). Places written as in 1.7.10's flat world and
+moved to the port's (ports.at), things by mcdex member. The answers seen
+are saved as <results>/perceive/perceptions.json, the unit tests'
+fixtures (python/tests/unit/fixtures/perceptions.json for 1.7.10,
+perceptions-26.3.json for 26.3, copied from a run).
 
   python -m unittas.selftest test_perceive.
-  (through the watcher: "probe test_perceive.")
+  (through the watcher: "probe test_perceive.",
+  "probe test_perceive on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -24,29 +27,32 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities
 
-from probegame import READY_SECONDS, ROOT, results
+from ports import FABRIC_26_3, FORGE_1_7_10, at, block, lift, port, probeGame, start
+from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.box import Box
 from unittas.codec import fromJson, toJson
-from unittas.dev import DevGame
 from unittas.perception import Perception
 from unittas.reset import reset
-from unittas.values import Block, BlockPos, Vec3
+from unittas.things import entityOf
+from unittas.values import Vec3
 
-#  the client player's eye above its feet, and its box, in 1.7.10
+#  the client player's eye above its feet, and its box, standing
 EYE = 1.62
 WIDTH = 0.6
 HEIGHT = 1.8
+#  a creative player's reach, blocks and entities: 6 for entities in 1.7.10, 5 from 1.20.5's attributes on
+REACH = {FORGE_1_7_10: (5.0, 6.0), FABRIC_26_3: (5.0, 5.0)}
 
 
 class PerceiveTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'perceive')
+    cls.launched = probeGame('perceive')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -65,7 +71,7 @@ class PerceiveTests(unittest.TestCase):
       cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
 
   def perceived(self, around: int = 2) -> Perception:
     """The answer read, checked to write back as it came, and recorded."""
@@ -77,7 +83,7 @@ class PerceiveTests(unittest.TestCase):
 
   def near(self, seen: Perception, pos: tuple):
     """The block perceived at pos; a failure when none was."""
-    found = [each for each in seen.blocks if each.pos == BlockPos(*pos)]
+    found = [each for each in seen.blocks if each.pos == at(*pos)]
     self.assertEqual(1, len(found), '%s among %s' % (pos, seen.blocks))
     return found[0]
 
@@ -85,37 +91,36 @@ class PerceiveTests(unittest.TestCase):
     self.game.look(0, 90)
     seen = self.perceived()
     self.assertEqual('block', seen.target.kind)
-    self.assertEqual(BlockPos(0, 3, 0), seen.target.pos)
+    self.assertEqual(at(0, 3, 0), seen.target.pos)
     self.assertEqual('up', seen.target.face)
-    self.assertAlmostEqual(4.0, seen.target.hit.y, places=6)
+    self.assertAlmostEqual(lift(4.0), seen.target.hit.y, places=6)
     self.assertTrue(seen.onGround)
     self.assertAlmostEqual(seen.pos.y + EYE, seen.eye.y, places=4)
     box = seen.box
     self.assertAlmostEqual(WIDTH, box.maxX - box.minX, places=4)
     self.assertAlmostEqual(HEIGHT, box.maxY - box.minY, places=4)
     self.assertAlmostEqual(seen.pos.y, box.minY, places=6)
-    #  creative: blocks within 5, entities within 6
-    self.assertEqual((5.0, 6.0), (seen.blockReach, seen.entityReach))
+    self.assertEqual(REACH[port()], (seen.blockReach, seen.entityReach))
     ground = self.near(seen, (0, 3, 0))
-    self.assertEqual((Box(0.0, 3.0, 0.0, 1.0, 4.0, 1.0),), ground.boxes)
+    self.assertEqual((Box(0.0, lift(3.0), 0.0, 1.0, lift(4.0), 1.0),), ground.boxes)
     #  around 2: the 5 by 5 under the feet, and nothing above it
     self.assertEqual(25, len(seen.blocks))
-    self.assertEqual({3}, {each.pos.y for each in seen.blocks})
+    self.assertEqual({at(0, 3, 0).y}, {each.pos.y for each in seen.blocks})
 
   def test_b_a_wall_ahead(self) -> None:
-    wall = [(0, 4, 2), (0, 5, 2)]
+    wall = [at(0, 4, 2), at(0, 5, 2)]
     for pos in wall:
       self.game.setBlock(pos, MCBlocks.Stone)
     try:
       self.game.look(0, 0)
       seen = self.perceived()
       #  yaw 0 looks south (+z): the upper stone's north face, at eye height
-      self.assertEqual(BlockPos(0, 5, 2), seen.target.pos)
+      self.assertEqual(at(0, 5, 2), seen.target.pos)
       self.assertEqual('north', seen.target.face)
       self.assertAlmostEqual(2.0, seen.target.hit.z, places=6)
       self.assertEqual('minecraft:stone', seen.target.id)
       self.assertTrue(self.near(seen, (0, 4, 2)).solid)
-      self.assertEqual(5.0, self.near(seen, (0, 4, 2)).top)
+      self.assertEqual(lift(5.0), self.near(seen, (0, 4, 2)).top)
       self.assertFalse(seen.collidedHorizontally)
       self.game.keyDown('key.forward')
       try:
@@ -131,26 +136,27 @@ class PerceiveTests(unittest.TestCase):
         self.game.setBlock(pos, MCBlocks.Air)
 
   def test_c_an_entity_ahead(self) -> None:
-    cart = self.game.spawn(MCEntities.Minecart, (0.5, 4.0, 2.5))
+    cart = self.game.spawn(MCEntities.Minecart, (0.5, lift(4.0), 2.5))
     try:
       self.game.ticks(2)
       eye = self.perceived().eye
-      drop = eye.y - 4.35
+      drop = eye.y - lift(4.35)
       self.game.look(0, math.degrees(math.atan2(drop, 2.0)))
       seen = self.perceived()
       self.assertEqual('entity', seen.target.kind)
       self.assertEqual(cart.entity, seen.target.entity)
-      self.assertEqual('MinecartRideable', seen.target.type)
+      #  MinecartRideable in 1.7.10, minecraft:minecart in 26.3
+      self.assertEqual(entityOf(MCEntities.Minecart, self.game.version)[0], seen.target.type)
     finally:
       self.game.remove(cart)
 
   def test_d_what_stops_nothing_and_what_is_climbed(self) -> None:
     placed = [((-2, 4, 0), MCBlocks.Stone),
-              ((-1, 4, 0), Block('minecraft:ladder', 5)),
+              ((-1, 4, 0), block('ladder facing east')),
               ((1, 4, 0), MCBlocks.Poppy),
               ((1, 3, 1), MCBlocks.Water)]
-    for pos, block in placed:
-      self.game.setBlock(pos, block)
+    for pos, each in placed:
+      self.game.setBlock(at(*pos), each)
     try:
       self.game.ticks(2)
       seen = self.perceived()
@@ -165,14 +171,15 @@ class PerceiveTests(unittest.TestCase):
       self.assertTrue(water.liquid)
       self.assertFalse(water.solid)
     finally:
-      for pos, block in reversed(placed):
-        self.game.setBlock(pos, MCBlocks.Air if pos[1] > 3 else
+      for pos, _ in reversed(placed):
+        self.game.setBlock(at(*pos), MCBlocks.Air if pos[1] > 3 else
                            MCBlocks.GrassBlock)
 
   def test_f_sneaking(self) -> None:
     """
-    Sneaking lowers the eye (1.7.10's client lowers posY 0.08), not the
-    feet: they stay on the ground, the box's foot, in player.get too.
+    Sneaking lowers the eye (1.7.10's client lowers posY 0.08; 26.3's
+    crouching pose is lower), not the feet: they stay on the ground, the
+    box's foot, in player.get too.
     """
     self.game.keyDown('key.sneak')
     try:
@@ -182,7 +189,7 @@ class PerceiveTests(unittest.TestCase):
     finally:
       self.game.keyUp('key.sneak')
     self.assertTrue(seen.sneaking)
-    self.assertEqual((4.0, 4.0, 4.0),
+    self.assertEqual((lift(4.0),) * 3,
                      (seen.box.minY, seen.pos.y, client.pos.y))
     self.assertLess(seen.eye.y, seen.pos.y + EYE)
 

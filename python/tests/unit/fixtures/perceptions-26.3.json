@@ -1,0 +1,5369 @@
+[
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 90.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": {
+   "block": [
+    0,
+    -61,
+    0
+   ],
+   "face": "up",
+   "hit": [
+    0.5,
+    -60.0,
+    0.5000000000000002
+   ],
+   "id": "minecraft:grass_block",
+   "state": {
+    "snowy": "false"
+   }
+  },
+  "tick": 105
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -60.0,
+      2.0,
+      1.0,
+      -59.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:stone",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -60,
+     2
+    ]
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -59.0,
+      2.0,
+      1.0,
+      -58.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:stone",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -59,
+     2
+    ]
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": {
+   "block": [
+    0,
+    -59,
+    2
+   ],
+   "face": "north",
+   "hit": [
+    0.5,
+    -58.37999999523163,
+    2.0
+   ],
+   "id": "minecraft:stone"
+  },
+  "tick": 121
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      3.0,
+      -1.0,
+      -60.0,
+      4.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     3
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      3.0,
+      0.0,
+      -60.0,
+      4.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     3
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      3.0,
+      1.0,
+      -60.0,
+      4.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     3
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      3.0,
+      2.0,
+      -60.0,
+      4.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     3
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      3.0,
+      3.0,
+      -60.0,
+      4.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     3
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -60.0,
+      2.0,
+      1.0,
+      -59.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:stone",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -60,
+     2
+    ]
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -59.0,
+      2.0,
+      1.0,
+      -58.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:stone",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -59,
+     2
+    ]
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   1.399999976158142,
+   0.800000011920929,
+   -58.200000047683716,
+   2.0
+  ],
+  "collided": {
+   "horizontally": true,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   1.699999988079071
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   -0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   1.699999988079071
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": {
+   "block": [
+    0,
+    -59,
+    2
+   ],
+   "face": "north",
+   "hit": [
+    0.5,
+    -58.37999999523163,
+    2.0
+   ],
+   "id": "minecraft:stone"
+  },
+  "tick": 143
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": null,
+  "tick": 161
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 32.41554641723633,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": {
+   "entity": 84,
+   "hit": [
+    0.5,
+    -59.33883569688465,
+    2.009999990463257
+   ],
+   "type": "minecraft:minecart"
+  },
+  "tick": 164
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [],
+    "climbable": false,
+    "id": "minecraft:water",
+    "liquid": true,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "level": "0"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -60.0,
+      0.0,
+      -1.0,
+      -59.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:stone",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -60,
+     0
+    ]
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -60.0,
+      0.0,
+      -0.8125,
+      -59.0,
+      1.0
+     ]
+    ],
+    "climbable": true,
+    "id": "minecraft:ladder",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -60,
+     0
+    ],
+    "state": {
+     "facing": "east",
+     "waterlogged": "false"
+    }
+   },
+   {
+    "boxes": [],
+    "climbable": false,
+    "id": "minecraft:poppy",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -60,
+     0
+    ]
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": null,
+  "tick": 184
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.200000047683716,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.37999999523163,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": -90.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": false,
+  "sprinting": false,
+  "target": null,
+  "tick": 204
+ },
+ {
+  "blocks": [
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -2.0,
+      -1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      -1.0,
+      -1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      0.0,
+      -1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      1.0,
+      -1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -2.0,
+      -61.0,
+      2.0,
+      -1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -2.0,
+      0.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      -1.0,
+      0.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      0.0,
+      0.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      1.0,
+      0.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      -1.0,
+      -61.0,
+      2.0,
+      0.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     -1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -2.0,
+      1.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      -1.0,
+      1.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      0.0,
+      1.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      1.0,
+      1.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      0.0,
+      -61.0,
+      2.0,
+      1.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     0,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -2.0,
+      2.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      -1.0,
+      2.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      0.0,
+      2.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      1.0,
+      2.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      1.0,
+      -61.0,
+      2.0,
+      2.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     1,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -2.0,
+      3.0,
+      -60.0,
+      -1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      -1.0,
+      3.0,
+      -60.0,
+      0.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     -1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      0.0,
+      3.0,
+      -60.0,
+      1.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     0
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      1.0,
+      3.0,
+      -60.0,
+      2.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     1
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   },
+   {
+    "boxes": [
+     [
+      2.0,
+      -61.0,
+      2.0,
+      3.0,
+      -60.0,
+      3.0
+     ]
+    ],
+    "climbable": false,
+    "id": "minecraft:grass_block",
+    "liquid": false,
+    "opens": false,
+    "pos": [
+     2,
+     -61,
+     2
+    ],
+    "state": {
+     "snowy": "false"
+    }
+   }
+  ],
+  "box": [
+   0.19999998807907104,
+   -60.0,
+   0.19999998807907104,
+   0.800000011920929,
+   -58.5,
+   0.800000011920929
+  ],
+  "collided": {
+   "horizontally": false,
+   "vertically": true
+  },
+  "eye": [
+   0.5,
+   -58.730000019073486,
+   0.5
+  ],
+  "flying": false,
+  "in_lava": false,
+  "in_water": false,
+  "look": {
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
+  "motion": [
+   0.0,
+   -0.0784000015258789,
+   0.0
+  ],
+  "on_ground": true,
+  "on_ladder": false,
+  "pos": [
+   0.5,
+   -60.0,
+   0.5
+  ],
+  "reach": {
+   "block": 5.0,
+   "entity": 5.0
+  },
+  "sneaking": true,
+  "sprinting": false,
+  "target": null,
+  "tick": 220
+ }
+]

@@ -1,12 +1,12 @@
 """
-The agent and ladders in the development client (SPEC.md 15.6 step 7):
+The agent and ladders on the run's port (SPEC.md 15.6 step 7, 19.7):
 a wall four high across z 3, a ladder up its north face at x 0 (meta 2,
 on the wall at its south). The agent climbs it onto the wall, and comes
 down it from the wall's top without slipping off; a ladder that stops
 two short of the top is no way up.
 
   python -m unittas.selftest test_ladders.
-  (through the watcher: "probe test_ladders.")
+  (through the watcher: "probe test_ladders.", "probe test_ladders on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -19,26 +19,26 @@ import unittest
 
 from mcdex import MCBlocks
 
-from probegame import READY_SECONDS, ROOT, results
+from ports import at, block, point, probeGame, start
+from probegame import READY_SECONDS
 from unittas.agent import Agent
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.errors import TesttimeError
 from unittas.reset import reset
-from unittas.values import Block, Vec3
+from unittas.values import Vec3
 
-TOP = Vec3(0.5, 8.0, 3.5)
-BELOW = Vec3(0.5, 4.0, 0.5)
+TOP = point(0.5, 8.0, 3.5)
+BELOW = point(0.5, 4.0, 0.5)
 
 
 class LadderTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'ladders')
+    cls.launched = probeGame('ladders')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -49,7 +49,7 @@ class LadderTests(unittest.TestCase):
     cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
     self.agent = Agent(self.game)
     self.placed = []
 
@@ -58,6 +58,8 @@ class LadderTests(unittest.TestCase):
       self.game.setBlock(pos, MCBlocks.Air)
 
   def place(self, pos: tuple, block) -> None:
+    """The block at pos, written in 1.7.10's flat world, on the port's."""
+    pos = at(*pos)
     self.game.setBlock(pos, block)
     self.placed.append(pos)
 
@@ -67,7 +69,7 @@ class LadderTests(unittest.TestCase):
       for y in range(4, 8):
         self.place((x, y, 3), MCBlocks.Stone)
     for y in ladder:
-      self.place((0, y, 2), Block('minecraft:ladder', 2))
+      self.place((0, y, 2), block('ladder facing north'))
 
   def assertAt(self, place: Vec3, seen) -> None:
     short = math.hypot(place.x - seen.pos.x, place.z - seen.pos.z)

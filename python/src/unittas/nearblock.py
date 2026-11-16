@@ -13,10 +13,12 @@ from .values import BlockPos
 
 class NearBlock(EZData, frozen=True):
   """
-  A block that isn't air: where it is, its registry name and meta, its
-  collision boxes (a tuple of Box: none for a flower, several for
-  stairs), whether it is a liquid, whether the player can climb it, and
-  whether a hand's click opens and shuts it (a wooden door, a gate).
+  A block that isn't air: where it is, its registry name and meta (-1
+  where the version has none: 1.13 on), its collision boxes (a tuple of
+  Box: none for a flower, several for stairs), whether it is a liquid,
+  whether the player can climb it, whether a hand's click opens and shuts
+  it (a wooden door, a gate), and its state ((name, value) pairs, empty
+  before 1.13).
   """
 
   pos = EZField[BlockPos]()
@@ -26,6 +28,12 @@ class NearBlock(EZData, frozen=True):
   liquid = EZField[bool](False)
   climbable = EZField[bool](False)
   opens = EZField[bool](False)
+  state = EZField[tuple]()
+
+  @property
+  def properties(self) -> dict:
+    """Its state's properties by name."""
+    return dict(self.state)
 
   @property
   def solid(self) -> bool:

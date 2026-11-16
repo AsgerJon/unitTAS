@@ -1,12 +1,12 @@
 """
-The agent over terrain in the development client (SPEC.md 15.6 step 7),
+The agent over terrain on the run's port (SPEC.md 15.6 step 7, 19.7),
 by a player's keys and look alone, its way found from what it perceives:
 around a wall; up a slab, as the game steps; up a block, by a jump; down
 off a pillar; to a place further off than it sees, looking again on the
 way; and no way into a place walled in, a TesttimeError.
 
   python -m unittas.selftest test_terrain.
-  (through the watcher: "probe test_terrain.")
+  (through the watcher: "probe test_terrain.", "probe test_terrain on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -20,26 +20,26 @@ import unittest
 
 from mcdex import MCBlocks
 
-from probegame import READY_SECONDS, ROOT, results
+from ports import at, lift, point, probeGame, start
+from probegame import READY_SECONDS
 from unittas.agent import Agent
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.codec import fromJson
 from unittas.errors import TesttimeError
 from unittas.perception import Perception
 from unittas.terrain import Terrain
 from unittas.reset import reset
-from unittas.values import Block, Vec3
+from unittas.values import Vec3
 
 
 class TerrainTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'terrain')
+    cls.launched = probeGame('terrain')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -50,7 +50,7 @@ class TerrainTests(unittest.TestCase):
     cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
     self.agent = Agent(self.game)
     self.placed = []
 
@@ -59,6 +59,8 @@ class TerrainTests(unittest.TestCase):
       self.game.setBlock(pos, MCBlocks.Air)
 
   def place(self, pos: tuple, block) -> None:
+    """The block at pos, written in 1.7.10's flat world, on the port's."""
+    pos = at(*pos)
     self.game.setBlock(pos, block)
     self.placed.append(pos)
 
@@ -80,7 +82,7 @@ class TerrainTests(unittest.TestCase):
       json.dump(wire, file, indent=1)
     seen = fromJson(Perception, wire)
     here = Terrain(seen, 8, 3, 3)
-    self.assertEqual(((4.0,), (5.0,), (4.0,)), (
+    self.assertEqual(((lift(4.0),), (lift(5.0),), (lift(4.0),)), (
       here.floors(0, 2), here.floors(0, 3), here.floors(0, 0)),
       [each for each in seen.blocks if (each.pos.x, each.pos.z) == (0, 3)])
 
@@ -88,32 +90,33 @@ class TerrainTests(unittest.TestCase):
     for x in range(-3, 4):
       for y in (4, 5):
         self.place((x, y, 3), MCBlocks.Stone)
-    place = Vec3(0.5, 4.0, 7.5)
+    place = point(0.5, 4.0, 7.5)
     self.assertAt(place, self.agent.walkTo(place))
 
   def test_b_up_a_slab(self) -> None:
-    self.place((0, 4, 3), Block('minecraft:stone_slab', 0))
-    place = Vec3(0.5, 4.5, 3.5)
+    #  1.7.10's stone slab is the smooth stone one (mcdex reads it as both)
+    self.place((0, 4, 3), MCBlocks.SmoothStoneSlab)
+    place = point(0.5, 4.5, 3.5)
     self.assertAt(place, self.agent.walkTo(place))
 
   def test_c_up_a_block_by_a_jump(self) -> None:
     self.place((0, 4, 3), MCBlocks.Stone)
-    place = Vec3(0.5, 5.0, 3.5)
+    place = point(0.5, 5.0, 3.5)
     self.assertAt(place, self.agent.walkTo(place))
 
   def test_d_down_off_a_pillar(self) -> None:
     for y in (4, 5):
       self.place((0, y, 0), MCBlocks.Stone)
     #  the setup stands the player on it
-    self.game.teleport((0.5, 6.0, 0.5))
-    place = Vec3(3.5, 4.0, 0.5)
+    self.game.teleport(point(0.5, 6.0, 0.5))
+    place = point(3.5, 4.0, 0.5)
     self.assertAt(place, self.agent.walkTo(place))
 
   def test_e_further_than_it_sees(self) -> None:
     for z in range(8, 12):
       for y in (4, 5):
         self.place((10, y, z), MCBlocks.Stone)
-    place = Vec3(20.5, 4.0, 10.5)
+    place = point(20.5, 4.0, 10.5)
     self.assertAt(place, self.agent.walkTo(place))
 
   def test_f_no_way_in(self) -> None:
@@ -126,8 +129,8 @@ class TerrainTests(unittest.TestCase):
         for y in (4, 5):
           self.place((x, y, z), MCBlocks.Stone)
     with self.assertRaises(TesttimeError) as raised:
-      self.agent.walkTo(Vec3(4.5, 4.0, 6.5))
-    self.assertIn('no way to (4.50, 4.00, 6.50)', str(raised.exception))
+      self.agent.walkTo(point(4.5, 4.0, 6.5))
+    self.assertIn('no way to (4.50, %.2f, 6.50)' % lift(4.0), str(raised.exception))
 
 
 if __name__ == '__main__':

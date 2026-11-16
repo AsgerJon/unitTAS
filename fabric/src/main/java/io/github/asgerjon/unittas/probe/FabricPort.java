@@ -116,6 +116,9 @@ public final class FabricPort implements Port {
 		probe.register(Op.onSide("chat.send", Side.CLIENT));
 		probe.register(Op.onSide("sound.play", Side.CLIENT));
 		probe.register(Op.onSide("screenshot", Side.CLIENT));
+		// the agent's (19.7 step 3; PROTOCOL.md 8.4): FabricPerceive's
+		probe.register(Op.onSide("player.perceive", Side.CLIENT).reading());
+		probe.register(Op.onSide("block.ground", Side.SERVER, Side.CLIENT).reading());
 		probe.register(Op.onSide("client.reset", Side.CLIENT));
 		probe.register(Op.onSide("player.reset", Side.SERVER));
 		probe.register(Op.onSide("world.reset", Side.SERVER));

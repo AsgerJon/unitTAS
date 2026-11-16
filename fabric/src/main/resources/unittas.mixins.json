@@ -8,11 +8,13 @@
 	"client": [
 		"ChatScreenAccess",
 		"CommandSuggestionsAccess",
+		"MinecraftAccess",
 		"MixinChatComponent",
 		"MixinGui",
 		"MixinMinecraft",
 		"MixinSoundManager",
-		"SuggestionsListAccess"
+		"SuggestionsListAccess",
+		"TrapDoorBlockAccess"
 	],
 	"injectors": {
 		"defaultRequire": 1

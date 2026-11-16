@@ -48,6 +48,14 @@ LOOKING_DOWN = {
              'id': 'minecraft:grass', 'meta': 0},
   'blocks': [GRASS, POPPY, LADDER, DOOR]}
 PIG_TARGET = {'entity': 412, 'type': 'Pig', 'hit': [0.5, 4.6, 2.05]}
+#  26.3's: no meta, a state (SPEC.md 12.6, D4)
+DOOR_26 = {'pos': [2, -60, 0], 'id': 'minecraft:oak_door',
+           'state': {'facing': 'north', 'half': 'lower', 'hinge': 'left',
+                     'open': 'false', 'powered': 'false'},
+           'boxes': [[2.0, -60.0, 0.8125, 3.0, -59.0, 1.0]], 'liquid': False,
+           'climbable': False, 'opens': True}
+GRASS_TARGET_26 = {'block': [0, -61, 0], 'face': 'up', 'hit': [0.5, -60.0, 0.5],
+                   'id': 'minecraft:grass_block', 'state': {'snowy': 'false'}}
 
 
 def _with(**changes) -> dict:
@@ -125,6 +133,21 @@ class PerceptionTests(unittest.TestCase):
     self.assertTrue(ladder.climbable)
     self.assertEqual(('minecraft:ladder', 5), (ladder.id, ladder.meta))
 
+  def test_26_3_s_state_and_no_meta(self) -> None:
+    """26.3's blocks near and its target: a state, no meta (-1); back as they came."""
+    wire = _with(blocks=[DOOR_26], target=GRASS_TARGET_26)
+    seen = fromJson(Perception, wire)
+    door = seen.blocks[0]
+    self.assertEqual(-1, door.meta)
+    self.assertEqual('false', door.properties['open'])
+    self.assertTrue(door.opens)
+    self.assertEqual(-1, seen.target.meta)
+    self.assertEqual({'snowy': 'false'}, seen.target.properties)
+    self.assertEqual(wire, toJson(seen))
+    #  1.7.10's keep their meta and have no state
+    grass = fromJson(Perception, LOOKING_DOWN).blocks[0]
+    self.assertEqual(((), 0), (grass.state, grass.meta))
+
   def test_refused_by_name(self) -> None:
     wire = _with()
     del wire['eye']
@@ -146,16 +169,30 @@ class PerceptionTests(unittest.TestCase):
 class RecordedPerceptionsTests(unittest.TestCase):
   """
   Every perception the probe really sent (tests/probe/test_perceive.py
-  records them) reads, and goes back unchanged.
+  records them, on each port) reads, and goes back unchanged: 1.7.10's in
+  perceptions.json, 26.3's (states, no meta) in perceptions-26.3.json.
   """
 
-  def test_each_recorded_answer(self) -> None:
-    with open(FIXTURES, encoding='utf-8') as file:
+  def check(self, name: str) -> list:
+    with open(os.path.join(os.path.dirname(FIXTURES), name),
+              encoding='utf-8') as file:
       recorded = json.load(file)
     self.assertTrue(recorded)
     for wire in recorded:
-      with self.subTest(tick=wire.get('tick')):
+      with self.subTest(file=name, tick=wire.get('tick')):
         self.assertEqual(wire, toJson(fromJson(Perception, wire)))
+    return recorded
+
+  def test_each_recorded_answer_of_1_7_10(self) -> None:
+    self.check('perceptions.json')
+
+  def test_each_recorded_answer_of_26_3(self) -> None:
+    recorded = self.check('perceptions-26.3.json')
+    blocks = [block for wire in recorded for block in wire['blocks']]
+    self.assertTrue(blocks)
+    self.assertFalse([block for block in blocks if 'meta' in block],
+                     '26.3 has no meta')
+    self.assertTrue([block for block in blocks if 'state' in block])
 
 
 if __name__ == '__main__':

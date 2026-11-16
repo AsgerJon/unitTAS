@@ -1,5 +1,5 @@
 """
-The agent and water in the development client (SPEC.md 15.6 step 7): a
+The agent and water on the run's port (SPEC.md 15.6 step 7, 19.7): a
 trench across the way, z 2 to 4 from x -8 to 8 (all the agent sees
 across), in the ground, filled to its top. The agent swims across a
 trench of water one deep and one two deep, and climbs out onto the far
@@ -7,7 +7,7 @@ bank, dry and not flying; a trench of lava is no way. The ground is put
 back after each.
 
   python -m unittas.selftest test_water.
-  (through the watcher: "probe test_water.")
+  (through the watcher: "probe test_water.", "probe test_water on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -18,25 +18,26 @@ import os
 import shutil
 import unittest
 
-from probegame import READY_SECONDS, ROOT, results
+from mcdex import MCBlocks
+
+from ports import at, point, probeGame, start
+from probegame import READY_SECONDS
 from unittas.agent import Agent
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.errors import TesttimeError
 from unittas.reset import reset
-from unittas.values import Block, Vec3
 
-FAR = Vec3(0.5, 4.0, 6.5)
+FAR = point(0.5, 4.0, 6.5)
 
 
 class WaterTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = DevGame(ROOT, results(), 'water')
+    cls.launched = probeGame('water')
     shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'),
                   ignore_errors=True)
-    connection = cls.launched.start()
+    connection = cls.launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.game = Game(connection)
@@ -47,7 +48,7 @@ class WaterTests(unittest.TestCase):
     cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.game.connection)
+    reset(self.game.connection, at=start())
     self.agent = Agent(self.game)
     self.replaced = []
 
@@ -60,8 +61,9 @@ class WaterTests(unittest.TestCase):
     for y in range(4 - deep, 4):
       for x in range(-8, 9):
         for z in (2, 3, 4):
-          self.replaced.append(((x, y, z), self.game.block((x, y, z))))
-          self.game.setBlock((x, y, z), Block('minecraft:' + kind, 0))
+          pos = at(x, y, z)
+          self.replaced.append((pos, self.game.block(pos)))
+          self.game.setBlock(pos, MCBlocks.Water if kind == 'water' else MCBlocks.Lava)
 
   def assertAcross(self, seen) -> None:
     short = math.hypot(FAR.x - seen.pos.x, FAR.z - seen.pos.z)

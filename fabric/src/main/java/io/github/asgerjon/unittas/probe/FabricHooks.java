@@ -28,8 +28,8 @@ public final class FabricHooks {
 
 	/** The probe's mixins (unittas.mixins.json): each is required, so a game that is up has every one applied. */
 	private static final List<String> MIXINS = Arrays.asList("ChatScreenAccess", "CommandSuggestionsAccess",
-		"MixinChatComponent", "MixinGui", "MixinMinecraft", "MixinMinecraftServer", "MixinSoundManager",
-		"SuggestionsListAccess");
+		"MinecraftAccess", "MixinChatComponent", "MixinGui", "MixinMinecraft", "MixinMinecraftServer",
+		"MixinSoundManager", "SuggestionsListAccess", "TrapDoorBlockAccess");
 
 	private static volatile boolean readySent;
 
@@ -45,6 +45,7 @@ public final class FabricHooks {
 		FabricChat.bind(probe);
 		FabricSounds.bind(probe);
 		FabricPictures.bind(probe);
+		FabricPerceive.bind(probe);
 		probe.op("screen.get").does(call -> {
 			Screen screen = Minecraft.getInstance().gui.screen();
 			if (screen == null) {
