@@ -6,12 +6,15 @@
 		"MixinMinecraftServer"
 	],
 	"client": [
+		"AbstractContainerScreenAccess",
 		"ChatScreenAccess",
 		"CommandSuggestionsAccess",
 		"MinecraftAccess",
 		"MixinChatComponent",
 		"MixinGui",
+		"MixinKeyboardHandler",
 		"MixinMinecraft",
+		"MixinMouseHandler",
 		"MixinSoundManager",
 		"SuggestionsListAccess",
 		"TrapDoorBlockAccess"

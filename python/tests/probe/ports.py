@@ -61,6 +61,16 @@ BLOCKS = {
   'wooden door, upper': {FORGE_1_7_10: Block('minecraft:wooden_door', 8), FABRIC_26_3: _door('oak_door', 'upper')},
   'iron door, lower': {FORGE_1_7_10: Block('minecraft:iron_door', 1), FABRIC_26_3: _door('iron_door', 'lower')},
   'iron door, upper': {FORGE_1_7_10: Block('minecraft:iron_door', 8), FABRIC_26_3: _door('iron_door', 'upper')},
+  #  a lever on the ground, off (1.7.10's meta 5, and 8 more when on)
+  'lever on the ground, off': {FORGE_1_7_10: Block('minecraft:lever', 5),
+                               FABRIC_26_3: Block('minecraft:lever', -1, state=(('face', 'floor'), ('facing', 'north'),
+                                                                               ('powered', 'false')))},
+  #  a chest with three pink wool in its first slot, facing as the game sets it (1.7.10: 3; 26.3: north); its items
+  #  as each version writes them (1.7.10's numbered id and damage; 26.3's id and count)
+  'chest of three pink wool': {
+    FORGE_1_7_10: Block('minecraft:chest', 3, True, '{Items:[{Slot:0b,id:35s,Count:3b,Damage:6s}]}'),
+    FABRIC_26_3: Block('minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",count:3}]}',
+                       (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))},
   #  a gate shut across the way along z
   'fence gate': {FORGE_1_7_10: Block('minecraft:fence_gate', 0),
                  FABRIC_26_3: Block('minecraft:oak_fence_gate', -1, state=(('facing', 'south'), ('in_wall', 'false'),

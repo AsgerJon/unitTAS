@@ -5,7 +5,8 @@ each thing's verbs carried out by the agent as a player; its state
 examined by command, the default, each examination noted for the test's
 report line (and given to the run when there is one). What a thing can't
 be examined for is the test author's mistake (TypeError); a thing that
-isn't there is the test's FAIL (NeedFailed).
+isn't there is the test's FAIL (NeedFailed). From 1.13 on a thing's on or
+off is its block state's (powered, lit, power), read by command too.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -13,7 +14,7 @@ from __future__ import annotations
 
 import unittest
 
-from mcdex import MCBlocks, MCItems
+from mcdex import MCBlocks, MCItems, Version
 
 from test_agent import PlayedTests
 from unittas.errors import NeedFailed
@@ -129,6 +130,65 @@ class SceneTests(PlayedTests):
     before = self.player.tick
     self.agent.wait(5)
     self.assertEqual(before + 5, self.player.tick)
+
+
+
+class _Game26:
+  """A 26.3 game, as far as a thing's state goes: its blocks by place."""
+
+  version = Version.V26_3
+
+  def __init__(self, block: Block) -> None:
+    self.blocks = {BlockPos(1, 2, 3): block}
+
+  def block(self, pos: BlockPos, tile: bool = False,
+            side: object = None) -> Block:
+    return self.blocks[pos]
+
+
+class _Agent26:
+  """An agent, as far as a scene asks it: its game."""
+
+  def __init__(self, block: Block) -> None:
+    self.game = _Game26(block)
+
+
+def _state(id_: str, **state: str) -> Block:
+  return Block(id_, -1, state=tuple(sorted(state.items())))
+
+
+class OnOffByStateTests(unittest.TestCase):
+  """From 1.13 on: powered, lit, or power above 0."""
+
+  def isOn(self, member: object, block: Block) -> bool:
+    scene = Scene(_Agent26(block), BlockPos(0, 0, 0))
+    return scene.thing(member, at=(1, 2, 3)).isOn()
+
+  def test_a_lever_s_powered(self) -> None:
+    lever = dict(face='floor', facing='north')
+    self.assertTrue(self.isOn(MCBlocks.Lever, _state(
+      'minecraft:lever', powered='true', **lever)))
+    self.assertFalse(self.isOn(MCBlocks.Lever, _state(
+      'minecraft:lever', powered='false', **lever)))
+
+  def test_a_lamp_s_lit(self) -> None:
+    self.assertTrue(self.isOn(MCBlocks.RedstoneLamp, _state(
+      'minecraft:redstone_lamp', lit='true')))
+    self.assertFalse(self.isOn(MCBlocks.RedstoneLamp, _state(
+      'minecraft:redstone_lamp', lit='false')))
+
+  def test_a_weighted_plate_s_power(self) -> None:
+    plate = 'minecraft:light_weighted_pressure_plate'
+    self.assertTrue(self.isOn(MCBlocks.LightWeightedPressurePlate,
+                              _state(plate, power='3')))
+    self.assertFalse(self.isOn(MCBlocks.LightWeightedPressurePlate,
+                               _state(plate, power='0')))
+
+  def test_a_block_with_no_on_or_off(self) -> None:
+    chest = _state('minecraft:chest', facing='north', type='single',
+                   waterlogged='false')
+    with self.assertRaisesRegex(TypeError, 'minecraft:chest has no on'):
+      self.isOn(MCBlocks.Chest, chest)
 
 
 if __name__ == '__main__':

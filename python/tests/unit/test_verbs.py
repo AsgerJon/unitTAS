@@ -35,6 +35,19 @@ class UseTests(PlayedTests):
     self.assertGreater(self.player.z, 3.0, 'it walked into reach')
     self.assertOnlyAPlayersMeans()
 
+  def test_a_lever_lower_than_its_block_s_middle(self) -> None:
+    """
+    26.3's floor lever is 0.375 high and narrow (x 5/16 to 11/16, z 4/16 to
+    12/16): a ray through the block's middle, or its faces', passes over
+    it, so the agent looks lower, as a player does.
+    """
+    self.player.walls[(6, 4, 9)] = 'minecraft:lever'
+    self.player.lows[(6, 4, 9)] = (5 / 16, 0.0, 4 / 16, 11 / 16, 6 / 16,
+                                   12 / 16)
+    self.agent.use(BlockPos(6, 4, 9))
+    self.assertEqual({(6, 4, 9): True}, self.player.levers)
+    self.assertOnlyAPlayersMeans()
+
   def test_twice_is_off_again(self) -> None:
     self.player.walls[(2, 4, 3)] = 'minecraft:lever'
     self.agent.use(BlockPos(2, 4, 3))

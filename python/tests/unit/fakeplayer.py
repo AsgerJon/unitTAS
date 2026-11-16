@@ -239,6 +239,10 @@ class FakePlayer:
     self.doors = {}
     #  the ladders' blocks, by (x, y, z): the edge their box is along
     self.ladders = {}
+    #  blocks smaller than a block (26.3's floor lever), by (x, y, z): their
+    #  shape, a box in the block (x0, y0, z0, x1, y1, z1); they stop
+    #  nothing (in walls too, by their id)
+    self.lows = {}
     #  how fast it came down each time it landed
     self.landed = []
     #  the water's blocks and lava's, by (x, y, z) (the ground's where they
@@ -255,6 +259,8 @@ class FakePlayer:
   # --------------------------------------------------------------- the world
 
   def solid(self, x: int, y: int, z: int) -> bool:
+    if (x, y, z) in self.lows:
+      return False
     if y < GROUND:
       return (x, y, z) not in self.dug
     if y < self.raised.get((x, z), GROUND):
@@ -370,7 +376,7 @@ class FakePlayer:
         return True
     for cx, cz in self.cells(x, z):
       for cy in (int(GROUND), int(GROUND) + 1):
-        if (cx, cy, cz) in self.walls:
+        if (cx, cy, cz) in self.walls and (cx, cy, cz) not in self.lows:
           return True
       if self.floorOf(cx, cz) > self.y + step + 1e-9:
         return True
@@ -626,6 +632,12 @@ class FakePlayer:
       at = tuple(e + d * n * 0.005 for e, d in zip(eye, (dx, dy, dz)))
       cell = tuple(math.floor(v) for v in at)
       door = (cell[0], cell[2]) in self.doors and cell[1] in (4, 5)
+      if cell in self.lows and all(
+          low <= p - c < high for p, c, low, high in zip(
+            at, cell, self.lows[cell][:3], self.lows[cell][3:])):
+        #  inside a small block's shape: met, from above
+        return {'block': list(cell), 'face': 'up', 'hit': list(at),
+                'id': self.blockId(*cell), 'meta': 0}
       if cell != last and (self.solid(*cell) or door):
         moved = tuple(c - l for c, l in zip(cell, last))
         face = {(0, -1, 0): 'up', (0, 1, 0): 'down', (0, 0, 1): 'north',

@@ -106,7 +106,8 @@ class FabricGameTests(unittest.TestCase):
     self.assertIn('screen.get', self.connection.hello.ops, "the client's own (step 3)")
     self.assertIn('key.down', self.connection.hello.ops, "input (SPEC.md 19.7 step 2)")
     self.assertIn('player.perceive', self.connection.hello.ops, "the agent's perceiving (SPEC.md 19.7 step 3a)")
-    self.assertNotIn('container.click', self.connection.hello.ops, "the agent's verbs come with 19.7 step 3b")
+    self.assertIn('container.click', self.connection.hello.ops, "the agent's verbs (19.7 step 3b)")
+    self.assertNotIn('view.block', self.connection.hello.ops, "the agent's observing comes with 19.7 step 3c")
 
   def test_2b_ready_once_loaded(self) -> None:
     self.assertEqual(TITLE, self.ready['screen'])

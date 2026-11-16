@@ -602,8 +602,8 @@ class Agent(BaseObject):
   def lookAt(self, pos: BlockPos) -> Perception:
     """
     Turns until the crosshair targets the block at 'pos': at its middle,
-    or else the middle of a face turned towards the eye. What it
-    perceives then.
+    or else the middle of a face turned towards the eye, or else low in
+    it (a small block on its floor). What it perceives then.
 
     Raises
     ------
@@ -627,7 +627,7 @@ class Agent(BaseObject):
       info = infoSpec % (_place(pos), far, _place(eye), seen.blockReach)
       raise TesttimeError(step, seen, ' '.join(info.split()))
     met = []
-    for point in [centre] + self._faces(pos, eye):
+    for point in [centre] + self._faces(pos, eye) + self._lows(pos):
       seen = self._aim(point, eye)
       if seen.target.kind == 'block' and seen.target.pos == pos:
         return seen
@@ -1330,6 +1330,16 @@ class Agent(BaseObject):
           found.append(near)
           break
     return found
+
+  @staticmethod
+  def _lows(pos: BlockPos) -> list:
+    """
+    Points low in the block's middle column: a small block on its floor
+    (26.3's lever, 0.375 high; a pressure plate, a carpet) is met there
+    where a ray through its middle or its faces' passes over it.
+    """
+    return [Vec3(pos.x + 0.5, pos.y + height, pos.z + 0.5)
+            for height in (0.25, 0.1, 0.04)]
 
   @staticmethod
   def _faces(pos: BlockPos, eye: Vec3) -> list:

@@ -27,9 +27,10 @@ import java.util.List;
 public final class FabricHooks {
 
 	/** The probe's mixins (unittas.mixins.json): each is required, so a game that is up has every one applied. */
-	private static final List<String> MIXINS = Arrays.asList("ChatScreenAccess", "CommandSuggestionsAccess",
-		"MinecraftAccess", "MixinChatComponent", "MixinGui", "MixinMinecraft", "MixinMinecraftServer",
-		"MixinSoundManager", "SuggestionsListAccess", "TrapDoorBlockAccess");
+	private static final List<String> MIXINS = Arrays.asList("AbstractContainerScreenAccess", "ChatScreenAccess",
+		"CommandSuggestionsAccess", "MinecraftAccess", "MixinChatComponent", "MixinGui", "MixinKeyboardHandler",
+		"MixinMinecraft", "MixinMinecraftServer", "MixinMouseHandler", "MixinSoundManager", "SuggestionsListAccess",
+		"TrapDoorBlockAccess");
 
 	private static volatile boolean readySent;
 
@@ -46,6 +47,7 @@ public final class FabricHooks {
 		FabricSounds.bind(probe);
 		FabricPictures.bind(probe);
 		FabricPerceive.bind(probe);
+		FabricVerbs.bind(probe);
 		probe.op("screen.get").does(call -> {
 			Screen screen = Minecraft.getInstance().gui.screen();
 			if (screen == null) {
@@ -57,6 +59,11 @@ public final class FabricHooks {
 				"container", screen instanceof AbstractContainerScreen,
 				"pauses", screen.isPauseScreen());
 		});
+	}
+
+	/** Whether the probe is awake: a test run, not an ordinary game the probe's jar happens to be in. */
+	public static boolean awake() {
+		return Probe.get() != null;
 	}
 
 	/**

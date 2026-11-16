@@ -15,7 +15,7 @@ from worktoy.desc import Field
 from worktoy.mcls import BaseObject
 
 from .errors import NeedFailed, NotFound
-from .values import BlockPos
+from .values import Block, BlockPos
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional
@@ -160,7 +160,8 @@ class Thing(BaseObject):
   def isOn(self) -> bool:
     """
     Whether it is on (a lever, a button, a pressure plate, a redstone
-    lamp or torch), as the game holds it.
+    lamp or torch), as the game holds it: before 1.13 by its id and meta,
+    from 1.13 on by its block state (powered, lit, or a power above 0).
 
     Raises
     ------
@@ -168,19 +169,13 @@ class Thing(BaseObject):
       Nothing is at its place: the test's FAIL.
     TypeError
       The block there has no on or off.
-    NotImplementedError
-      The game's version is 1.13 or later: its block states aren't read
-      yet.
     """
     game = self.__scene__.game
     block = game.block(self.__pos__)
     if block.id == 'minecraft:air':
       raise NeedFailed("%s isn't there: minecraft:air is" % self.label())
     if game.version >= Version.V1_13:
-      infoSpec = """%s's on or off is in its block state in %s, which
-      isn't read yet"""
-      info = infoSpec % (self.label(), game.version.value)
-      raise NotImplementedError(' '.join(info.split()))
+      return self._examined('isOn', self._onByState(block))
     if block.id in _ON_BIT:
       on = bool(block.meta & _ON_BIT[block.id])
     elif block.id in _PRESSED:
@@ -190,6 +185,17 @@ class Thing(BaseObject):
     else:
       raise TypeError('%s: %s has no on or off' % (self.label(), block.id))
     return self._examined('isOn', on)
+
+  def _onByState(self, block: Block) -> bool:
+    """On or off by its block state; TypeError for one with neither."""
+    properties = block.properties
+    if 'powered' in properties:
+      return properties['powered'] == 'true'
+    if 'lit' in properties:
+      return properties['lit'] == 'true'
+    if 'power' in properties:
+      return int(properties['power']) > 0
+    raise TypeError('%s: %s has no on or off' % (self.label(), block.id))
 
   def contents(self) -> frozenset:
     """The mcdex members it holds (a chest), as the game holds them."""
