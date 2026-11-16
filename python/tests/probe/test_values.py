@@ -18,14 +18,14 @@ import os
 import shutil
 import unittest
 
-from mcdex import MCBlocks, MCEntities, MCItems, Version
+from mcdex import MCBlocks, MCEntities, MCItems, MCSounds, Version
 
-from ports import FORGE_1_7_10, command, onlyOn, probeGame, start
+from ports import command, probeGame, start
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.codec import fromJson, toJson
 from unittas.reset import reset
-from unittas.things import blockOf, entityOf, itemOf
+from unittas.things import blockOf, entityOf, itemOf, resolve
 from unittas.values import Block, ChatLine, Entity, Inventory, Item, LogLine, Player, Screen, Sound, Vec3
 
 
@@ -130,13 +130,14 @@ class ValuesTests(unittest.TestCase):
     self.request('command.run', {'command': command('speed for 30 s, level 2')})
     self.assertTrue(self.seen(Player, self.request('player.get')).effects)
 
-  @onlyOn(FORGE_1_7_10, why="26.3's chat, sound and log events come with SPEC.md 19.7 step 2")
   def test_05_events(self) -> None:
     mark = self.connection.events.mark()
     self.request('command.run', {'command': '/say the values'})
     self.seen(ChatLine, self.event('chat', mark, lambda event: 'the values' in event.get('plain', '')))
-    self.request('sound.play', {'id': 'minecraft:gui.button.press'})
-    self.seen(Sound, self.event('sound', mark, lambda event: event.get('known')))
+    button = resolve(MCSounds.UiButtonClick, self.game.version).name
+    self.request('sound.play', {'id': button})
+    heard = self.seen(Sound, self.event('sound', mark, lambda event: event.get('id') == button))
+    self.assertTrue(heard.known)
     self.request('sound.play', {'id': 'minecraft:wobble.nothing'})
     unknown = self.seen(Sound, self.event('sound', mark, lambda event: not event.get('known')))
     self.assertTrue(unknown.callers, 'a sound the game lacks names who asked for it')

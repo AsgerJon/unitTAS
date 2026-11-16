@@ -6,8 +6,13 @@
 		"MixinMinecraftServer"
 	],
 	"client": [
+		"ChatScreenAccess",
+		"CommandSuggestionsAccess",
+		"MixinChatComponent",
 		"MixinGui",
-		"MixinMinecraft"
+		"MixinMinecraft",
+		"MixinSoundManager",
+		"SuggestionsListAccess"
 	],
 	"injectors": {
 		"defaultRequire": 1

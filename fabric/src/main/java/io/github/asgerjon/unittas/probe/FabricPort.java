@@ -56,6 +56,8 @@ public final class FabricPort implements Port {
 
 	@Override
 	public void woken(Probe probe) {
+		// the game's log as log events (PROTOCOL.md 7), as 1.7.10's ProbeLog
+		FabricLog.attach(probe);
 	}
 
 	@Override
@@ -101,6 +103,19 @@ public final class FabricPort implements Port {
 			String hook = io.github.asgerjon.unittas.probe.link.Json.string(args, "hook");
 			return "beforeRun".equals(hook) || "afterRun".equals(hook) ? Side.CLIENT : Side.SERVER;
 		}));
+		// input (SPEC.md 19.7 step 2; PROTOCOL.md 8.9), FabricInput's bodies
+		probe.register(Op.onSide("player.look", Side.CLIENT));
+		probe.register(Op.onSide("key.down", Side.CLIENT));
+		probe.register(Op.onSide("key.up", Side.CLIENT));
+		probe.register(Op.onSide("key.tap", Side.CLIENT));
+		probe.register(Op.onSide("camera.set", Side.CLIENT));
+		probe.register(Op.onSide("screen.type", Side.CLIENT));
+		probe.register(Op.onSide("screen.key", Side.CLIENT));
+		// the chat, sounds and pictures (19.7 step 2; PROTOCOL.md 8.6, 8.10, 8.11): FabricChat's, FabricSounds', FabricPictures'
+		probe.register(Op.onSide("chat.read", Side.CLIENT).reading());
+		probe.register(Op.onSide("chat.send", Side.CLIENT));
+		probe.register(Op.onSide("sound.play", Side.CLIENT));
+		probe.register(Op.onSide("screenshot", Side.CLIENT));
 		probe.register(Op.onSide("client.reset", Side.CLIENT));
 		probe.register(Op.onSide("player.reset", Side.SERVER));
 		probe.register(Op.onSide("world.reset", Side.SERVER));

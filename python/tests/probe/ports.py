@@ -34,6 +34,8 @@ COMMANDS = {
   'instant damage': {FORGE_1_7_10: '/effect @p 7 1 0',
                      FABRIC_26_3: '/effect give @p minecraft:instant_damage 1 0'},
 }
+#  a key's raw code, as each version numbers its keys: 1.7.10's LWJGL codes, 26.3's SDL3 scancodes
+CODES = {'space': {FORGE_1_7_10: 57, FABRIC_26_3: 44}}
 
 
 def port() -> str:
@@ -52,6 +54,11 @@ def start() -> tuple:
 def command(what: str) -> str:
   """The command that does 'what', as the port's version reads it."""
   return COMMANDS[what][port()]
+
+
+def code(key: str) -> int:
+  """A key's raw code, as the port's version numbers it."""
+  return CODES[key][port()]
 
 
 def onlyOn(*ports: str, why: str) -> Callable:

@@ -1,9 +1,9 @@
 """
 Step 6 of phase 2 (SPEC.md section 8.3), on the run's port (19.7): the game's things. inventory.set, block.get and
-.set, entity.spawn, .get and .remove, and the screen events, by mcdex member and from the port's start, on every port;
-player.look, the keys, typing into a screen, chat.send and chat.read (ChatTests' twin), camera.set, sound.play
-(MixinTests' twin, with the sound events) and screenshot on 1.7.10, until 19.7 step 2 brings them to 26.3. One
-launch, in a world of its own; each test starts from a reset, as every test does.
+.set, entity.spawn, .get and .remove, by mcdex member and from the port's start; player.look, the keys (a raw code as
+the version numbers its keys) and camera.set; typing into a screen, chat.send and chat.read (ChatTests' twin);
+sound.play (MixinTests' twin, with the sound events); screenshot; the screen events. One launch, in a world of its own;
+each test starts from a reset, as every test does.
 
   python -m unittas.selftest game      (through the watcher: "probe game", "probe game on 26.3-fabric")
 """
@@ -16,20 +16,16 @@ import shutil
 import struct
 import unittest
 
-from mcdex import MCBlocks, MCEntities, MCItems
+from mcdex import MCBlocks, MCEntities, MCItems, MCSounds
 
-from ports import FORGE_1_7_10, onlyOn, probeGame, start
+from ports import FORGE_1_7_10, code, port, probeGame, start
 from probegame import READY_SECONDS, results
 from unittas.api import Game
 from unittas.codec import toJson
 from unittas.errors import BadRequest, NotFound, NotReady
 from unittas.reset import reset
-from unittas.things import entityOf, itemOf
+from unittas.things import entityOf, itemOf, resolve
 from unittas.values import Item, Vec3
-
-#  what 26.3 hasn't yet, and when it comes
-STEP_2 = "26.3's input, chat, camera, sounds and screenshot come with SPEC.md 19.7 step 2"
-
 
 class GameTests(unittest.TestCase):
 
@@ -63,7 +59,6 @@ class GameTests(unittest.TestCase):
   def events(self, kind):
     return [event for event in self.connection.events.since(self.mark) if event.get('event') == kind]
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_01_look(self) -> None:
     self.request('player.look', {'yaw': 90.0, 'pitch': 30.0})
     self.assertEqual({'yaw': 90.0, 'pitch': 30.0}, self.request('player.get', side='client')['look'])
@@ -122,7 +117,6 @@ class GameTests(unittest.TestCase):
       self.game.spawn(MCEntities.Pig, Vec3(100000.5, at.y, 100000.5))
     self.assertIn('loaded', caught.exception.message)
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_05_keys(self) -> None:
     start = self.request('player.get', side='client')['pos']
     self.request('key.down', {'key': 'key.forward'})
@@ -132,19 +126,17 @@ class GameTests(unittest.TestCase):
     self.assertGreater(moved[2], start[2] + 0.5, 'looking south (yaw 0), forward is +z')
     self.request('key.tap', {'key': 'key.jump'})
     self.clientHolds('player.get', {}, {'path': ['on_ground'], 'eq': False}, ticks=10)
-    self.request('key.down', {'key': {'code': 57}})
-    self.request('key.up', {'key': {'code': 57}})
+    self.request('key.down', {'key': {'code': code('space')}})
+    self.request('key.up', {'key': {'code': code('space')}})
     with self.assertRaises(BadRequest):
       self.request('key.down', {'key': 'key.wobble'})
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_06_typing_into_the_chat(self) -> None:
     self.request('screen.open', {'screen': 'chat'})
     self.request('screen.type', {'text': '/time se'})
     self.assertEqual('/time se', self.request('chat.read')['text'])
     self.request('screen.close')
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_07_tab_completes_from_the_server(self) -> None:
     self.request('screen.open', {'screen': 'chat'})
     self.request('screen.type', {'text': '/tim'})
@@ -152,10 +144,10 @@ class GameTests(unittest.TestCase):
     read = self.request('chat.read')
     self.assertEqual('/time', read['text'])
     self.assertIn('/time', read['suggestions'])
-    self.assertEqual([], read['usage'], "1.7.10's own chat shows no usage")
+    if port() == FORGE_1_7_10:
+      self.assertEqual([], read['usage'], "1.7.10's own chat shows no usage")
     self.request('screen.close')
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_08_enter_runs_it(self) -> None:
     self.request('screen.open', {'screen': 'chat', 'text': '/time set 6000'})
     self.request('screen.key', {'key': 'enter'})
@@ -165,13 +157,11 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(NotReady):
       self.request('chat.read')
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_09_chat_send(self) -> None:
     said = self.request('chat.send', {'text': '/time set 7000'})
     self.assertTrue(any('7000' in line for line in said['lines']), said)
     self.assertEqual(7000, self.request('world.get')['day_time'])
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_10_camera(self) -> None:
     self.request('camera.set', {'view': 1})
     self.assertEqual(1, self.request('player.get', side='client')['camera'])
@@ -179,11 +169,12 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(BadRequest):
       self.request('camera.set', {'view': 3})
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_11_sounds(self) -> None:
-    self.request('sound.play', {'id': 'minecraft:gui.button.press'})
-    heard = self.connection.events.waitFor(lambda event: event.get('event') == 'sound', 10, since=self.mark)
-    self.assertEqual('minecraft:gui.button.press', heard['id'])
+    #  a button's click: gui.button.press in 1.7.10, ui.button.click in 26.3
+    button = resolve(MCSounds.UiButtonClick, self.game.version).name
+    self.request('sound.play', {'id': button})
+    heard = self.connection.events.waitFor(
+      lambda event: event.get('event') == 'sound' and event.get('id') == button, 10, since=self.mark)
     self.assertTrue(heard['known'])
     self.request('sound.play', {'id': 'minecraft:wobble.nothing'})
     unknown = self.connection.events.waitFor(
@@ -198,7 +189,6 @@ class GameTests(unittest.TestCase):
     self.assertTrue(any(to is not None and 'Creative' in to for _, to in changes), changes)
     self.assertEqual(None, changes[-1][1], changes)
 
-  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_13_screenshot(self) -> None:
     file = os.path.join(results(), 'game', 'screenshots', 'probe-picture.png')
     taken = self.request('screenshot', {'file': file})
