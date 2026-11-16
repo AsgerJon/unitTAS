@@ -15,6 +15,7 @@ import unittest
 
 from worktoy.desc import FixBox
 
+from fakeprobe import FakeError
 from test_run import FakeRun
 from test_values import PLAYER
 from unittas._test_world import World
@@ -332,8 +333,23 @@ class EnteringTests(FakeRun, unittest.TestCase):
         return dict(PLAYER, pos=self.spawned)
       return flatPlayer(args, side)
 
-    self.handlers['world.create'] = creating
-    self.handlers['world.open'] = opening
+    #  as the probe has it (PROTOCOL.md): a world closes only when one is
+    #  open, and opens only when none is
+    isOpen = {'world': False}
+
+    def strict(answer, opens):
+      def handler(args, side):
+        if isOpen['world'] == opens:
+          raise FakeError('NotReady', 'no world is open to close'
+                          if not opens else 'a world is open')
+        isOpen['world'] = opens
+        return answer(args, side)
+      return handler
+
+    closing = self.handlers['world.close']
+    self.handlers['world.create'] = strict(creating, True)
+    self.handlers['world.open'] = strict(opening, True)
+    self.handlers['world.close'] = strict(closing, False)
     self.handlers['player.get'] = player
 
     class Plains(VillagePlains):
@@ -410,6 +426,8 @@ class EnteringTests(FakeRun, unittest.TestCase):
     self.assertEqual(['plains'], self.setUps)
     self.assertEqual(Vec3(12.5, 70.0, -3.5), self.plains.start)
     self.assertEqual(BlockPos(0, 4, 0), self.plains.spawn)
+    #  its setUp and its tests reach the game through it
+    self.assertIs(self.run.game, self.plains.game)
     self.assertEqual((12.5, 70.0, -3.5), self.run.start)
     self.assertIn('plains', self.run.worldNote)
     self.assertIn('Tests', self.run.worldNote)
@@ -495,6 +513,8 @@ class EnteringTests(FakeRun, unittest.TestCase):
     self.assertIn('plains', str(raised.exception))
     with self.assertRaises(RuntimeError):
       _ = self.plains.spawn
+    with self.assertRaises(RuntimeError):
+      _ = self.plains.game
 
 
 if __name__ == '__main__':

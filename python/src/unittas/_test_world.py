@@ -74,6 +74,7 @@ class World(BaseObject):
   #  Virtual Variables
   start = Field()
   spawn = Field()
+  game = Field()
 
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  GETTERS  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -88,6 +89,11 @@ class World(BaseObject):
   def _getSpawn(self) -> BlockPos:
     """The world's spawn point, from the game; raises if not entered."""
     return self._getEntered()['spawn']
+
+  @game.GET
+  def _getGame(self) -> Game:
+    """The game it's entered in, for its setUp; raises if not entered."""
+    return self._getEntered()['game']
 
   def _getEntered(self) -> dict:
     """

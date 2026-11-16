@@ -395,7 +395,9 @@ class Run:
 
   def _openWorld(self, world: Any) -> None:
     """A fresh World's copy kept after its setUp, opened and entered again (its setUp isn't run again)."""
-    self._closeOwnWorld()
+    if self.singleplayerOpen:
+      #  after its setUp the World is closed already, for its copy
+      self._closeOwnWorld()
     folder = os.path.join(self.gameDir, 'saves', WORLD_FOLDER)
     if os.path.lexists(folder):
       removeTree(folder)
