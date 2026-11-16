@@ -163,6 +163,8 @@ public final class ForgePort implements Port {
 		probe.register(Op.onSide("camera.set", Side.CLIENT));
 		probe.register(Op.onSide("sound.play", Side.CLIENT));
 		probe.register(Op.onSide("screenshot", Side.CLIENT));
+		// a block's view: the frame, its camera, the block's pixels by the game's ray (SPEC.md 15.6 step 6; View)
+		probe.register(Op.onSide("view.block", Side.CLIENT));
 		// reflection (8.11), given its bodies at preInit (ThingOps); the refs are the probe's own (declareRefs)
 		probe.register(Op.onSide("reflect.get", Side.SERVER, Side.CLIENT).reading().needingASide());
 		probe.register(Op.onSide("reflect.set", Side.SERVER, Side.CLIENT).needingASide());

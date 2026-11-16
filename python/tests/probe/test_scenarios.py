@@ -3,7 +3,8 @@ A scenario on a Run in the development client (SPEC.md 15.6 step 5):
 scenesuite.py's class, loaded as the run loads tests and run on a Run;
 its report read back: each test ok, and under each line what it examined
 by command (a lever off, then on; pink wool in the chest, then none; a
-stone there, then broken).
+stone there, then broken) or observed (a redstone lamp, unlit and lit),
+the frames kept in the run's results.
 
   python -m unittas.selftest test_scenarios.
   (through the watcher: "probe test_scenarios.")
@@ -22,6 +23,8 @@ from unittas.dev import DevGame
 from unittas.run import Run, loadSuites
 
 SAID = '    examined by command: '
+SEEN = ("    observed (pixels by the game's ray): the block at (0, 5, 3) "
+        "from ")
 
 
 class ScenarioRunTests(unittest.TestCase):
@@ -47,8 +50,9 @@ class ScenarioRunTests(unittest.TestCase):
       text = file.read()
     self.assertEqual([], outcome.failures + outcome.errors, text)
     lines = [line for line in text.split('\n')
-             if line.startswith(('SceneTests.', SAID))]
-    shown = [line.split(' (')[0] if not line.startswith(SAID) else line
+             if line.startswith(('SceneTests.', SAID, SEEN))]
+    shown = [SEEN if line.startswith(SEEN) else
+             line if line.startswith(SAID) else line.split(' (')[0]
              for line in lines]
     self.assertEqual([
       'SceneTests.test_a_the_lever ... ok',
@@ -59,7 +63,10 @@ class ScenarioRunTests(unittest.TestCase):
       SAID + 'MCBlocks.Chest at (3, 4, 5), contents: nothing',
       'SceneTests.test_c_a_block_broken ... ok',
       SAID + 'MCBlocks.Stone at (2, 4, 3), isThere: True',
-      SAID + 'MCBlocks.Stone at (2, 4, 3), isThere: False'], shown, text)
+      SAID + 'MCBlocks.Stone at (2, 4, 3), isThere: False',
+      'SceneTests.test_d_the_lamp_seen ... ok', SEEN, SEEN], shown, text)
+    frames = sorted(os.listdir(os.path.join(folder, 'frames')))
+    self.assertEqual(['examine-0-5-3-1.png', 'examine-0-5-3-2.png'], frames)
     self.assertTrue(launched.ended(60), 'the run quit the game')
 
 

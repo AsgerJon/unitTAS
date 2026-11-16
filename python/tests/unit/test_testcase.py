@@ -54,6 +54,13 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
     self.assertEqual('    examined by command: MCBlocks.Stone at (1, 4, 1), isThere: True', lines[at[0] + 1])
     self.assertTrue(lines[at[0] + 2].startswith('ScenarioCases.test_b_examines_nothing ... ok'), lines)
 
+  def test_a_frame_named_from_the_run_s_results(self) -> None:
+    """An observation's frame on the report line: from the run's results (15.6 step 6)."""
+    from unittas.agent import _shown
+    self.run.begin()
+    self.assertEqual(os.path.join('frames', 'a.png'), _shown(os.path.join(self.run.results, 'frames', 'a.png')))
+    self.assertEqual('/elsewhere/a.png', _shown('/elsewhere/a.png'))
+
   def test_classes_tests_and_their_report(self) -> None:
     self.run.begin()
     result = self.runClasses(gamecases.ATests, gamecases.BTests, gamecases.CTests)

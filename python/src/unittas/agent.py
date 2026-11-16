@@ -9,6 +9,8 @@ what is there and takes the inputs.
 from __future__ import annotations
 
 import math
+import os
+import tempfile
 from typing import TYPE_CHECKING
 
 from worktoy.desc import Field
@@ -21,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional, Union
 
   from .api import Game
+  from .blockview import BlockView
   from .container import Container
   from .perception import Perception
   from .target import Target
@@ -40,6 +43,22 @@ def _met(target: Target) -> str:
   if target.kind == 'entity':
     return '%s (entity %d)' % (target.type, target.entity)
   return 'nothing within reach'
+
+
+def _note(text: str) -> None:
+  """A line under the running test's own, when there is a run."""
+  from .run import Run
+  if Run.current is not None:
+    Run.current.note(text)
+
+
+def _shown(path: str) -> str:
+  """A file as a report line names it: from the run's results, if in them."""
+  from .run import Run
+  results = getattr(Run.current, 'results', '')
+  if results and path.startswith(os.path.join(results, '')):
+    return os.path.relpath(path, results)
+  return path
 
 
 def _turn(a: float, b: float) -> float:
@@ -89,9 +108,13 @@ class Agent(BaseObject):
   __game__: Game = None
   #  The keys this agent holds down
   __held__: set = None
+  #  Where its views' frames are kept, and how many it has taken
+  __frames__: str = None
+  __taken__: int = 0
 
   #  Public Variables
   game = Field()
+  frames = Field()
 
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  GETTERS  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -102,6 +125,11 @@ class Agent(BaseObject):
     """The game the agent plays in."""
     return self.__game__
 
+  @frames.GET
+  def _getFrames(self) -> str:
+    """The folder its views' frames are kept in."""
+    return self.__frames__
+
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  SETTERS  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -110,11 +138,21 @@ class Agent(BaseObject):
   #  CONSTRUCTORS   # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-  def __init__(self, game: Game) -> None:
-    """The agent playing the client player of 'game'."""
+  def __init__(self, game: Game, frames: str = '') -> None:
+    """
+    The agent playing the client player of 'game', keeping its views'
+    frames in 'frames' (an absolute folder; unittas-frames in the system's
+    temporary folder, left out).
+    """
     BaseObject.__init__(self)
     self.__game__ = game
     self.__held__ = set()
+    if not frames:
+      frames = os.path.join(tempfile.gettempdir(), 'unittas-frames')
+    if not os.path.isabs(frames):
+      raise ValueError('an agent\'s frames folder is absolute, not %r' % (
+        frames,))
+    self.__frames__ = frames
 
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  PARENT METHODS   # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -370,6 +408,70 @@ class Agent(BaseObject):
     shows a face to click from %s"""
     info = infoSpec % (_place(pos), _place(eye))
     raise TesttimeError('place', there, ' '.join(info.split()))
+
+  # ------------------------------------------------------------- observing
+
+  def examine(self, pos: BlockPos, side: Optional[str] = None) -> BlockView:
+    """
+    Looks at the block at 'pos' and sees it (SPEC.md 15.4): into reach
+    looking at it, or, with 'side' (north, south, east or west), standing
+    that way from it and looking at that face; then the frame the game
+    draws, and the block's pixels on it, by the game's ray until parallax
+    comes. The view is noted on the test's report line as observed. What
+    the picture means is the test's computation on it.
+
+    Raises
+    ------
+    TesttimeError
+      As reach and lookAt do; the face asked for isn't targeted; nothing
+      of the block is in the view.
+    ValueError
+      A side above or below: seeing a block from there needs climbing
+      (SPEC.md 15.6 step 7).
+    """
+    if not isinstance(pos, BlockPos):
+      raise TypeError('examine takes a BlockPos, not %r' % (pos,))
+    if side is None:
+      seen = self._ready('examine', pos, None)
+    else:
+      seen = self._fromSide(pos, side)
+    os.makedirs(self.__frames__, exist_ok=True)
+    self.__taken__ += 1
+    name = 'examine-%d-%d-%d-%d.png' % (pos.x, pos.y, pos.z, self.__taken__)
+    view = self.__game__.view(pos, os.path.join(self.__frames__, name))
+    if not view.count:
+      infoSpec = """nothing of the block at %s is in the view from %s
+      (frame %s)"""
+      info = infoSpec % (_place(pos), _place(seen.eye), view.file)
+      raise TesttimeError('examine', seen, ' '.join(info.split()))
+    faces = ', '.join('%s %d' % (face, count)
+                      for face, count in sorted(view.faces.items()))
+    infoSpec = """observed (pixels by the game's ray): the block at %s from
+    %s, %d pixels (%s), frame %s"""
+    _note(' '.join((infoSpec % (_place(pos), _place(view.eye), view.count,
+                                faces, _shown(view.file))).split()))
+    return view
+
+  def _fromSide(self, pos: BlockPos, side: str) -> Perception:
+    """Stands 'side' of the block and looks at that face of it."""
+    away = {'north': (0, -1), 'south': (0, 1), 'west': (-1, 0),
+            'east': (1, 0)}
+    if side not in away:
+      infoSpec = """examine looks from the north, south, east or west, not
+      %r: from above or below needs climbing (SPEC.md 15.6 step 7)"""
+      raise ValueError(' '.join((infoSpec % (side,)).split()))
+    dx, dz = away[side]
+    seen = self.perceive()
+    spot = Vec3(pos.x + 0.5 + 2.5 * dx, seen.pos.y, pos.z + 0.5 + 2.5 * dz)
+    eye = self._walkTo('examine', spot, 0.25, None).eye
+    looked = self._aim(self._faceMiddle(pos, side), eye)
+    aim = looked.target
+    if aim.kind == 'block' and aim.pos == pos and aim.face == side:
+      return looked
+    infoSpec = """the %s face of the block at %s isn't targeted from %s: the
+    crosshair meets %s"""
+    info = infoSpec % (side, _place(pos), _place(eye), _met(aim))
+    raise TesttimeError('examine', looked, ' '.join(info.split()))
 
   # -------------------------------------------------------------- containers
 

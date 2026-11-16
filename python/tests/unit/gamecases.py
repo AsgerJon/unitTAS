@@ -9,6 +9,7 @@ classes, which unittest's loader would then take for tests of its own.
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
+import os
 import time
 import unittest
 
@@ -237,6 +238,7 @@ class ScenarioCases(ScenarioTestCase):
     assert self.scene.agent is self.agent
     assert self.agent.game is self.game
     assert self.scene.origin == self.start.block()
+    assert self.agent.frames == os.path.join(Run.current.results, 'frames')
     stone = self.scene.thing(MCBlocks.Stone, at=(1, 0, 1))
     self.assertTrue(stone.isThere())
 

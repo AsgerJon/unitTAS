@@ -20,6 +20,7 @@ from .values import BlockPos
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional
 
+  from .blockview import BlockView
   from .container import Container
   from .perception import Perception
   from .scene import Scene
@@ -135,6 +136,13 @@ class Thing(BaseObject):
   def open(self) -> Container:
     """Opens it, as the agent does: its screen, as it shows it."""
     return self.__scene__.agent.open(self.__pos__)
+
+  def examine(self, side: Optional[str] = None) -> BlockView:
+    """
+    Looks at it, as the agent does: its view, observed (SPEC.md 15.4),
+    for the test's own computation on the pixels.
+    """
+    return self.__scene__.agent.examine(self.__pos__, side)
 
   # ------------------------------------------- examinations, by command
 

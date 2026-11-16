@@ -47,3 +47,16 @@ class SceneTests(ScenarioTestCase):
     self.assertTrue(stone.isThere())
     stone.breakIt()
     self.assertFalse(stone.isThere())
+
+  def test_d_the_lamp_seen(self) -> None:
+    """
+    A redstone lamp observed unlit and lit (SPEC.md 15.6 step 6), told
+    apart by the test's own computation on its pixels.
+    """
+    lamp = self.scene.place(MCBlocks.RedstoneLamp, at=(0, 1, 3))
+    unlit = lamp.examine().brightness()
+    #  the setup powers it: a block of redstone behind it
+    self.scene.place(MCBlocks.RedstoneBlock, at=(0, 1, 4))
+    self.agent.wait(4)
+    lit = lamp.examine().brightness()
+    self.assertGreater(lit, unlit + 30, (unlit, lit))

@@ -26,6 +26,7 @@ from worktoy.desc import Field
 from worktoy.ezdata import EZData, EZField
 
 from .codec import fromJson, toJson
+from .blockview import BlockView
 from .container import Container
 from .errors import Cancelled, NoResult, UnknownVersion
 from .perception import Perception
@@ -444,6 +445,14 @@ class Game:
 
   def key(self, name: str) -> None:
     self.request('screen.key', {'key': name})
+
+  def view(self, pos: Any, file: str, settleTicks: int = 2) -> BlockView:
+    """
+    The view of the block at 'pos' (SPEC.md 15.4): the frame the game draws for the player, its GUI hidden, saved to
+    'file' (an absolute path), and the pixels of it the block covers by the game's own ray (view.block).
+    """
+    answer = self.request('view.block', {'pos': _blockPos(pos), 'file': file, 'settle_ticks': settleTicks})
+    return BlockView(pos if isinstance(pos, BlockPos) else BlockPos(*pos), answer)
 
   def screenshot(self, file: str) -> Any:
     return self.request('screenshot', {'file': file})

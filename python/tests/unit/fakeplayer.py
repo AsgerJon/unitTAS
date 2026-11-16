@@ -19,7 +19,10 @@ the player's 27 and its hotbar's 9, as 1.7.10's ContainerChest; a
 quick_move click moves a stack across, merging first, as 1.7.10's
 transferStackInSlot does; screen.close closes it. Commands read and set
 blocks (block.get, block.set: a lever's meta is 5, and 8 more when on)
-and a chest's slots (block.items).
+and a chest's slots (block.items). Its view (view.block) is a frame 64
+by 48 written to the file asked for, the block's box 16 by 16 in its
+middle: the block's pixels when the crosshair meets the block, none
+when it doesn't or the player is 'blind'.
 
 The ground's top is at y 4; walls are full blocks at whole positions.
 """
@@ -31,6 +34,7 @@ import math
 from typing import Any
 
 from fakeprobe import FakeError
+from unittas import png
 
 EYE = 1.62
 HALF = 0.3
@@ -83,6 +87,8 @@ class FakePlayer:
     self.selected = 0
     #  what its clicks did: ('use', pos), ('placed', pos), ('broke', pos)
     self.clicks = []
+    #  whether its views see nothing
+    self.blind = False
 
   # --------------------------------------------------------------- the world
 
@@ -387,6 +393,28 @@ class FakePlayer:
           pos, there))
       return {'slots': list(self.chests[pos])}
 
+    def view(args: dict) -> dict:
+      pos = tuple(args['pos'])
+      target = self.target()
+      mine = (not self.blind and target is not None and
+              tuple(target['block']) == pos)
+      data = bytearray()
+      for y in range(48):
+        for x in range(64):
+          inside = 24 <= x < 40 and 16 <= y < 32
+          data += bytes((200, 40, 40) if inside and mine else (90, 90, 90))
+      png.write(args['file'], 64, 48, 3, bytes(data))
+      return {'file': args['file'], 'width': 64, 'height': 48,
+              'tick': self.tick,
+              'camera': {'pos': [self.x, GROUND + EYE, self.z],
+                         'look': {'yaw': self.yaw, 'pitch': self.pitch},
+                         'modelview': [0.0] * 16, 'projection': [0.0] * 16,
+                         'viewport': [0, 0, 64, 48]},
+              'rect': [24, 16, 40, 32],
+              'mask': [('1' if mine else '0') * 16] * 16,
+              'faces': {target['face']: 256} if mine else {},
+              'covered': []}
+
     def inventory(args: dict) -> Any:
       main = list(self.hotbar) + list(self.rest)
       if args.get('slot') == 'held':
@@ -409,6 +437,7 @@ class FakePlayer:
       'block.get': at('block.get', blockGet),
       'block.set': at('block.set', blockSet),
       'block.items': at('block.items', blockItems),
+      'view.block': at('view.block', view),
       'key.up': at('key.up',
                    lambda args: self.keys.discard(args['key']) or {}),
       'ticks.wait': at('ticks.wait', wait),

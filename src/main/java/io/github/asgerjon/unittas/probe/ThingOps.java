@@ -93,7 +93,7 @@ final class ThingOps {
 		return wait(call, call.number("settle_ticks", 4, 0, 1200), value);
 	}
 
-	private static int[] position(Call call, String key) throws ProbeException {
+	static int[] position(Call call, String key) throws ProbeException {
 		JsonElement given = call.args.get(key);
 		if (given == null || !given.isJsonArray() || given.getAsJsonArray().size() != 3) {
 			throw ProbeException.badRequest(key, key + " is [x, y, z]");

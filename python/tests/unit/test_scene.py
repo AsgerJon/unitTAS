@@ -102,6 +102,12 @@ class SceneTests(PlayedTests):
     with self.assertRaisesRegex(NeedFailed, "isn't there: minecraft:air"):
       lever.isOn()
 
+  def test_a_thing_observed(self) -> None:
+    stone = self.scene.place(MCBlocks.Stone, at=(3, 0, 6))
+    view = stone.examine(side='west')
+    self.assertEqual(stone.pos, view.pos)
+    self.assertEqual({'west': 256}, view.faces)
+
   def test_notes_go_to_the_run(self) -> None:
     noted = _Noted()
     Run.current = noted
