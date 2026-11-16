@@ -108,9 +108,14 @@ class Agent(BaseObject):
   #  take it on, coming down a ladder, before it pushes against it
   DRIFT = 1.0 / (1.0 - 0.91)
   HOVER = 0.1
+  #  Jump pressed again within 7 ticks makes a creative player fly (its
+  #  double tap): the agent presses it no sooner than this
+  JUMP_AGAIN = 9
   #  Blocked when it gained less than 0.05 blocks in this many ticks
-  #  pushing into something
+  #  pushing into something; swimming, two of its bobs at the water's top
+  #  (a bank is got onto rising through a band 0.2 high, once a bob)
   STUCK = 10
+  STUCK_SWIMMING = 40
   #  How much nearer than its reach the agent goes, to use it surely
   REACH_MARGIN = 1.0
   #  How far identify's best look must beat the next to be the answer,
@@ -130,6 +135,9 @@ class Agent(BaseObject):
   __taken__: int = 0
   #  The game's textures it has asked for, by icon: (size, pixels) or None
   __textures__: dict = None
+  #  The tick it last perceived, and the one it last pressed jump at
+  __now__: int = 0
+  __jumped__: int = None
 
   #  Public Variables
   game = Field()
@@ -185,7 +193,9 @@ class Agent(BaseObject):
   def perceive(self, around: int = 2, below: int = 1,
                above: int = 1) -> Perception:
     """What the player perceives now."""
-    return self.__game__.perceive(around, below, above)
+    seen = self.__game__.perceive(around, below, above)
+    self.__now__ = seen.tick
+    return seen
 
   def wait(self, ticks: int) -> None:
     """Waits 'ticks' of the game's ticks, doing nothing."""
@@ -301,13 +311,16 @@ class Agent(BaseObject):
               point: Vec3, first: int, ticks: int,
               seen: Perception) -> Perception:
     """
-    On to the waypoint 'point' from 'before', the one passed last: up a
-    ladder its feet are in, down a ladder in the point's column, else
-    walking (jumping, dropping) on.
+    On to the waypoint 'point' from 'before', the one passed last: into,
+    across or out of water, swimming; up a ladder its feet are in, down
+    a ladder in the point's column; else walking (jumping, dropping) on.
     """
     here = (math.floor(before.x), math.floor(before.z))
     there = (math.floor(point.x), math.floor(point.z))
     feet = seen.pos.y
+    wet = terrain.wet(there[0], there[1], point.y)
+    if wet or seen.inWater:
+      return self._swim(step, point, wet, first, ticks)
     if point.y > feet + Terrain.STEP and terrain.climbable(
         here[0], here[1], math.floor(feet + 1e-6)):
       return self._upLadder(step, before, point, first, ticks)
@@ -315,6 +328,38 @@ class Agent(BaseObject):
         there[0], there[1], math.ceil(feet - 1e-6) - 1):
       return self._downLadder(step, terrain, before, point, first, ticks)
     return self._pass(step, point, first, ticks)
+
+  def _swim(self, step: str, point: Vec3, wet: bool, first: int,
+            ticks: int) -> Perception:
+    """
+    Swims to the waypoint 'point': on the water ('wet'), on to the next
+    once in the water over it; else onto the bank there, on to the next
+    once on it. Jump is held in the water, and below the point's level
+    (a player bobbing at the top leaves the water a tick at a time, and
+    jump let go and pressed again within 7 ticks makes a creative player
+    fly): in water it lifts a player, its head out, and pushing into a
+    bank with nothing 0.6 over its feet lifts it out (1.7.10: 0.3 up).
+    Rising counts as getting on.
+    """
+    pushed = []
+    seen = self.perceive()
+    while True:
+      across = math.hypot(point.x - seen.pos.x, point.z - seen.pos.z)
+      if across < 0.45 and (seen.inWater if wet else (
+          seen.onGround and not seen.inWater and
+          abs(point.y - seen.pos.y) < 0.3)):
+        return seen
+      self._spent(step, seen, point, first, ticks)
+      left = across + max(0.0, point.y - 0.6 - seen.pos.y)
+      pushed.append((seen.tick, left))
+      self._blocked(step, seen, point, left, pushed, first,
+                    self.STUCK_SWIMMING)
+      self._hold('key.sneak', False)
+      self._hold('key.jump', seen.inWater or
+                 seen.pos.y < point.y - 0.05)
+      self._hold('key.forward', True)
+      self._face(seen, point)
+      seen = self.perceive()
 
   def _upLadder(self, step: str, foot: Vec3, point: Vec3, first: int,
                 ticks: int) -> Perception:
@@ -1155,8 +1200,17 @@ class Agent(BaseObject):
   # ---------------------------------------------------------------- the loop
 
   def _hold(self, key: str, down: bool) -> None:
-    """The key held down or let go, unless it is so already."""
+    """
+    The key held down or let go, unless it is so already. Jump isn't
+    pressed again within JUMP_AGAIN ticks of its last press (a creative
+    player would fly): not yet, it is left up.
+    """
     if down and key not in self.__held__:
+      if key == 'key.jump':
+        if (self.__jumped__ is not None and
+            self.__now__ - self.__jumped__ < self.JUMP_AGAIN):
+          return
+        self.__jumped__ = self.__now__
       self.__game__.keyDown(key)
       self.__held__.add(key)
     elif not down and key in self.__held__:
@@ -1221,11 +1275,16 @@ class Agent(BaseObject):
       self.letGo()
 
   def _blocked(self, step: str, seen: Perception, goal: Vec3, short: float,
-               pushed: list, first: int) -> None:
-    """TesttimeError when pushing on has gained nothing for a while."""
+               pushed: list, first: int,
+               stuck: Optional[int] = None) -> None:
+    """
+    TesttimeError when pushing on has gained nothing for 'stuck' ticks
+    (STUCK, left out).
+    """
     if not seen.collidedHorizontally:
       return
-    before = [was for tick, was in pushed if seen.tick - tick >= self.STUCK]
+    stuck = self.STUCK if stuck is None else stuck
+    before = [was for tick, was in pushed if seen.tick - tick >= stuck]
     if not before or before[-1] - short >= 0.05:
       return
     names = ['%s at %s' % (near.id, _place(near.pos)) for near in

@@ -7,10 +7,15 @@ along its look or across it (0.1 a tick on the ground, 0.02 in the air,
 walls (a sneaking player on the ground by an edge too), and keeps 0.546
 of it on the ground, 0.91 in the air. On a ladder (its feet in one) its
 motion is held within 0.15 across and 0.15 down, sneaking holds it up,
-and pushing into anything lifts it (0.2 up, before gravity). Its
-crosshair is a ray marched from the eye. Every request waits for the
-end of the next tick first, as the probe runs a client step there
-(Sides), so the agent meets the latency it meets in the game.
+and pushing into anything lifts it (0.2 up, before gravity). In water
+(a water block from 0.4 to 1.4 above its feet) it is pushed 0.02 a
+tick, keeps 0.8 of its motion and sinks 0.02 more, holding jump lifts
+it 0.04, and pushing into a bank with nothing 0.6 over its feet lifts it
+0.3. Creative's double tap is kept: jump pressed twice within 7 ticks
+would make it fly ('flew'). Its crosshair is a ray marched from the
+eye. Every request waits for the end of the next tick first, as the
+probe runs a client step there (Sides), so the agent meets the latency
+it meets in the game.
 
 Its clicks are 1.7.10's too, near enough: a key.use pressed right-clicks
 what the crosshair targets (a lever toggles; a block held is placed
@@ -236,6 +241,16 @@ class FakePlayer:
     self.ladders = {}
     #  how fast it came down each time it landed
     self.landed = []
+    #  the water's blocks and lava's, by (x, y, z) (the ground's where they
+    #  are dug); whether it was ever in water
+    self.water = set()
+    self.lava = set()
+    self.swam = False
+    #  creative's double tap on jump: ticks left to tap again; whether it
+    #  flies, and whether it ever did
+    self.flyToggle = 0
+    self.flying = False
+    self.flew = False
 
   # --------------------------------------------------------------- the world
 
@@ -292,12 +307,40 @@ class FakePlayer:
     return (math.floor(self.x), math.floor(self.y),
             math.floor(self.z)) in self.ladders
 
+  def floorOf(self, cx: int, cz: int) -> float:
+    """A column's top: raised, or the ground's, lower where it is dug."""
+    if (cx, cz) in self.raised:
+      return self.raised[(cx, cz)]
+    y = int(GROUND)
+    while (cx, y - 1, cz) in self.dug:
+      y -= 1
+    return float(y)
+
+  def inWater(self) -> bool:
+    """Whether water is from 0.4 to 1.4 over its feet (1.7.10's test)."""
+    return any((cx, cy, cz) in self.water
+               for cx, cz in self.cells(self.x, self.z)
+               for cy in range(math.floor(self.y + 0.4),
+                               math.floor(self.y + 1.4) + 1))
+
+  def hopClear(self) -> bool:
+    """Whether its box 0.6 higher meets no block and no liquid."""
+    for cx, cz in self.cells(self.x, self.z):
+      if self.floorOf(cx, cz) > self.y + 0.6 + 1e-9:
+        return False
+      for cy in range(math.floor(self.y + 0.6),
+                      math.floor(self.y + 0.6 + HEIGHT) + 1):
+        if ((cx, cy, cz) in self.water or (cx, cy, cz) in self.lava or
+            (cx, cy, cz) in self.walls):
+          return False
+    return True
+
   def under(self, x: float, z: float) -> float:
     """
     The floor under the player's box at x, z: its columns' highest, or a
     ladder's top it stands on.
     """
-    floor = max(self.raised.get(cell, GROUND) for cell in self.cells(x, z))
+    floor = max(self.floorOf(*cell) for cell in self.cells(x, z))
     for box in self.ladderBoxes():
       if box[4] <= self.y + 0.5 + 1e-9 and self.overlaps(x, z, box):
         floor = max(floor, box[4])
@@ -316,7 +359,11 @@ class FakePlayer:
     return d
 
   def blocked(self, x: float, z: float) -> bool:
-    """Whether the player's box at x, z meets a wall or a step too high."""
+    """
+    Whether the player's box at x, z meets a wall or a step too high: up
+    half a block it steps on the ground, and nothing off it.
+    """
+    step = 0.5 if self.onGround else 0.0
     for box in self.ladderBoxes():
       if (box[1] < self.y + HEIGHT and box[4] > self.y + 0.5 + 1e-9 and
           self.overlaps(x, z, box)):
@@ -325,7 +372,7 @@ class FakePlayer:
       for cy in (int(GROUND), int(GROUND) + 1):
         if (cx, cy, cz) in self.walls:
           return True
-      if self.raised.get((cx, cz), GROUND) > self.y + 0.5 + 1e-9:
+      if self.floorOf(cx, cz) > self.y + step + 1e-9:
         return True
       if (cx, cz) in self.doors:
         for bx0, bz0, bx1, bz1 in self.doorBoxes(cx, cz):
@@ -356,10 +403,14 @@ class FakePlayer:
       forward, strafe = forward / size, strafe / size
     yaw = math.radians(self.yaw)
     grounded = self.onGround
-    push = 0.1 if grounded else 0.02
+    water = self.inWater()
+    self.swam = self.swam or water
+    if water and 'key.jump' in self.keys:
+      self.my += 0.04
+    push = 0.1 if grounded and not water else 0.02
     self.mx += (strafe * math.cos(yaw) - forward * math.sin(yaw)) * push
     self.mz += (forward * math.cos(yaw) + strafe * math.sin(yaw)) * push
-    ladder = self.onLadder()
+    ladder = self.onLadder() and not water
     if ladder:
       self.mx = max(-0.15, min(0.15, self.mx))
       self.mz = max(-0.15, min(0.15, self.mz))
@@ -385,7 +436,7 @@ class FakePlayer:
     ground = self.under(self.x, self.z)
     if self.onGround and self.y < ground <= self.y + 0.5 + 1e-9:
       self.y = ground
-    if 'key.jump' in self.keys and self.onGround:
+    if 'key.jump' in self.keys and self.onGround and not water:
       self.my = 0.42
     self.y += self.my
     if self.y <= ground:
@@ -394,13 +445,20 @@ class FakePlayer:
       self.y, self.my, self.onGround = ground, 0.0, True
     else:
       self.onGround = False
-    if self.collided and ladder:
-      self.my = 0.2
-    self.my = (self.my - 0.08) * 0.98
-    #  what it keeps: as it stood when the tick began
-    friction = FRICTION if grounded else 0.91
-    self.mx *= friction
-    self.mz *= friction
+    if water:
+      self.mx *= 0.8
+      self.mz *= 0.8
+      self.my = self.my * 0.8 - 0.02
+      if self.collided and self.hopClear():
+        self.my = 0.3
+    else:
+      if self.collided and ladder:
+        self.my = 0.2
+      self.my = (self.my - 0.08) * 0.98
+      #  what it keeps: as it stood when the tick began
+      friction = FRICTION if grounded else 0.91
+      self.mx *= friction
+      self.mz *= friction
     self.trail.append((self.x, self.z))
     self.bumps += self.collided
 
@@ -416,6 +474,15 @@ class FakePlayer:
 
   def click(self) -> None:
     pressed, self.pressed = self.pressed, set()
+    if self.flyToggle > 0:
+      self.flyToggle -= 1
+    if 'key.jump' in pressed and self.creative:
+      if self.flyToggle > 0:
+        self.flying = not self.flying
+        self.flew = True
+        self.flyToggle = 0
+      else:
+        self.flyToggle = 7
     for key in pressed:
       if key.startswith('key.hotbar.'):
         self.selected = int(key.rsplit('.', 1)[1]) - 1
@@ -584,6 +651,12 @@ class FakePlayer:
                                    x + 1.0, self.top(x, y, z), z + 1.0]],
                         'liquid': False, 'climbable': False,
                         'opens': False})
+    for kind, blocks in (('water', self.water), ('lava', self.lava)):
+      for x, y, z in sorted(blocks):
+        if abs(x - fx) <= around and abs(z - fz) <= around:
+          found.append({'pos': [x, y, z], 'id': 'minecraft:' + kind,
+                        'meta': 0, 'boxes': [], 'liquid': True,
+                        'climbable': False, 'opens': False})
     for (x, y, z), edge in sorted(self.ladders.items()):
       if abs(x - fx) <= around and abs(z - fz) <= around:
         x0, z0, x1, z1 = LADDER_EDGES[edge]
@@ -615,10 +688,10 @@ class FakePlayer:
                  -0.0784000015258789, self.mz],
       'on_ground': self.onGround,
       'collided': {'horizontally': self.collided, 'vertically': True},
-      'in_water': False, 'in_lava': False,
+      'in_water': self.inWater(), 'in_lava': False,
       'on_ladder': self.onLadder(),
       'sneaking': 'key.sneak' in self.keys, 'sprinting': False,
-      'flying': False, 'reach': {'block': REACH, 'entity': 6.0},
+      'flying': self.flying, 'reach': {'block': REACH, 'entity': 6.0},
       'target': self.target(), 'blocks': self.near(around)}
 
   # ----------------------------------------------------- the probe's answers

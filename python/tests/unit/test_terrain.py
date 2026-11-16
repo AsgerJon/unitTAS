@@ -4,7 +4,9 @@ it from what it perceives. Where a player stands in each column (on a
 block, a slab, a stair's top, not in water, not under a low ceiling),
 and the ways between columns: walking up half a block as the game steps,
 jumping up a block with room above, dropping down three; up a ladder
-to a ledge no higher than its top, and down one. A path from
+to a ledge no higher than its top, and down one; into water, across it
+at its top and out onto a bank level with it, never into lava. A path
+from
 where it stands to a place, straightened where a straight line is clear,
 around what is in the way; to the edge of what it sees, towards a place
 further off; none to a place it can't get to.
@@ -43,6 +45,12 @@ EDGES = {'south': (2, (0.0, 0.875, 1.0, 1.0)),
          'north': (3, (0.0, 0.0, 1.0, 0.125)),
          'east': (4, (0.875, 0.0, 1.0, 1.0)),
          'west': (5, (0.0, 0.0, 0.125, 1.0))}
+
+
+def liquid(x: int, y: int, z: int, kind: str = 'water') -> NearBlock:
+  """A liquid's block (no box): water, or lava."""
+  return NearBlock(BlockPos(x, y, z), 'minecraft:%s' % kind, 0, (), True,
+                   False, False)
 
 
 def ladder(x: int, z: int, ys: range, edge: str = 'south') -> list:
@@ -262,6 +270,66 @@ class LadderTests(unittest.TestCase):
   def test_not_down_four_without_one(self) -> None:
     here = self.high(ys=range(0), feet=Vec3(0.5, 8.0, 3.5), below=5)
     path, whole = here.path(Vec3(0.5, 8.0, 3.5), Vec3(0.5, 4.0, 0.5))
+    self.assertIsNone(path)
+
+
+class WaterTests(unittest.TestCase):
+  """
+  A trench across the way, z 2 to 4 from x -8 to 8, filled with water
+  (or lava) to the ground's top: its blocks at y 3, 'deep' of them.
+  """
+
+  def trench(self, kind: str = 'water', deep: int = 1,
+             feet: Vec3 = Vec3(0.5, 4.0, 0.5), more: list = ()) -> Terrain:
+    wet = {(x, y, z) for x in range(-8, 9) for z in (2, 3, 4)
+           for y in range(4 - deep, 4)}
+    blocks = ([liquid(x, y, z, kind) for x, y, z in sorted(wet)] +
+              [block(x, y, z) for x in range(-8, 9) for z in range(-8, 9)
+               for y in range(3 - deep, 4) if (x, y, z) not in wet] +
+              list(more))
+    return Terrain(Perception(pos=feet, eye=feet.above(1.62),
+                              blocks=tuple(blocks)),
+                   around=8, below=3, above=3)
+
+  def test_its_top(self) -> None:
+    """A player swims at the water's top, and stands nowhere in it."""
+    here = self.trench(deep=2)
+    self.assertEqual((4.0,), here.surfaces(0, 3))
+    self.assertEqual((), here.floors(0, 3))
+    self.assertTrue(here.wet(0, 3, 4.0))
+    self.assertFalse(here.wet(0, 1, 4.0))
+    self.assertEqual((), here.surfaces(0, 1))
+
+  def test_across_water(self) -> None:
+    """In, across (straight on), out: each change of way kept."""
+    here = self.trench()
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 4.0, 6.5))
+    self.assertTrue(whole)
+    self.assertEqual([Vec3(0.5, 4.0, z + 0.5) for z in (1, 2, 4, 5, 6)],
+                     path)
+
+  def test_from_in_the_water(self) -> None:
+    here = self.trench(deep=2, feet=Vec3(0.5, 3.6, 3.5))
+    path, whole = here.path(Vec3(0.5, 3.6, 3.5), Vec3(0.5, 4.0, 6.5))
+    self.assertTrue(whole)
+    self.assertEqual(Vec3(0.5, 4.0, 6.5), path[-1])
+
+  def test_not_out_onto_a_higher_bank(self) -> None:
+    here = self.trench(more=[block(x, 4, 5) for x in range(-8, 9)])
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 5.0, 5.5))
+    self.assertIsNone(path)
+
+  def test_not_under_a_lid(self) -> None:
+    """Water with a block on it: no top to swim at, no way across."""
+    here = self.trench(more=[block(x, 4, 3) for x in range(-8, 9)])
+    self.assertEqual((), here.surfaces(0, 3))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 4.0, 6.5))
+    self.assertIsNone(path)
+
+  def test_never_into_lava(self) -> None:
+    here = self.trench(kind='lava')
+    self.assertEqual((), here.surfaces(0, 3))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 4.0, 6.5))
     self.assertIsNone(path)
 
 

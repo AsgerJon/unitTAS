@@ -2,7 +2,7 @@
 Terrain: what the agent knows of the ground around it, from what it
 perceives (SPEC.md 15.6 step 7): where a player stands, and the ways
 between where it stands and a place: walking, jumping, dropping, through
-doors, up and down ladders.
+doors, up and down ladders, swimming.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -22,6 +22,9 @@ if TYPE_CHECKING:  # pragma: no cover
   from .perception import Perception
 
 _EPS = 1e-6
+#  The liquids a player swims in, by registry name; any other liquid
+#  (lava, a mod's) is never a way
+_WATERS = ('minecraft:water', 'minecraft:flowing_water')
 _AROUND = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1),
            (-1, -1))
 
@@ -37,7 +40,10 @@ class Terrain(BaseObject):
   jumps from, or drops down to DROP; across a corner only walking, with
   both sides passable. A ladder's thin box doesn't fill its column: from
   its foot a player climbs to a ledge beside it no higher than its top,
-  and from a ledge beside its top it comes down it.
+  and from a ledge beside its top it comes down it. In water a player
+  swims at its top (its head out, nothing over it): into it from beside
+  it, across it, and out onto a bank no higher than its top. Any other
+  liquid is never a way.
 
     path, whole = Terrain(seen, 8, 3, 3).path(seen.pos, place)
   """
@@ -58,15 +64,21 @@ class Terrain(BaseObject):
 
   #  Fallback Variables
 
+  #  How far above its feet a swimming player's head reaches: room it
+  #  needs over the water's top (its feet 0.4 under it)
+  HEAD = 1.4
+
   #  Private Variables
-  #  Each column's intervals, (bottom, top, liquid), by (x, z)
+  #  Each column's intervals, (bottom, top, kind), by (x, z): kind is
+  #  'box' (a collision box), 'water', or 'liquid' (any other)
   __columns__: dict = None
   #  Each column's blocks a hand's click opens (a door's halves), by (x, z)
   __doors__: dict = None
   #  Each column's blocks a player climbs (a ladder, a vine), by (x, z)
   __ladders__: dict = None
-  #  Each column's floors, once asked for
+  #  Each column's floors and water tops, once asked for
   __floors__: dict = None
+  __surfaces__: dict = None
   #  The column the player stood in, and how far around it is known
   __centre__: tuple = None
   __around__: int = 0
@@ -93,13 +105,15 @@ class Terrain(BaseObject):
         continue
       column = columns.setdefault((near.pos.x, near.pos.z), [])
       if near.liquid:
-        column.append((float(near.pos.y), near.pos.y + 1.0, True))
+        kind = 'water' if near.id in _WATERS else 'liquid'
+        column.append((float(near.pos.y), near.pos.y + 1.0, kind))
       for box in near.boxes:
-        column.append((box.minY, box.maxY, False))
+        column.append((box.minY, box.maxY, 'box'))
     self.__columns__ = columns
     self.__doors__ = doors
     self.__ladders__ = ladders
     self.__floors__ = {}
+    self.__surfaces__ = {}
     self.__centre__ = (math.floor(seen.pos.x), math.floor(seen.pos.z))
     self.__around__ = around
 
@@ -130,11 +144,29 @@ class Terrain(BaseObject):
   def floors(self, x: int, z: int) -> tuple:
     """The heights a player stands at in the column (x, z), lowest first."""
     if (x, z) not in self.__floors__:
-      tops = sorted(set(top for _, top, liquid in
-                        self.__columns__.get((x, z), ()) if not liquid))
+      tops = sorted(set(top for _, top, kind in
+                        self.__columns__.get((x, z), ()) if kind == 'box'))
       self.__floors__[(x, z)] = tuple(
         top for top in tops if self._clear(x, z, top, top + self.HEIGHT))
     return self.__floors__[(x, z)]
+
+  def surfaces(self, x: int, z: int) -> tuple:
+    """
+    The heights a player swims at in the column (x, z), lowest first:
+    the top of water with nothing over it a swimming player's head
+    would meet.
+    """
+    if (x, z) not in self.__surfaces__:
+      column = self.__columns__.get((x, z), ())
+      waters = set(top for _, top, kind in column if kind == 'water')
+      self.__surfaces__[(x, z)] = tuple(sorted(
+        top for top in waters if top + 1.0 not in waters and
+        self._clear(x, z, top, top + self.HEAD)))
+    return self.__surfaces__[(x, z)]
+
+  def wet(self, x: int, z: int, h: float) -> bool:
+    """Whether h is a height a player swims at in the column (x, z)."""
+    return any(abs(s - h) <= _EPS for s in self.surfaces(x, z))
 
   def path(self, start: Vec3, goal: Vec3) -> tuple:
     """
@@ -147,6 +179,8 @@ class Terrain(BaseObject):
     """
     sx, sz = math.floor(start.x), math.floor(start.z)
     near = [f for f in self.floors(sx, sz) if abs(f - start.y) <= self.STEP]
+    near += [s for s in self.surfaces(sx, sz)
+             if s - self.HEAD <= start.y <= s + self.STEP]
     first = (sx, sz, min(near, key=lambda f: abs(f - start.y))
              if near else start.y)
     cost, came = self._search(first)
@@ -209,9 +243,16 @@ class Terrain(BaseObject):
     return not any(bottom < high - _EPS and top > low + _EPS
                    for bottom, top, _ in self.__columns__.get((x, z), ()))
 
+  def _levels(self, x: int, z: int, wet: bool) -> tuple:
+    """The column's water tops when 'wet', else its floors."""
+    return self.surfaces(x, z) if wet else self.floors(x, z)
+
   def _moves(self, node: tuple) -> Iterator[tuple]:
     """Where a player goes from 'node' in a step: (node, cost, kind)."""
     x, z, h = node
+    if self.wet(x, z, h):
+      yield from self._swims(node)
+      return
     #  the ladder its feet are in: up it, as far as its top
     up = self._run(x, z, math.floor(h + _EPS))
     for dx, dz in _AROUND:
@@ -250,6 +291,32 @@ class Terrain(BaseObject):
             self.STEP + _EPS < f - h and f <= up[1] + 1.0 + _EPS and
             self._clear(x, z, h, f + self.HEIGHT)):
           yield (nx, nz, f), 1.0 + 1.5 * (f - h), 'climb'
+      #  into water beside it, from as high as it is
+      for s in self.surfaces(nx, nz):
+        if s <= h + self.STEP + _EPS and self._clear(
+            nx, nz, s, max(s + self.HEAD, h + self.HEIGHT)):
+          yield (nx, nz, s), 2.0, 'in'
+
+  def _swims(self, node: tuple) -> Iterator[tuple]:
+    """
+    Where a player swimming at 'node' goes in a stroke: across the water
+    (at a corner only with water on both sides), or out onto a bank no
+    higher than the water's top and no more than a drop below it.
+    """
+    x, z, h = node
+    for dx, dz in _AROUND:
+      nx, nz = x + dx, z + dz
+      if not self.inside(nx, nz):
+        continue
+      for s in self.surfaces(nx, nz):
+        if abs(s - h) <= self.STEP + _EPS and (not (dx and dz) or (
+            self.wet(x + dx, z, s) and self.wet(x, z + dz, s))):
+          yield (nx, nz, s), 2.5 * math.hypot(dx, dz), 'swim'
+      if dx and dz or (nx, nz) in self.__doors__:
+        continue
+      for f in self.floors(nx, nz):
+        if h - self.DROP - _EPS <= f <= h + _EPS:
+          yield (nx, nz, f), 2.0, 'out'
 
   def _descends(self, x: int, z: int, h: float, f: float) -> bool:
     """
@@ -295,20 +362,27 @@ class Terrain(BaseObject):
     return cost, came
 
   def _straighten(self, chain: list, kinds: list) -> list:
-    """The chain's nodes to go to, straight on where the line is clear."""
+    """
+    The chain's nodes to go to, straight on where the line is clear:
+    walking on the ground, or swimming across water.
+    """
     out, i = [], 0
     while i < len(chain) - 1:
       j = i + 1
-      if kinds[i] == 'walk':
-        while (j + 1 < len(chain) and kinds[j] == 'walk' and
-               self._straight(chain[i], chain[j + 1])):
+      if kinds[i] in ('walk', 'swim'):
+        wet = kinds[i] == 'swim'
+        while (j + 1 < len(chain) and kinds[j] == kinds[i] and
+               self._straight(chain[i], chain[j + 1], wet)):
           j += 1
       out.append(chain[j])
       i = j
     return out
 
-  def _straight(self, a: tuple, b: tuple) -> bool:
-    """Whether a player walks straight from node a to node b, on floors."""
+  def _straight(self, a: tuple, b: tuple, wet: bool = False) -> bool:
+    """
+    Whether a player walks straight from node a to node b, on floors;
+    or, 'wet', swims straight, at the water's top.
+    """
     ax, az, bx, bz = a[0] + 0.5, a[1] + 0.5, b[0] + 0.5, b[1] + 0.5
     length = math.hypot(bx - ax, bz - az)
     steps = max(1, int(math.ceil(length / 0.2)))
@@ -322,6 +396,7 @@ class Terrain(BaseObject):
           return False
         if not self.inside(x, z) or not any(
             abs(f - a[2]) <= self.STEP + _EPS and
-            abs(f - b[2]) <= self.STEP + _EPS for f in self.floors(x, z)):
+            abs(f - b[2]) <= self.STEP + _EPS
+            for f in self._levels(x, z, wet)):
           return False
     return True

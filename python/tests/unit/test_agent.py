@@ -63,6 +63,7 @@ class PlayedTests(unittest.TestCase):
   def assertOnlyAPlayersMeans(self) -> None:
     self.assertEqual(set(), set(self.player.ops) - PLAYERS_MEANS)
     self.assertEqual(set(), self.player.keys, 'every key let go')
+    self.assertFalse(self.player.flew, 'jump tapped twice: it flew')
 
 
 class AgentTests(PlayedTests):
@@ -232,6 +233,24 @@ class AgentTests(PlayedTests):
       self.agent.walkTo(Vec3(0.5, 4.0, 3.5), within=0.04)
     with self.assertRaises(ValueError):
       self.agent.walkTo(Vec3(0.5, 4.0, 3.5), ticks=0)
+
+  def test_jump_never_tapped_twice_quickly(self) -> None:
+    """
+    Jump pressed again within 7 ticks makes creative's player fly: the
+    agent leaves it up until JUMP_AGAIN ticks have passed (its own
+    helper, as no walk of today's presses it so soon).
+    """
+    self.agent.perceive()
+    self.agent._hold('key.jump', True)
+    self.agent._hold('key.jump', False)
+    self.agent._hold('key.jump', True)
+    self.assertEqual(['key.jump'], self.player.keysAsked)
+    self.agent.wait(Agent.JUMP_AGAIN)
+    self.agent.perceive()
+    self.agent._hold('key.jump', True)
+    self.agent.letGo()
+    self.assertEqual(['key.jump'] * 2, self.player.keysAsked)
+    self.assertFalse(self.player.flew)
 
 
 if __name__ == '__main__':
