@@ -16,6 +16,7 @@ import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -50,6 +51,7 @@ final class ServerOps {
 			return new JsonObject();
 		});
 		probe.op("hooks.run").does(ServerOps::hooks);
+		probe.op("hooks.things").does(ServerOps::things);
 		// reflection (PROTOCOL.md 5.9), the server's side: a mod's own server-side state
 		probe.op("reflect.get").does(Reflect::get);
 		probe.op("reflect.set").does(Reflect::set);
@@ -262,5 +264,30 @@ final class ServerOps {
 		public World getEntityWorld() {
 			return server.getEntityWorld();
 		}
+	}
+
+	/**
+	 * hooks.things (8.13): each plugin's declarations of its things vanilla lacks (TasHooks.things), or what its
+	 * things() threw. The orchestrator checks them; the probe only reports. Here, not in GameOps, so a dedicated
+	 * server has it too: it names no client class.
+	 */
+	@SuppressWarnings("unchecked")
+	static JsonElement things(Call call) {
+		JsonArray plugins = new JsonArray();
+		for (Object[] outcome : TasPlugins.things()) {
+			Throwable thrown = (Throwable) outcome[2];
+			if (thrown != null) {
+				plugins.add(Json.object("class", outcome[0], "ok", false, "error", Json.object("type", "GameError",
+					"message", outcome[0] + ".things threw " + thrown, "exception", thrown.getClass().getName(),
+					"trace", Probe.trace(thrown))));
+				continue;
+			}
+			JsonObject declared = new JsonObject();
+			for (Map.Entry<String, String> each : ((Map<String, String>) outcome[1]).entrySet()) {
+				declared.addProperty(each.getKey(), each.getValue());
+			}
+			plugins.add(Json.object("class", outcome[0], "ok", true, "things", declared));
+		}
+		return Json.object("plugins", plugins);
 	}
 }

@@ -7,8 +7,10 @@ where a member is used (it takes about 0.7 s).
 
 - ThingId: an id's parts.
 - parse: an id's text into its parts.
-- resolve: a member's id in a version; Missing where vanilla lacks it,
-  NoMcdexData where mcdex has no data for that version.
+- resolve: a member's id in a version, or the id a mod declares for it
+  where vanilla lacks it; Missing where neither has it, NoMcdexData where
+  mcdex has no data for that version.
+- declare: the mods' declarations (hooks.things), checked.
 - itemOf, blockOf, entityOf, dimensionOf: a member as the probe takes it.
 - membersOf: a value the game reports, as the set of members it is.
 - needsData: whether telling a value's members apart needs its data.
@@ -31,10 +33,14 @@ from .snbt import loads
 from .values import Block, Effect, Entity, Item
 
 if TYPE_CHECKING:  # pragma: no cover
-  from typing import Any, Union
+  from typing import Any, Optional, Union
 
   from mcdex import Version
 
+#  A mod's declaration names a member as '<catalogue>/<unique name>'
+#  (TasHooks.things), in mcdex's own words
+CATALOGUES = {'items': MCItems, 'blocks': MCBlocks, 'entities': MCEntities,
+              'effects': MCEffects, 'dimensions': MCDimensions}
 _NUMBER = re.compile(r'-?\d+')
 _PART = re.compile(r'[A-Za-z0-9_.\-]+')
 
@@ -102,21 +108,30 @@ def parse(text: str) -> ThingId:
   return ThingId(rest, state=state, nbt=nbt)
 
 
-def resolve(member: Any, version: Version) -> ThingId:
+def resolve(member: Any, version: Version,
+            declared: Optional[dict] = None) -> ThingId:
   """
-  The member's id in the version, read into its parts.
+  The member's id in the version, read into its parts: vanilla's, or,
+  where vanilla lacks it, the id a mod declares for it ('declared', as
+  declare gives it; SPEC.md 14.4, M4).
 
   Raises
   ------
   Missing
-    Vanilla lacks it in that version, by mcdex's NotInVersion: a FAIL.
+    Vanilla lacks it in that version, by mcdex's NotInVersion, and no mod
+    declares it: a FAIL.
   NoMcdexData
     mcdex has no data on that version for it: no result.
   """
   try:
     found = member[version]
   except NotInVersion as error:
-    raise Missing(member, version, str(error)) from error
+    if declared and member in declared:
+      return declared[member][0]
+    why = str(error)
+    if declared is not None:
+      why += ' (no mod declares it)'
+    raise Missing(member, version, why) from error
   except ValueError as error:
     #  mcdex: 'mcdex has no data on ... before 1.8'
     raise NoMcdexData(member, version, str(error)) from error
@@ -142,44 +157,48 @@ def _plain(thing: ThingId, member: Any, what: str, *parts: str) -> None:
         % (type(member).__name__, member.name, thing.text(), what, part))
 
 
-def itemOf(member: Any, version: Version, count: int = 1) -> Item:
+def itemOf(member: Any, version: Version, count: int = 1,
+           declared: Optional[dict] = None) -> Item:
   """An MCItems member as an item stack of 'count' in the version."""
   _need(member, MCItems, 'an item')
-  thing = resolve(member, version)
+  thing = resolve(member, version, declared)
   _plain(thing, member, 'an item', 'isNumber', 'state')
   return Item(thing.name, count, thing.meta, thing.nbt)
 
 
-def blockOf(member: Any, version: Version) -> tuple:
+def blockOf(member: Any, version: Version,
+            declared: Optional[dict] = None) -> tuple:
   """
   An MCBlocks member in the version: the block, and its block entity's
   data as SNBT ('' for none), which block.set takes as 'tile'.
   """
   _need(member, MCBlocks, 'a block')
-  thing = resolve(member, version)
+  thing = resolve(member, version, declared)
   _plain(thing, member, 'a block', 'isNumber', 'state')
   return Block(thing.name, thing.meta), thing.nbt
 
 
-def entityOf(member: Any, version: Version) -> tuple:
+def entityOf(member: Any, version: Version,
+             declared: Optional[dict] = None) -> tuple:
   """
   An MCEntities member in the version: the type entity.spawn takes, and
   the data that tells it apart as SNBT ('' for none), as 1.7.10's wither
   skeleton is a skeleton of type 1.
   """
   _need(member, MCEntities, 'an entity')
-  thing = resolve(member, version)
+  thing = resolve(member, version, declared)
   _plain(thing, member, 'an entity', 'isNumber', 'hasMeta', 'state')
   return thing.name, thing.nbt
 
 
-def dimensionOf(member: Any, version: Version) -> Union[int, str]:
+def dimensionOf(member: Any, version: Version,
+                declared: Optional[dict] = None) -> Union[int, str]:
   """
   An MCDimensions member in the version: 1.7.10's number, which its probe
   takes (PROTOCOL.md 5.2), or the dimension's name.
   """
   _need(member, MCDimensions, 'a dimension')
-  thing = resolve(member, version)
+  thing = resolve(member, version, declared)
   _plain(thing, member, 'a dimension', 'hasMeta', 'state', 'nbt')
   return thing.number if thing.isNumber else thing.name
 
@@ -247,22 +266,34 @@ def _reported(value: Any) -> tuple:
                   'as mcdex members, not %r' % (value,))
 
 
-def _candidates(value: Any, version: Version) -> tuple:
-  """The (ThingId, member) pairs whose name the value's id has."""
+def _candidates(value: Any, version: Version,
+                declared: Optional[dict] = None) -> tuple:
+  """
+  The (ThingId, member) pairs whose name the value's id has: vanilla's,
+  and the mods' declarations of what vanilla lacks.
+  """
   catalogue, keys, _, _, _ = _reported(value)
   index = _index(catalogue, version)
+  out = ()
   for key in keys:
     if key in index:
-      return index[key]
-  return ()
+      out = index[key]
+      break
+  mods = tuple((thing, member)
+               for member, (thing, _) in (declared or {}).items()
+               if isinstance(member, catalogue) and thing.name in keys)
+  return out + mods
 
 
-def needsData(value: Any, version: Version) -> bool:
+def needsData(value: Any, version: Version,
+              declared: Optional[dict] = None) -> bool:
   """Whether some member the value's name fits is told apart by data."""
-  return any(thing.nbt for thing, _ in _candidates(value, version))
+  return any(thing.nbt for thing, _ in _candidates(value, version,
+                                                   declared))
 
 
-def membersOf(value: Any, version: Version) -> frozenset:
+def membersOf(value: Any, version: Version,
+              declared: Optional[dict] = None) -> frozenset:
   """
   The members a value the game reports is, in the version (SPEC.md
   14.3): those whose id it fits (the name; the meta where mcdex's id has
@@ -281,7 +312,7 @@ def membersOf(value: Any, version: Version) -> frozenset:
   _, _, meta, snbt, asked = _reported(value)
   have = None
   matched = []
-  for thing, member in _candidates(value, version):
+  for thing, member in _candidates(value, version, declared):
     if thing.hasMeta and thing.meta != meta:
       continue
     if thing.nbt:
@@ -313,3 +344,62 @@ def describe(value: Any) -> str:
   if isinstance(value, Effect):
     return value.effect or str(value.id)
   return repr(value)
+
+
+@lru_cache(maxsize=None)
+def _byUnique(catalogue: type) -> dict:
+  """The catalogue's members by their unique names ('elytra')."""
+  return {member.value: member for member in catalogue}
+
+
+def declare(plugins: list, version: Version) -> dict:
+  """
+  The mods' declarations of things vanilla lacks (hooks.things: each
+  plugin's '<catalogue>/<unique name>' to its id), checked, as
+  {member: (ThingId, the plugin's class)} (SPEC.md 14.4, M4).
+
+  Raises
+  ------
+  ValueError
+    A plugin's things() failed; a key names no catalogue or no member; a
+    plugin declares what vanilla has in that version (a mod declares only
+    what vanilla lacks); an id fits no mcdex id; two plugins declare one
+    member differently. Each names the plugin.
+  """
+  out = {}
+  for plugin in plugins:
+    name = plugin.get('class', '?')
+    if not plugin.get('ok', False):
+      error = plugin.get('error') or {}
+      raise ValueError("%s's things() failed: %s"
+                       % (name, error.get('message', 'no message')))
+    for key, text in sorted((plugin.get('things') or {}).items()):
+      catalogueName, _, unique = key.partition('/')
+      catalogue = CATALOGUES.get(catalogueName)
+      if catalogue is None:
+        raise ValueError('%s declares %r: a key is <catalogue>/<unique '
+                         'name>, the catalogue one of %s'
+                         % (name, key, ', '.join(sorted(CATALOGUES))))
+      member = _byUnique(catalogue).get(unique)
+      if member is None:
+        raise ValueError('%s declares %r, which mcdex has no member for'
+                         % (name, key))
+      try:
+        vanilla = member[version].minecraftId
+      except (NotInVersion, ValueError):
+        vanilla = None
+      if vanilla is not None:
+        raise ValueError('%s declares %r, which vanilla %s has as %s: a '
+                         'mod declares only what vanilla lacks'
+                         % (name, key, version.value, vanilla))
+      try:
+        thing = parse(text)
+      except ValueError as error:
+        raise ValueError('%s declares %r as %r: %s'
+                         % (name, key, text, error)) from error
+      if member in out and out[member][0] != thing:
+        raise ValueError('%s and %s declare %r differently: %s and %s'
+                         % (out[member][1], name, key, out[member][0].text(),
+                            thing.text()))
+      out[member] = (thing, name)
+  return out

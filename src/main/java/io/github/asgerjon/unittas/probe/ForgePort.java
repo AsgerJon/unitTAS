@@ -100,6 +100,7 @@ public final class ForgePort implements Port {
 			probe.register(Op.onSide("player.reset", Side.SERVER));
 			probe.register(Op.onSide("world.reset", Side.SERVER));
 			probe.register(Op.onSide("hooks.run", Side.SERVER));
+			probe.register(Op.probe("hooks.things").reading());
 			probe.register(Op.onSide("reflect.get", Side.SERVER).reading().needingASide());
 			probe.register(Op.onSide("reflect.set", Side.SERVER).needingASide());
 			return;
@@ -133,6 +134,8 @@ public final class ForgePort implements Port {
 			String hook = Json.string(args, "hook");
 			return "beforeRun".equals(hook) || "afterRun".equals(hook) ? Side.CLIENT : Side.SERVER;
 		}));
+		// the mods' declarations of their things vanilla lacks (8.13), read from the plugins found at start-up
+		probe.register(Op.probe("hooks.things").reading());
 		// the reset (8.4, 9.5), given its bodies at preInit (ResetOps)
 		probe.register(Op.onSide("client.reset", Side.CLIENT));
 		probe.register(Op.onSide("player.reset", Side.SERVER));

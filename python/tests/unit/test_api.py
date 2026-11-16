@@ -18,7 +18,7 @@ import mcdex
 from mcdex import (MCBlocks, MCDimensions, MCEntities, MCItems,
                    Version)
 
-from fakeprobe import FakeError, FakeProbe, inThread
+from fakeprobe import HELLO, FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
 from unittas.codec import toJson
 from unittas.errors import Missing, NoResult, NotFound, UnknownVersion
@@ -44,9 +44,11 @@ class GameTests(unittest.TestCase):
     self.addCleanup(self.listener.close)
 
   def game(self, handlers: dict, names: str = 'mcp',
-           minecraft: str = '1.7.10') -> Game:
+           minecraft: str = '1.7.10', ops: tuple = ()) -> Game:
     expected = self.listener.prepare(self.folder, 'alice', Role.CLIENT)
     extra = {'names': names, 'minecraft': minecraft}
+    if ops:
+      extra['ops'] = list(ops)
     fake = FakeProbe(expected.startFile, extra=extra)
     thread, box = inThread(fake.connect)
     connection = self.listener.accept(timeout=10)
@@ -176,6 +178,61 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(TypeError):
       game.spawn(MCEntities.WitherSkeleton, (0, 4, 0), nbt='{Health:1f}')
     self.assertEqual([], self.sent())
+
+  def declaring(self, plugins: list) -> Game:
+    """A 1.7.10 game whose mods declare things (hooks.things)."""
+    return self.game({'inventory.set': lambda args, side: {},
+                      'hooks.things': lambda args, side: {
+                        'plugins': plugins}},
+                     ops=tuple(HELLO['ops']) + ('hooks.things',))
+
+  def test_a_mod_declares_what_vanilla_lacks(self) -> None:
+    """Robert's elytra is MCItems.Elytra on his 1.7.10 (SPEC.md 14.4)."""
+    game = self.declaring([{'class': 'robert.Hooks', 'ok': True,
+                            'things': {'items/elytra': 'etfuturum:elytra'}}])
+    game.setSlot('armor.chest', MCItems.Elytra)
+    self.assertEqual(toJson(Item('etfuturum:elytra', 1, 0)),
+                     self.args('inventory.set')[0]['item'])
+    self.assertEqual({MCItems.Elytra},
+                     game.membersOf(Item('etfuturum:elytra', 1, 0)))
+    #  asked once, then kept
+    self.assertEqual(1, len(self.args('hooks.things')))
+
+  def test_declarations_are_checked_loudly(self) -> None:
+    """Nothing a mod declares is guessed at or quietly dropped."""
+    cases = {
+      'two plugins disagree': [
+        {'class': 'a.Hooks', 'ok': True,
+         'things': {'items/elytra': 'a:elytra'}},
+        {'class': 'b.Hooks', 'ok': True,
+         'things': {'items/elytra': 'b:elytra'}}],
+      'no such member': [{'class': 'a.Hooks', 'ok': True,
+                          'things': {'items/no_such_thing': 'a:x'}}],
+      'no such catalogue': [{'class': 'a.Hooks', 'ok': True,
+                             'things': {'gizmos/elytra': 'a:x'}}],
+      'vanilla has it': [{'class': 'a.Hooks', 'ok': True,
+                          'things': {'items/pink_wool': 'a:wool'}}],
+      'no mcdex id': [{'class': 'a.Hooks', 'ok': True,
+                       'things': {'items/elytra': 'a:b:c'}}],
+      'its things() threw': [{'class': 'a.Hooks', 'ok': False,
+                              'error': {'type': 'GameError',
+                                        'message': 'a.Hooks.things threw'}}],
+    }
+    for case, plugins in cases.items():
+      with self.subTest(case=case):
+        game = self.declaring(plugins)
+        with self.assertRaises(ValueError) as raised:
+          game.declared()
+        self.assertIn('a.Hooks', str(raised.exception))
+
+  def test_a_port_without_plugins_declares_nothing(self) -> None:
+    """No hooks.things in the hello's ops: nothing declared, nothing asked."""
+    game = self.things('1.7.10')
+    self.assertEqual({}, game.declared())
+    with self.assertRaises(Missing) as raised:
+      game.setSlot('armor.chest', MCItems.Elytra)
+    self.assertIn('no mod declares it', str(raised.exception))
+    self.assertEqual([], self.args('hooks.things'))
 
   def test_an_entity_s_data_and_its_members(self) -> None:
     """Read with its data when asked; a member told apart by data found."""

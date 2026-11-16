@@ -132,7 +132,7 @@ class ServerProbeTests(unittest.TestCase):
     self.assertEqual('srg', hello.names, "a real server names Minecraft's members by Searge")
     for op in ('status', 'quit', 'ticks.wait', 'wait.until', 'batch', 'world.get', 'world.prepare', 'command.run',
                'debug.threads', 'debug.drop_login', 'players.list', 'player.get', 'player.kick', 'player.reset',
-               'world.reset', 'hooks.run'):
+               'world.reset', 'hooks.run', 'hooks.things'):
       self.assertIn(op, hello.ops)
     for op in ('screen.get', 'world.create', 'world.open', 'player.look', 'key.tap', 'screenshot', 'java.run',
                'client.reset', 'server.join'):
@@ -196,6 +196,8 @@ class ServerProbeTests(unittest.TestCase):
     self.assertEqual([], self.connection.request('hooks.run', {'hook': 'setUpWorld'}, timeout=10)['plugins'])
     with self.assertRaises(BadRequest):
       self.connection.request('hooks.run', {'hook': 'beforeRun'}, timeout=10)
+    #  the mods' declarations (SPEC.md 14.4, M4): a server has them too, and the release jar's plugins declare none
+    self.assertEqual([], self.connection.request('hooks.things', timeout=10)['plugins'])
     with self.assertRaises(NotReady):
       self.connection.request('player.reset', timeout=10)
     entries = self.connection.request('batch', {'ops': [{'op': 'world.reset'}, {'op': 'hooks.run', 'args': {

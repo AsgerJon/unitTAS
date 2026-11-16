@@ -214,7 +214,7 @@ class GameTestCase(unittest.TestCase):
     from .things import describe, resolve
     from .values import Item
     version = self.game.version
-    wanted = resolve(member, version)
+    wanted = resolve(member, version, self.game.declared())
     name = '%s.%s' % (type(member).__name__, member.name)
     if isinstance(value, Item) and value.empty:
       self.fail(self._formatMessage(msg, 'the slot is empty, not %s (%s in %s)' % (name, wanted.text(),

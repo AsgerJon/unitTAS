@@ -246,11 +246,39 @@ class ReadBackTests(unittest.TestCase):
                                       Version.V1_7_10))
 
 
+class DeclaredTests(unittest.TestCase):
+  """A mod's declarations of what vanilla lacks (SPEC.md 14.4, M4)."""
+
+  def declared(self) -> dict:
+    return {MCItems.Elytra: (parse('etfuturum:elytra'), 'robert.Hooks')}
+
+  def test_a_declared_thing_resolves_to_the_mod_s_id(self) -> None:
+    self.assertEqual(ThingId('etfuturum:elytra'),
+                     resolve(MCItems.Elytra, Version.V1_7_10,
+                             self.declared()))
+    self.assertEqual(Item('etfuturum:elytra', 1, 0),
+                     itemOf(MCItems.Elytra, Version.V1_7_10,
+                            declared=self.declared()))
+
+  def test_it_reads_back_as_the_member(self) -> None:
+    self.assertEqual({MCItems.Elytra},
+                     membersOf(Item('etfuturum:elytra', 1, 0),
+                               Version.V1_7_10, self.declared()))
+
+  def test_undeclared_is_still_missing_and_says_so(self) -> None:
+    with self.assertRaises(Missing) as raised:
+      resolve(MCItems.Elytra, Version.V1_7_10, {})
+    self.assertIn('no mod declares it', str(raised.exception))
+
+
 class _Game:
-  """A game's version and its reading back, without a game."""
+  """A game's version, declarations and reading back, without a game."""
 
   def __init__(self, version: Version) -> None:
     self.version = version
+
+  def declared(self) -> dict:
+    return {}
 
   def membersOf(self, value: object) -> frozenset:
     return membersOf(value, self.version)

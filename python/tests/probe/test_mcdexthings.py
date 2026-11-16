@@ -4,7 +4,9 @@ and 4): the game's API given mcdex members puts in what 1.7.10 has for
 them, and reads back as that version's own: pink wool's meta, red wool,
 a wither skeleton's skull and a potted poppy with their block entities'
 data, a wither skeleton by its type's data, the Nether by its number.
-The elytra vanilla 1.7.10 lacks is Missing, before the game is asked.
+The elytra vanilla 1.7.10 lacks is Missing, before the game is asked;
+the turtle helmet unitTAS's own test plugin declares (as the diamond
+helmet) goes in and reads back as MCItems.TurtleHelmet.
 Back: what the game reports is those members again (twins both, a
 tool's damage no meta, a wither skeleton no plain one), and so is an
 effect by its number.
@@ -66,7 +68,18 @@ class McdexThingTests(unittest.TestCase):
     with self.assertRaises(Missing) as raised:
       self.game.setSlot('armor.chest', MCItems.Elytra)
     self.assertIn("Vanilla 1.7.10 has no 'elytra'", str(raised.exception))
+    self.assertIn('no mod declares it', str(raised.exception))
     self.assertTrue(self.game.slot('armor.chest').empty)
+
+  def test_a_thing_a_mod_declares(self) -> None:
+    """unitTAS's own test plugin declares MCItems.TurtleHelmet (M4)."""
+    declared = self.game.declared()
+    self.assertEqual('io.github.asgerjon.unittas.self.SelfPlugin',
+                     declared[MCItems.TurtleHelmet][1])
+    self.game.setSlot('armor.head', MCItems.TurtleHelmet)
+    helmet = self.game.slot('armor.head')
+    self.assertEqual(Item('minecraft:diamond_helmet', 1, 0), helmet)
+    self.assertIn(MCItems.TurtleHelmet, self.game.membersOf(helmet))
 
   def test_blocks_by_member(self) -> None:
     self.game.setBlock((3, 4, 3), MCBlocks.RedWool)

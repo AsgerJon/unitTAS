@@ -3,7 +3,9 @@ package io.github.asgerjon.unittas;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.entity.player.EntityPlayerMP;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A mod's own part of a run, for what unitTAS can't know of the mod: its own settings, its own state of the player,
@@ -58,5 +60,16 @@ public interface TasHooks {
 	/** The line above the chat's input (a command's usage, or its error), or null: 1.7.10's chat has none. */
 	default List<String> chatUsage(GuiScreen chat) {
 		return null;
+	}
+
+	/**
+	 * The mod's own things that vanilla lacks in this version, as the mcdex things they are, for unitTAS's tests by
+	 * mcdex member (SPEC.md 14.4): each key is {@code "<catalogue>/<unique name>"}, the catalogue one of mcdex's
+	 * {@code items}, {@code blocks}, {@code entities}, {@code effects} or {@code dimensions}, and each value the mod's id
+	 * in mcdex's grammar, {@code name[:meta][{NBT}]}: {@code "items/elytra" -> "etfuturum:elytra"} makes a test's
+	 * {@code MCItems.Elytra} the mod's elytra. Asked once, after start-up; a thing vanilla has is never declared.
+	 */
+	default Map<String, String> things() {
+		return Collections.emptyMap();
 	}
 }

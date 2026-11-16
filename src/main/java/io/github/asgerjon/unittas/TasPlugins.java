@@ -6,6 +6,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
@@ -79,6 +80,26 @@ public final class TasPlugins {
 				outcomes.add(new Object[]{hooks.getClass().getName(), null});
 			} catch (RuntimeException | Error e) {
 				outcomes.add(new Object[]{hooks.getClass().getName(), e});
+			}
+		}
+		return outcomes;
+	}
+
+	/**
+	 * Each hook's things (TasHooks.things), for the probe's hooks.things: the class, its declarations or null, and what
+	 * it threw or null. A hook that answers null has thrown, in effect: its declarations can't be read.
+	 */
+	public static List<Object[]> things() {
+		List<Object[]> outcomes = new ArrayList<>();
+		for (TasHooks hooks : HOOKS) {
+			try {
+				Map<String, String> declared = hooks.things();
+				if (declared == null) {
+					throw new IllegalStateException("things() answered null, not a map");
+				}
+				outcomes.add(new Object[]{hooks.getClass().getName(), declared, null});
+			} catch (RuntimeException | Error e) {
+				outcomes.add(new Object[]{hooks.getClass().getName(), null, e});
 			}
 		}
 		return outcomes;

@@ -62,6 +62,7 @@ final class GameOps {
 		probe.op("screen.open").does(GameOps::openScreen).settles(GameOps::oneTick);
 		probe.op("screen.close").does(GameOps::closeScreen).settles(GameOps::oneTick);
 		probe.op("hooks.run").does(GameOps::hooks);
+		probe.op("hooks.things").does(ServerOps::things);
 	}
 
 	// ---------------------------------------------------------------- players

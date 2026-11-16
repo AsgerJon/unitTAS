@@ -3,6 +3,9 @@ package io.github.asgerjon.unittas.self;
 import io.github.asgerjon.unittas.TasHooks;
 import io.github.asgerjon.unittas.TasPlugin;
 
+import java.util.Collections;
+import java.util.Map;
+
 /**
  * unitTAS's own plugin, in its tests' source set: counts the world hooks of the run, for WorldFreshBTests. From zero at
  * each run's start: one game can hold several (the probe's java.run), and hooks.run calls them outside any run.
@@ -27,5 +30,14 @@ public class SelfPlugin implements TasHooks {
 	@Override
 	public void tearDownWorld() {
 		worldsTornDown++;
+	}
+
+	/**
+	 * A thing vanilla 1.7.10 lacks, declared as one it has, for probe test_mcdexthings: MCItems.TurtleHelmet is
+	 * this game's diamond helmet. The elytra is left undeclared, so it stays Missing.
+	 */
+	@Override
+	public Map<String, String> things() {
+		return Collections.singletonMap("items/turtle_helmet", "minecraft:diamond_helmet");
 	}
 }

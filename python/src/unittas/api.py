@@ -81,6 +81,8 @@ class Game:
     self.stopping = None
     self._waiting = set()
     self._lock = threading.Lock()
+    #  the mods' declarations of things vanilla lacks, once asked (declared)
+    self._declared = None
     connection.events.subscribe(self._heard)
 
   def _heard(self, event: dict) -> None:
@@ -156,6 +158,20 @@ class Game:
       return Version(minecraft)
     except KeeResolveError as error:
       raise UnknownVersion(minecraft) from error
+
+  def declared(self) -> dict:
+    """
+    The mods' declarations of things vanilla lacks (TasHooks.things, through hooks.things; SPEC.md 14.4, M4), as
+    unittas.things.declare checks them: {member: (its id here, the plugin)}. Asked once and kept. A port with no
+    plugins (no hooks.things in its hello) declares nothing.
+    """
+    if self._declared is None:
+      if 'hooks.things' not in self.connection.hello.ops:
+        self._declared = {}
+      else:
+        from .things import declare
+        self._declared = declare(self.request('hooks.things')['plugins'], self.version)
+    return self._declared
 
   def status(self) -> dict:
     return self.request('status')
@@ -241,7 +257,7 @@ class Game:
     if dimension is not None:
       if not isinstance(dimension, (str, int)):
         from .things import dimensionOf
-        dimension = dimensionOf(dimension, self.version)
+        dimension = dimensionOf(dimension, self.version, self.declared())
       args['dimension'] = dimension
     self.request('player.teleport', args, timeout=timeout)
 
@@ -271,7 +287,7 @@ class Game:
         raise TypeError("setSlot's count is for an MCItems member; an Item carries its own (%d)" % item.count)
     else:
       from .things import itemOf
-      item = itemOf(item, self.version, count)
+      item = itemOf(item, self.version, count, self.declared())
     self.request('inventory.set', {'slot': name, 'item': toJson(item)})
 
   # ---------------------------------------------------------------- blocks
@@ -293,7 +309,7 @@ class Game:
       block = Block(block, 0)
     elif not isinstance(block, Block):
       from .things import blockOf
-      block, tile = blockOf(block, self.version)
+      block, tile = blockOf(block, self.version, self.declared())
     args = {'pos': _blockPos(pos), 'block': toJson(block)}
     if tile:
       args['tile'] = tile
@@ -311,7 +327,7 @@ class Game:
     if not isinstance(kind, str):
       from .things import entityOf
       member = kind
-      kind, data = entityOf(member, self.version)
+      kind, data = entityOf(member, self.version, self.declared())
       if data:
         if nbt is not None:
           raise TypeError('%s.%s is spawned with its own data (%s) in this version; give it none besides' % (
@@ -336,9 +352,10 @@ class Game:
     Effect. Empty where mcdex has no member for it.
     """
     from .things import membersOf, needsData
-    if isinstance(value, Entity) and not value.nbtAsked and needsData(value, self.version):
+    declared = self.declared()
+    if isinstance(value, Entity) and not value.nbtAsked and needsData(value, self.version, declared):
       value = self.entity(value, nbt=True)
-    return membersOf(value, self.version)
+    return membersOf(value, self.version, declared)
 
   def entities(self, near: Any = 'player', radius: float = 16, type: Any = None,
                side: Optional[str] = None) -> tuple:
@@ -354,7 +371,7 @@ class Game:
       if not isinstance(type, (str, list, tuple)):
         from .things import entityOf
         member = type
-        type, data = entityOf(member, self.version)
+        type, data = entityOf(member, self.version, self.declared())
       args['type'] = type
     found = tuple(fromJson(Entity, each) for each in self.request('entity.list', args, side))
     if data:
