@@ -38,6 +38,7 @@ final class ThingOps {
 		probe.op("inventory.set").does(ThingOps::inventorySet);
 		probe.op("block.get").does(ThingOps::blockGet);
 		probe.op("block.ground").does(ThingOps::blockGround);
+		probe.op("block.items").does(ThingOps::blockItems);
 		probe.op("block.set").does(ThingOps::blockSet);
 		probe.op("entity.spawn").does(ThingOps::spawn);
 		probe.op("entity.get").does(call -> {
@@ -226,6 +227,27 @@ final class ThingOps {
 		}
 		throw new ProbeException("NotFound", "nothing at x " + x + ", z " + z + " stops movement or is a liquid",
 			Json.object("what", "the ground at x " + x + ", z " + z));
+	}
+
+	/**
+	 * block.items (8.7): the slots of the inventory at a block (a chest's, a furnace's) as the side holds them, so a
+	 * test examines a container by command (SPEC.md 15.6 step 5). NotFound where the block has none.
+	 */
+	private static JsonElement blockItems(Call call) throws ProbeException {
+		int[] pos = position(call, "pos");
+		World world = world(call);
+		net.minecraft.tileentity.TileEntity tile = world.getTileEntity(pos[0], pos[1], pos[2]);
+		if (!(tile instanceof net.minecraft.inventory.IInventory)) {
+			String there = String.valueOf(Block.blockRegistry.getNameForObject(world.getBlock(pos[0], pos[1], pos[2])));
+			throw new ProbeException("NotFound", "no inventory at " + pos[0] + ", " + pos[1] + ", " + pos[2] + ": "
+				+ there + " is there", Json.object("what", there));
+		}
+		net.minecraft.inventory.IInventory inventory = (net.minecraft.inventory.IInventory) tile;
+		JsonArray slots = new JsonArray();
+		for (int i = 0; i < inventory.getSizeInventory(); i++) {
+			slots.add(Values.item(inventory.getStackInSlot(i)));
+		}
+		return Json.object("slots", slots);
 	}
 
 	private static JsonElement blockSet(Call call) throws ProbeException {

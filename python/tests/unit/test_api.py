@@ -371,6 +371,19 @@ class GameTests(unittest.TestCase):
       ('container.click', None, {'slot': 2, 'button': 1, 'mode': 'pickup'}),
     ], self.sent())
 
+  def test_a_block_s_items(self) -> None:
+    """block.items: a container's slots by command (SPEC.md 15.6 step 5)."""
+    def items(args, side):
+      if args['pos'] == [0, 4, 0]:
+        raise FakeError('NotFound', 'no inventory at 0, 4, 0: stone is there')
+      return {'slots': [WOOL, None]}
+    game = self.game({'block.items': items})
+    self.assertEqual((Item('minecraft:wool', 3, 14), Item.EMPTY),
+                     game.items((3, 4, 5)))
+    with self.assertRaises(NotFound):
+      game.items(BlockPos(0, 4, 0))
+    self.assertEqual({'pos': [3, 4, 5]}, self.args('block.items')[0])
+
   def test_blocks_and_entities(self) -> None:
     game = self.game({
       'block.get': lambda args, side: {'id': 'minecraft:wool', 'meta': 14},

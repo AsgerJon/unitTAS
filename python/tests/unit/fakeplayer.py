@@ -17,7 +17,9 @@ select a slot, and the client's inventory is read as the probe gives it.
 A chest used opens its screen: container.get shows its 27 slots, then
 the player's 27 and its hotbar's 9, as 1.7.10's ContainerChest; a
 quick_move click moves a stack across, merging first, as 1.7.10's
-transferStackInSlot does; screen.close closes it.
+transferStackInSlot does; screen.close closes it. Commands read and set
+blocks (block.get, block.set: a lever's meta is 5, and 8 more when on)
+and a chest's slots (block.items).
 
 The ground's top is at y 4; walls are full blocks at whole positions.
 """
@@ -354,6 +356,37 @@ class FakePlayer:
       self.step()
       return {}
 
+    def blockGet(args: dict) -> dict:
+      pos = tuple(args['pos'])
+      if not self.solid(*pos):
+        return {'id': 'minecraft:air', 'meta': 0, 'tile': None}
+      meta = 0
+      if pos in self.levers:
+        meta = 5 + (8 if self.levers[pos] else 0)
+      return {'id': self.blockId(*pos), 'meta': meta, 'tile': None}
+
+    def blockSet(args: dict) -> dict:
+      pos, block = tuple(args['pos']), args['block']
+      self.levers.pop(pos, None)
+      self.chests.pop(pos, None)
+      if block['id'] == 'minecraft:air':
+        self.walls.pop(pos, None)
+        return {}
+      self.walls[pos] = block['id']
+      if block['id'] == 'minecraft:lever':
+        self.levers[pos] = bool(block.get('meta', 0) & 8)
+      if block['id'] == 'minecraft:chest':
+        self.chests[pos] = [None] * 27
+      return {}
+
+    def blockItems(args: dict) -> dict:
+      pos = tuple(args['pos'])
+      if pos not in self.chests:
+        there = self.blockId(*pos) if self.solid(*pos) else 'minecraft:air'
+        raise FakeError('NotFound', 'no inventory at %s: %s is there' % (
+          pos, there))
+      return {'slots': list(self.chests[pos])}
+
     def inventory(args: dict) -> Any:
       main = list(self.hotbar) + list(self.rest)
       if args.get('slot') == 'held':
@@ -373,6 +406,9 @@ class FakePlayer:
                           lambda args: self.containerShown()),
       'container.click': at('container.click', click),
       'screen.close': at('screen.close', close),
+      'block.get': at('block.get', blockGet),
+      'block.set': at('block.set', blockSet),
+      'block.items': at('block.items', blockItems),
       'key.up': at('key.up',
                    lambda args: self.keys.discard(args['key']) or {}),
       'ticks.wait': at('ticks.wait', wait),

@@ -327,6 +327,14 @@ class Game:
     """
     return BlockPos(*self.request('block.ground', {'x': x, 'z': z}, 'server')['pos'])
 
+  def items(self, pos: Any, side: Optional[str] = None) -> tuple:
+    """
+    The slots of the inventory at a block (a chest's, a furnace's), an Item each, as the side holds them (the
+    server's, left out): a container examined by command (SPEC.md 15.6 step 5). NotFound where the block has none.
+    """
+    answer = self.request('block.items', {'pos': _blockPos(pos)}, side)
+    return tuple(fromJson(Item, each) for each in answer['slots'])
+
   def setBlock(self, pos: Any, block: Any) -> None:
     """
     The block at pos set to 'block': a Block, an id, or an MCBlocks member

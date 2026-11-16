@@ -128,6 +128,10 @@ class Agent(BaseObject):
     """What the player perceives now."""
     return self.__game__.perceive(around)
 
+  def wait(self, ticks: int) -> None:
+    """Waits 'ticks' of the game's ticks, doing nothing."""
+    self.__game__.ticks(ticks)
+
   def letGo(self) -> None:
     """Every key this agent holds, let go."""
     for key in sorted(self.__held__):

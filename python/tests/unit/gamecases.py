@@ -17,7 +17,9 @@ from worktoy.desc import FixBox
 from mcdex import MCBlocks
 
 from unittas._test_world import World
+from unittas.agent import Agent
 from unittas.run import Run
+from unittas.scenario import ScenarioTestCase
 from unittas.testcase import GameTestCase, MultiplayerTestCase
 from unittas.values import Vec3
 from unittas.worldkind import WorldKind
@@ -221,3 +223,23 @@ class DeepCases(GameTestCase):
   @deep
   def test_b_in_the_deep_again(self) -> None:
     pass
+
+
+class ScenarioCases(ScenarioTestCase):
+  """
+  A scenario's class (SPEC.md 15.3): the run's game, an agent playing
+  it, a scene from the start's block, and its examinations noted under
+  its tests' lines.
+  """
+
+  def test_a_examines_a_thing(self) -> None:
+    assert isinstance(self.agent, Agent)
+    assert self.scene.agent is self.agent
+    assert self.agent.game is self.game
+    assert self.scene.origin == self.start.block()
+    stone = self.scene.thing(MCBlocks.Stone, at=(1, 0, 1))
+    self.assertTrue(stone.isThere())
+
+  def test_b_examines_nothing(self) -> None:
+    pass
+

@@ -101,7 +101,7 @@ class _Line:
   """One line of the report, and what goes under it."""
 
   def __init__(self, name: str, outcome: str, seconds: float, detail: str, chat: tuple, screenshot: Optional[str],
-               worldNote: Optional[str]) -> None:
+               worldNote: Optional[str], notes: tuple = ()) -> None:
     self.name = name
     self.outcome = outcome
     self.seconds = seconds
@@ -109,6 +109,8 @@ class _Line:
     self.chat = chat
     self.screenshot = screenshot
     self.worldNote = worldNote
+    #  what the test examined, and which way (SPEC.md 15.4): under its line whatever its outcome
+    self.notes = notes
 
 
 def classWorld(world: Any, name: str) -> dict:
@@ -154,6 +156,9 @@ class Run:
     self.testNumber = 0
     self.inTest = False
     self.testStopped = None
+    #  what the running test examined, and which way (note): under its line; one made outside a test (a
+    #  setUpClass's) goes under the next test's, never dropped
+    self.notes = []
     #  the progress's count, as the Java runner's: each test's line one more, a failed setUpClass its tests' worth
     self.counted = 0
     #  tests a failed setUpClass's line accounts for: counted there, never given a line of their own
@@ -690,7 +695,16 @@ class Run:
       self.game.request('refs.clear')
     finally:
       chat = tuple(line.plain for line in self.game.chat(mark)) if outcome in ('FAIL', 'ERROR') else ()
-      self._add(_Line(name, outcome, seconds, detail, chat, screenshot, self.worldNote))
+      self._add(_Line(name, outcome, seconds, detail, chat, screenshot, self.worldNote, self._takeNotes()))
+
+  def note(self, text: str) -> None:
+    """A line under the running test's own: what it examined, and which way (SPEC.md 15.4)."""
+    self.notes.append(text)
+
+  def _takeNotes(self) -> tuple:
+    """The running test's notes, for its line; none left for the next."""
+    notes, self.notes = tuple(self.notes), []
+    return notes
 
   def noResult(self, name: str, why: str, seconds: float = 0.0, suspect: bool = True) -> None:
     """
@@ -701,7 +715,7 @@ class Run:
     self._testOver()
     if suspect and self.stopped is None and self.suspect is None:
       self.suspect = why
-    self._add(_Line(name, NO_RESULT, seconds, why, (), None, self.worldNote))
+    self._add(_Line(name, NO_RESULT, seconds, why, (), None, self.worldNote, self._takeNotes()))
 
   def fixture(self, name: str, outcome: str, detail: str, seconds: float = 0.0, notRun: tuple = ()) -> None:
     """
@@ -796,6 +810,7 @@ class Run:
       if line.worldNote:
         out.append(line.worldNote)
       out.append('%s ... %s (%.1f s)' % (line.name, line.outcome, line.seconds))
+      out.extend('    ' + note for note in line.notes)
       if line.outcome in counts:
         counts[line.outcome] += 1
       if line.outcome != 'problem':

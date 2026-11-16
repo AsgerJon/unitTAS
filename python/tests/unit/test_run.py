@@ -153,6 +153,36 @@ class RunTests(FakeRun, unittest.TestCase):
     shot = [request for request in self.asked if request['op'] == 'screenshot'][0]
     self.assertEqual(os.path.join(self.results, 'screenshots', 'ATests.test_2.png'), shot['args']['file'])
 
+  def test_examinations_under_their_test(self) -> None:
+    """
+    What each test examined, and which way (SPEC.md 15.4), under its
+    line whatever its outcome; a test starts with none noted.
+    """
+    run = self.run
+    run.begin()
+    run.enterClass('ATests', shared=False)
+    mark = run.beforeTest()
+    run.note('examined by command: MCBlocks.Lever at (5, 4, 7), isOn: True')
+    run.afterTest('ATests.test_1', 'ok', 0.1, '', mark)
+    run.afterTest('ATests.test_2', 'ok', 0.1, '', run.beforeTest())
+    mark = run.beforeTest()
+    run.note('examined by command: MCBlocks.Chest at (3, 4, 5), contents: '
+             'nothing')
+    run.afterTest('ATests.test_3', 'FAIL', 0.1, 'AssertionError: no wool',
+                  mark)
+    with open(run.finish(), encoding='utf-8') as file:
+      lines = file.read().split('\n')
+    body = lines[3:lines.index('-' * 70)]
+    self.assertEqual([
+      'ATests.test_1 ... ok (0.1 s)',
+      '    examined by command: MCBlocks.Lever at (5, 4, 7), isOn: True',
+      'ATests.test_2 ... ok (0.1 s)',
+      'ATests.test_3 ... FAIL (0.1 s)',
+      '    examined by command: MCBlocks.Chest at (3, 4, 5), contents: '
+      'nothing',
+      '    AssertionError: no wool',
+      '    chat during the test:'], body)
+
   def test_the_start_stands_on_the_ground_at_the_origin(self) -> None:
     """
     Not a fixed height: the middle of the block above the run's own

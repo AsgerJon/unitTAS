@@ -147,6 +147,7 @@ public final class ForgePort implements Port {
 		probe.register(Op.onSide("inventory.set", Side.SERVER));
 		probe.register(Op.onSide("block.get", Side.SERVER, Side.CLIENT).reading());
 		probe.register(Op.onSide("block.ground", Side.SERVER, Side.CLIENT).reading());
+		probe.register(Op.onSide("block.items", Side.SERVER, Side.CLIENT).reading());
 		probe.register(Op.onSide("block.set", Side.SERVER));
 		probe.register(Op.onSide("entity.spawn", Side.SERVER));
 		probe.register(Op.onSide("entity.get", Side.SERVER, Side.CLIENT).reading());

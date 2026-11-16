@@ -42,6 +42,18 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
       text = file.read()
     return [line for line in text.split('\n')[2:text.split('\n').index('-' * 70)]]
 
+  def test_a_scenario_s_examinations_under_its_lines(self) -> None:
+    """A ScenarioTestCase's scene and agent; what it examined, by command (15.6 step 5)."""
+    self.handlers['block.get'] = lambda args, side: {'id': 'minecraft:stone', 'meta': 0, 'tile': None}
+    self.run.begin()
+    result = self.runClasses(gamecases.ScenarioCases)
+    self.assertEqual([], result.failures + result.errors)
+    lines = self.report()
+    at = [i for i, line in enumerate(lines) if line.startswith('ScenarioCases.test_a_examines_a_thing ... ok')]
+    self.assertEqual(1, len(at), lines)
+    self.assertEqual('    examined by command: MCBlocks.Stone at (1, 4, 1), isThere: True', lines[at[0] + 1])
+    self.assertTrue(lines[at[0] + 2].startswith('ScenarioCases.test_b_examines_nothing ... ok'), lines)
+
   def test_classes_tests_and_their_report(self) -> None:
     self.run.begin()
     result = self.runClasses(gamecases.ATests, gamecases.BTests, gamecases.CTests)
