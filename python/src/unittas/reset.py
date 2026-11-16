@@ -78,15 +78,23 @@ def reset(server: Connection, clients: Optional[Iterable[Connection]] = None,
     if not plugin['ok']:
       error = plugin['error']
       raise GameError(ErrorType.GAME_ERROR, error.get('message', ''), dict(error, plugin=plugin['class']), 'reset', 0)
-  #  each client at the start before the last step: after a long move (the first reset after a world opens comes from
-  #  the world's own spawn, far off) the server's teleport can reach the client later than the settling ticks, and it
-  #  would set back a look the test sets next
-  for client in clients:
-    there = client.request('wait.until', {
-      'side': 'client', 'op': 'player.get', 'max_ticks': ARRIVE_TICKS,
-      'test': {'all': [{'path': ['pos', 0], 'eq': at[0]}, {'path': ['pos', 2], 'eq': at[2]}]}}, timeout=timeout)
-    if not there['held']:
-      raise TimedOut(ErrorType.TIMED_OUT, 'the client wasn\'t at the start within %d ticks: %r' % (
-        ARRIVE_TICKS, there['value']['pos']), {}, 'reset', 0)
+  #  each client at the start before the last step, verified: there, all three ways, and on the ground. After a long
+  #  move (the first reset after a world opens comes from the world's own spawn, far off) the teleport can reach the
+  #  client before the chunk does, and the client's player falls through an empty world: placed once more then, with
+  #  the chunk there
+  there = {'all': [{'path': ['pos', 0], 'eq': at[0]}, {'path': ['pos', 1], 'eq': at[1]}, {'path': ['pos', 2], 'eq': at[2]},
+                   {'path': ['on_ground'], 'eq': True}]}
+  for client, name in zip(clients, players):
+    placed = client.request('wait.until', {
+      'side': 'client', 'op': 'player.get', 'max_ticks': ARRIVE_TICKS, 'test': there}, timeout=timeout)
+    if not placed['held']:
+      again = dict(where, hooks='after', player=name) if len(players) > 1 else dict(where, hooks='after')
+      server.request('player.reset', again, timeout=timeout)
+      placed = client.request('wait.until', {
+        'side': 'client', 'op': 'player.get', 'max_ticks': ARRIVE_TICKS, 'test': there}, timeout=timeout)
+    if not placed['held']:
+      value = placed['value'] or {}
+      raise TimedOut(ErrorType.TIMED_OUT, 'the client wasn\'t at the start on the ground within %d ticks, placed twice: '
+                     'at %r, on the ground %r' % (ARRIVE_TICKS, value.get('pos'), value.get('on_ground')), {}, 'reset', 0)
   for client in clients:
     client.request('client.reset', {'settle_ticks': 3}, timeout=timeout)

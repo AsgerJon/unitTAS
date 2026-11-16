@@ -71,6 +71,13 @@ final class Perceive {
 			"blocks", around(mc.theWorld, player, around, below, above));
 	}
 
+	/** Whether a hand's click opens and shuts it: a wooden door, a fence gate, a wooden trapdoor (not iron's). */
+	private static boolean opens(Block block) {
+		boolean iron = block.getMaterial() == net.minecraft.block.material.Material.iron;
+		return (block instanceof net.minecraft.block.BlockDoor || block instanceof net.minecraft.block.BlockTrapDoor) && !iron
+			|| block instanceof net.minecraft.block.BlockFenceGate;
+	}
+
 	private static List<Double> box(AxisAlignedBB box) {
 		return Arrays.asList(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
 	}
@@ -97,7 +104,7 @@ final class Perceive {
 	 * The blocks that aren't air within 'reach' blocks of the feet's block across, from 'below' blocks below the feet's
 	 * block to 'above' blocks above the head's (1 and 1, the default: the one below the feet to the one above the head):
 	 * each with its collision boxes as the game gives them for this player (none for a flower), whether it is a liquid,
-	 * and whether the player can climb it.
+	 * whether the player can climb it, and whether a hand's click opens it (a wooden door, a fence gate).
 	 */
 	private static List<Object> around(World world, EntityLivingBase player, int reach, int below, int above) {
 		List<Object> found = new ArrayList<>();
@@ -125,7 +132,8 @@ final class Perceive {
 						"meta", world.getBlockMetadata(x, y, z),
 						"boxes", each,
 						"liquid", block.getMaterial().isLiquid(),
-						"climbable", block.isLadder(world, x, y, z, player)));
+						"climbable", block.isLadder(world, x, y, z, player),
+						"opens", opens(block)));
 				}
 			}
 		}

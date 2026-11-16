@@ -336,12 +336,14 @@ def _nearBlock(data: Any) -> NearBlock:
   what = 'a block near'
   return NearBlock(_blockPos(_need(body, 'pos', list, what)), _need(body, 'id', str, what),
                    _need(body, 'meta', int, what), tuple(_box(box) for box in _need(body, 'boxes', list, what)),
-                   _need(body, 'liquid', bool, what), _need(body, 'climbable', bool, what))
+                   _need(body, 'liquid', bool, what), _need(body, 'climbable', bool, what),
+                   _need(body, 'opens', bool, what))
 
 
 def _nearBlockJson(block: NearBlock) -> dict:
   return {'pos': _blockPosJson(block.pos), 'id': block.id, 'meta': block.meta,
-          'boxes': [_boxJson(box) for box in block.boxes], 'liquid': block.liquid, 'climbable': block.climbable}
+          'boxes': [_boxJson(box) for box in block.boxes], 'liquid': block.liquid, 'climbable': block.climbable,
+          'opens': block.opens}
 
 
 def _perception(data: Any) -> Perception:

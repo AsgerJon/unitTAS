@@ -218,6 +218,10 @@ class FakePlayer:
     self.raised = {}
     #  every key asked for, down or tapped
     self.keysAsked = []
+    #  the doors, two blocks high from the ground, by (x, z): whether
+    #  open, and whether a hand opens it (an iron door doesn't); a stuck
+    #  one blocks open or shut
+    self.doors = {}
 
   # --------------------------------------------------------------- the world
 
@@ -229,6 +233,9 @@ class FakePlayer:
     return (x, y, z) in self.walls
 
   def blockId(self, x: int, y: int, z: int) -> str:
+    if (x, z) in self.doors and y in (4, 5):
+      return ('minecraft:wooden_door' if self.doors[(x, z)].get('hand', True)
+              else 'minecraft:iron_door')
     if y < GROUND:
       return 'minecraft:grass'
     if y < self.raised.get((x, z), GROUND):
@@ -248,6 +255,13 @@ class FakePlayer:
             for cz in range(math.floor(z - HALF),
                             math.floor(z + HALF - 1e-9) + 1)]
 
+  def doorBoxes(self, x: int, z: int) -> list:
+    """A door's boxes: along its north edge shut, its west edge open."""
+    door = self.doors[(x, z)]
+    if door['open'] and not door.get('stuck'):
+      return [(x, z, x + 0.1875, z + 1)]
+    return [(x, z, x + 1, z + 0.1875)]
+
   def under(self, x: float, z: float) -> float:
     """The floor under the player's box at x, z: its columns' highest."""
     return max(self.raised.get(cell, GROUND) for cell in self.cells(x, z))
@@ -260,6 +274,11 @@ class FakePlayer:
           return True
       if self.raised.get((cx, cz), GROUND) > self.y + 0.5 + 1e-9:
         return True
+      if (cx, cz) in self.doors:
+        for bx0, bz0, bx1, bz1 in self.doorBoxes(cx, cz):
+          if (x - HALF < bx1 and bx0 < x + HALF and z - HALF < bz1 and
+              bz0 < z + HALF):
+            return True
     return False
 
   # ------------------------------------------------------------------- ticks
@@ -345,6 +364,12 @@ class FakePlayer:
             z < self.z + HALF and self.z - HALF < z + 1)
 
   def use(self, pos: tuple, face: str) -> None:
+    if (pos[0], pos[2]) in self.doors and pos[1] in (4, 5):
+      door = self.doors[(pos[0], pos[2])]
+      if door.get('hand', True):
+        door['open'] = not door['open']
+        self.clicks.append(('door', (pos[0], 4, pos[2])))
+      return
     if self.walls.get(pos) == 'minecraft:chest':
       self.screen = pos
       self.clicks.append(('open', pos))
@@ -459,7 +484,8 @@ class FakePlayer:
     while n * 0.005 <= REACH:
       at = tuple(e + d * n * 0.005 for e, d in zip(eye, (dx, dy, dz)))
       cell = tuple(math.floor(v) for v in at)
-      if cell != last and self.solid(*cell):
+      door = (cell[0], cell[2]) in self.doors and cell[1] in (4, 5)
+      if cell != last and (self.solid(*cell) or door):
         moved = tuple(c - l for c, l in zip(cell, last))
         face = {(0, -1, 0): 'up', (0, 1, 0): 'down', (0, 0, 1): 'north',
                 (0, 0, -1): 'south', (1, 0, 0): 'west',
@@ -482,7 +508,18 @@ class FakePlayer:
                         'meta': 0,
                         'boxes': [[float(x), float(y), float(z),
                                    x + 1.0, self.top(x, y, z), z + 1.0]],
-                        'liquid': False, 'climbable': False})
+                        'liquid': False, 'climbable': False,
+                        'opens': False})
+    for (x, z), door in self.doors.items():
+      if abs(x - fx) <= around and abs(z - fz) <= around:
+        for y in (4, 5):
+          found.append({'pos': [x, y, z], 'id': self.blockId(x, y, z),
+                        'meta': 0,
+                        'boxes': [[bx0, float(y), bz0, bx1, y + 1.0, bz1]
+                                  for bx0, bz0, bx1, bz1 in
+                                  self.doorBoxes(x, z)],
+                        'liquid': False, 'climbable': False,
+                        'opens': door.get('hand', True)})
     return found
 
   def perceived(self, around: int) -> dict:

@@ -240,14 +240,21 @@ class Agent(BaseObject):
       ticks = 100 + int(math.ceil(12 * math.hypot(place.x - seen.pos.x,
                                                  place.z - seen.pos.z)))
     for _ in range(self.LOOKS):
-      path, whole = Terrain(seen, *self.LOOK).path(seen.pos, place)
+      terrain = Terrain(seen, *self.LOOK)
+      path, whole = terrain.path(seen.pos, place)
       if path is None:
         infoSpec = """no way to %s from %s in what the agent sees (%d blocks
         around, %d below, %d above)"""
         info = infoSpec % ((_place(place), _place(seen.pos)) + self.LOOK)
         raise TesttimeError(step, seen, ' '.join(info.split()))
       try:
-        for point in path[:-1] if whole else path:
+        stops = path[:-1] if whole else path
+        for at, point in enumerate(stops):
+          column = (math.floor(point.x), math.floor(point.z))
+          if terrain.doors(*column):
+            after = path[at + 1] if at + 1 < len(path) else place
+            self._throughDoor(step, terrain.doors(*column)[0].pos, point,
+                              after)
           seen = self._pass(step, point, first, ticks)
         #  the place up or down a level: over it first, then the stop
         if whole and abs(path[-1].y - seen.pos.y) > Terrain.STEP:
@@ -262,6 +269,46 @@ class Agent(BaseObject):
     %s"""
     info = infoSpec % (_place(place), self.LOOKS, _place(seen.pos))
     raise TesttimeError(step, seen, ' '.join(info.split()))
+
+  def _throughDoor(self, step: str, door: BlockPos, point: Vec3,
+                   after: Vec3) -> None:
+    """
+    A door on the way: used when its boxes cross the way through its
+    column (to 'point', then 'after'), as a player opens one; looked at
+    again after.
+    """
+    seen = self.perceive()
+    if not self._crosses(seen, door, (point, after)):
+      return
+    self._use(step, door, None)
+    seen = self.perceive()
+    if self._crosses(seen, door, (point, after)):
+      infoSpec = """the door at %s doesn't let the agent through, open or
+      shut"""
+      raise TesttimeError(step, seen, ' '.join((infoSpec % (
+        _place(door),)).split()))
+
+  @staticmethod
+  def _crosses(seen: Perception, door: BlockPos, points: tuple) -> bool:
+    """Whether the door's boxes meet the player's box on its way."""
+    boxes = [box for near in seen.blocks if near.opens and
+             (near.pos.x, near.pos.z) == (door.x, door.z)
+             for box in near.boxes]
+    feet, half = seen.pos.y, 0.3
+    here = (seen.pos.x, seen.pos.z)
+    for there in points:
+      length = math.hypot(there.x - here[0], there.z - here[1])
+      steps = max(1, int(math.ceil(length / 0.1)))
+      for k in range(steps + 1):
+        x = here[0] + (there.x - here[0]) * k / steps
+        z = here[1] + (there.z - here[1]) * k / steps
+        for box in boxes:
+          if (box.minX < x + half and x - half < box.maxX and
+              box.minZ < z + half and z - half < box.maxZ and
+              box.minY < feet + 1.8 and feet < box.maxY):
+            return True
+      here = (there.x, there.z)
+    return False
 
   def _pass(self, step: str, point: Vec3, first: int,
             ticks: int) -> Perception:

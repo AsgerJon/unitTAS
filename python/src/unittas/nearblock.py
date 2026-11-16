@@ -15,7 +15,8 @@ class NearBlock(EZData, frozen=True):
   """
   A block that isn't air: where it is, its registry name and meta, its
   collision boxes (a tuple of Box: none for a flower, several for
-  stairs), whether it is a liquid and whether the player can climb it.
+  stairs), whether it is a liquid, whether the player can climb it, and
+  whether a hand's click opens and shuts it (a wooden door, a gate).
   """
 
   pos = EZField[BlockPos]()
@@ -24,6 +25,7 @@ class NearBlock(EZData, frozen=True):
   boxes = EZField[tuple]()
   liquid = EZField[bool](False)
   climbable = EZField[bool](False)
+  opens = EZField[bool](False)
 
   @property
   def solid(self) -> bool:

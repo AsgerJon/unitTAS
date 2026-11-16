@@ -27,7 +27,14 @@ def block(x: int, y: int, z: int, top: float = 1.0,
   """A block at (x, y, z), its box 'top' high; a liquid has none."""
   boxes = () if liquid else (Box(x, y, z, x + 1, y + top, z + 1),)
   return NearBlock(BlockPos(x, y, z), 'minecraft:stone', 0, boxes, liquid,
-                   False)
+                   False, False)
+
+
+def door(x: int, z: int, opens: bool = True) -> list:
+  """A door's two halves at (x, 4, z) and (x, 5, z), shut along z's edge."""
+  return [NearBlock(BlockPos(x, y, z), 'minecraft:wooden_door', 0,
+                    (Box(x, y, z, x + 1, y + 1, z + 0.1875),), False, False,
+                    opens) for y in (4, 5)]
 
 
 def seen(blocks: list, feet: Vec3 = Vec3(0.5, 4.0, 0.5),
@@ -131,6 +138,37 @@ class PathTests(unittest.TestCase):
     shut = [(1, 0), (0, 1), (2, 1), (1, 2), (2, 0), (0, 2), (2, 2)]
     here = terrain([block(x, 4 + y, z) for x, z in shut for y in range(2)])
     path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(1.5, 4.0, 1.5))
+    self.assertIsNone(path)
+
+  def test_through_a_door(self) -> None:
+    """A door's column is passable, by opening it: its waypoint kept."""
+    here = terrain(wall(3, [x for x in range(-8, 9) if x != 0]) +
+                   door(0, 3))
+    self.assertEqual(2, len(here.doors(0, 3)))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 4.0, 6.5))
+    self.assertTrue(whole)
+    self.assertIn(Vec3(0.5, 4.0, 3.5), path)
+    #  and the waypoint before it, beside it
+    before = path[path.index(Vec3(0.5, 4.0, 3.5)) - 1]
+    self.assertEqual(1.0, abs(before.x - 0.5) + abs(before.z - 3.5))
+
+  def test_not_straight_through_a_door_beside_the_way(self) -> None:
+    """A door standing on open ground: the way keeps out of its column."""
+    here = terrain(door(2, 3))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(4.5, 4.0, 6.5))
+    here_ = Vec3(0.5, 4.0, 0.5)
+    for there in path:
+      for k in range(101):
+        x = here_.x + (there.x - here_.x) * k / 100
+        z = here_.z + (there.z - here_.z) * k / 100
+        self.assertNotEqual((2, 3), (math.floor(x), math.floor(z)), path)
+      here_ = there
+
+  def test_not_through_an_iron_door(self) -> None:
+    here = terrain(wall(3, [x for x in range(-8, 9) if x != 0]) +
+                   door(0, 3, opens=False))
+    self.assertEqual((), here.doors(0, 3))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 4.0, 6.5))
     self.assertIsNone(path)
 
   def test_shut_in(self) -> None:

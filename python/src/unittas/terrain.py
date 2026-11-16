@@ -58,6 +58,8 @@ class Terrain(BaseObject):
   #  Private Variables
   #  Each column's intervals, (bottom, top, liquid), by (x, z)
   __columns__: dict = None
+  #  Each column's blocks a hand's click opens (a door's halves), by (x, z)
+  __doors__: dict = None
   #  Each column's floors, once asked for
   __floors__: dict = None
   #  The column the player stood in, and how far around it is known
@@ -74,14 +76,19 @@ class Terrain(BaseObject):
                above: int) -> None:
     """The ground 'seen' showed: perceived with around, below, above."""
     BaseObject.__init__(self)
-    columns = {}
+    columns, doors = {}, {}
     for near in seen.blocks:
+      if near.opens:
+        #  passable, by opening it: its boxes are the door's, not the way's
+        doors.setdefault((near.pos.x, near.pos.z), []).append(near)
+        continue
       column = columns.setdefault((near.pos.x, near.pos.z), [])
       if near.liquid:
         column.append((float(near.pos.y), near.pos.y + 1.0, True))
       for box in near.boxes:
         column.append((box.minY, box.maxY, False))
     self.__columns__ = columns
+    self.__doors__ = doors
     self.__floors__ = {}
     self.__centre__ = (math.floor(seen.pos.x), math.floor(seen.pos.z))
     self.__around__ = around
@@ -95,6 +102,11 @@ class Terrain(BaseObject):
     cx, cz = self.__centre__
     return (abs(x - cx) <= self.__around__ and
             abs(z - cz) <= self.__around__)
+
+  def doors(self, x: int, z: int) -> tuple:
+    """The blocks in the column (x, z) a hand's click opens, lowest first."""
+    return tuple(sorted(self.__doors__.get((x, z), ()),
+                        key=lambda near: near.pos.y))
 
   def floors(self, x: int, z: int) -> tuple:
     """The heights a player stands at in the column (x, z), lowest first."""
@@ -186,7 +198,12 @@ class Terrain(BaseObject):
       if not self.inside(nx, nz):
         continue
       floors = self.floors(nx, nz)
+      door = (nx, nz) in self.__doors__
       if dx and dz:
+        #  never across a door's corner: a door is gone through straight
+        if door or (x + dx, z) in self.__doors__ or (
+            x, z + dz) in self.__doors__:
+          continue
         for f in floors:
           if abs(f - h) <= self.STEP + _EPS and self._side(
               x + dx, z, h, f) and self._side(x, z + dz, h, f):
@@ -197,7 +214,8 @@ class Terrain(BaseObject):
         f = max(land)
         if f >= h - self.STEP - _EPS:
           if self._clear(nx, nz, f, max(f, h) + self.HEIGHT):
-            yield (nx, nz, f), 1.0, 'walk'
+            yield ((nx, nz, f), 3.0, 'door') if door else (
+              (nx, nz, f), 1.0, 'walk')
         elif h - f <= self.DROP + _EPS and self._clear(nx, nz, f,
                                                        h + self.HEIGHT):
           yield (nx, nz, f), 1.5, 'drop'
@@ -251,6 +269,8 @@ class Terrain(BaseObject):
       px, pz = ax + (bx - ax) * t, az + (bz - az) * t
       for ox, oz in ((0.0, 0.0), side, (-side[0], -side[1])):
         x, z = math.floor(px + ox), math.floor(pz + oz)
+        if (x, z) in self.__doors__ and (x, z) not in (a[:2], b[:2]):
+          return False
         if not self.inside(x, z) or not any(
             abs(f - a[2]) <= self.STEP + _EPS and
             abs(f - b[2]) <= self.STEP + _EPS for f in self.floors(x, z)):

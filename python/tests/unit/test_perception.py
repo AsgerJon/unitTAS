@@ -26,12 +26,15 @@ FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 GRASS = {'pos': [0, 3, 0], 'id': 'minecraft:grass', 'meta': 0,
          'boxes': [[0.0, 3.0, 0.0, 1.0, 4.0, 1.0]], 'liquid': False,
-         'climbable': False}
+         'climbable': False, 'opens': False}
 POPPY = {'pos': [1, 4, 0], 'id': 'minecraft:red_flower', 'meta': 0,
-         'boxes': [], 'liquid': False, 'climbable': False}
+         'boxes': [], 'liquid': False, 'climbable': False, 'opens': False}
 LADDER = {'pos': [-1, 4, 0], 'id': 'minecraft:ladder', 'meta': 5,
           'boxes': [[-1.0, 4.0, 0.0, -0.875, 5.0, 1.0]], 'liquid': False,
-          'climbable': True}
+          'climbable': True, 'opens': False}
+DOOR = {'pos': [2, 4, 0], 'id': 'minecraft:wooden_door', 'meta': 1,
+        'boxes': [[2.0, 4.0, 0.0, 3.0, 5.0, 0.1875]], 'liquid': False,
+        'climbable': False, 'opens': True}
 LOOKING_DOWN = {
   'tick': 812, 'pos': [0.5, 4.0, 0.5], 'eye': [0.5, 5.62, 0.5],
   'box': [0.2, 4.0, 0.2, 0.8, 5.8, 0.8],
@@ -43,7 +46,7 @@ LOOKING_DOWN = {
   'reach': {'block': 5.0, 'entity': 6.0},
   'target': {'block': [0, 3, 0], 'face': 'up', 'hit': [0.5, 4.0, 0.5],
              'id': 'minecraft:grass', 'meta': 0},
-  'blocks': [GRASS, POPPY, LADDER]}
+  'blocks': [GRASS, POPPY, LADDER, DOOR]}
 PIG_TARGET = {'entity': 412, 'type': 'Pig', 'hit': [0.5, 4.6, 2.05]}
 
 
@@ -81,7 +84,7 @@ class PerceptionTests(unittest.TestCase):
     self.assertFalse(seen.inWater or seen.inLava or seen.onLadder)
     self.assertFalse(seen.sneaking or seen.sprinting or seen.flying)
     self.assertEqual((5.0, 6.0), (seen.blockReach, seen.entityReach))
-    self.assertEqual(3, len(seen.blocks))
+    self.assertEqual(4, len(seen.blocks))
     self.assertEqual(LOOKING_DOWN, toJson(seen))
 
   def test_a_block_targeted(self) -> None:
@@ -109,7 +112,9 @@ class PerceptionTests(unittest.TestCase):
     self.assertEqual(wire, toJson(seen))
 
   def test_the_blocks_around(self) -> None:
-    grass, poppy, ladder = fromJson(Perception, LOOKING_DOWN).blocks
+    grass, poppy, ladder, door = fromJson(Perception, LOOKING_DOWN).blocks
+    self.assertTrue(door.opens)
+    self.assertFalse(grass.opens)
     self.assertEqual(BlockPos(0, 3, 0), grass.pos)
     self.assertEqual((Box(0.0, 3.0, 0.0, 1.0, 4.0, 1.0),), grass.boxes)
     self.assertTrue(grass.solid)
