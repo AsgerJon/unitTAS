@@ -27,8 +27,10 @@ repository that says which game a run needs (SPEC.md 9.3, step 2).
 
 Paths are taken from the spec's own folder. Every mistake is a SpecError
 that names the file and the key, an unknown key too (with the key it
-likely meant): it is a file people write by hand. Phase 3 runs 1.7.10
-with Forge 10.13.4.1614 only (SPEC.md 9.6, decision 5).
+likely meant): it is a file people write by hand. The versions are
+PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
+26.3 with Fabric Loader 0.20.1 (SPEC.md 19.7 step 4), a real client
+only for now.
 
 - SpecError: what is wrong with a spec, and where.
 - MavenLibrary: a library by its Maven coordinates.
@@ -54,6 +56,10 @@ if TYPE_CHECKING:  # pragma: no cover
 #  What phase 3 runs (SPEC.md 9.6, decision 5).
 MINECRAFT = '1.7.10'
 FORGE = '10.13.4.1614'
+#  The versions this unitTAS runs, each with its one loader: (name, version) by Minecraft's version (SPEC.md 19.7)
+PORTS = {MINECRAFT: ('forge', FORGE), '26.3': ('fabric', '0.20.1')}
+#  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet
+REAL_ONLY = ('26.3',)
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
@@ -199,15 +205,20 @@ def _read(cls: type, path: str) -> InstanceSpec:
     raise reader.fail('not TOML: %s' % error) from None
   reader.known(body, KEYS)
   minecraft = reader.string(body, 'minecraft')
-  if minecraft != MINECRAFT:
-    raise reader.fail('"minecraft" is %s: this unitTAS runs %s only' % (minecraft, MINECRAFT))
-  loaderName, loaderVersion = _loader(reader, body)
+  if minecraft not in PORTS:
+    raise reader.fail('"minecraft" is %s: this unitTAS runs %s' % (minecraft, ' and '.join(PORTS)))
+  loaderName, loaderVersion = _loader(reader, body, minecraft)
   if 'client' not in body:
     raise reader.fail('"client" is needed: "real" (the release jars in a real client) or "gradle" (the mod\'s own'
                       ' Gradle run), said, never assumed')
   client = reader.string(body, 'client')
   if client not in CLIENTS:
     raise reader.fail('"client" is "real" or "gradle", not "%s"' % client)
+  if minecraft in REAL_ONLY and client != 'real':
+    raise reader.fail('"client" is "real" for %s: a Gradle run of a %s mod\'s own isn\'t there yet' % (
+      minecraft, minecraft))
+  if minecraft in REAL_ONLY and 'server' in body:
+    raise reader.fail('"server" isn\'t there yet for %s: its dedicated server has no probe yet' % minecraft)
   libraries = tuple(_library(reader, entry) for entry in reader.strings(body, 'libraries'))
   repositories = reader.strings(body, 'repositories')
   if any(isinstance(library, MavenLibrary) for library in libraries) and not repositories:
@@ -264,16 +275,20 @@ def _server(reader: _Reader, body: dict, client: str) -> tuple:
   return eula, exclude, memory
 
 
-def _loader(reader: _Reader, body: dict) -> tuple:
+def _loader(reader: _Reader, body: dict, minecraft: str) -> tuple:
+  """The loader the version runs with, its one version (PORTS)."""
+  name, wanted = PORTS[minecraft]
   if 'loader' not in body:
-    raise reader.fail('"loader" is needed: { forge = "%s" }' % FORGE)
+    raise reader.fail('"loader" is needed: { %s = "%s" } for %s' % (name, wanted, minecraft))
   loader = reader.table(body, 'loader')
-  if list(loader) != ['forge']:
-    raise reader.fail('"loader" is { forge = "%s" }: this unitTAS runs Forge only, not %s' % (FORGE, loader))
-  version = reader.string(loader, 'forge', 'loader.')
-  if version != FORGE:
-    raise reader.fail('"loader" is Forge %s: this unitTAS runs Forge %s only' % (version, FORGE))
-  return 'forge', version
+  if list(loader) != [name]:
+    raise reader.fail('"loader" is { %s = "%s" }: this unitTAS runs %s with %s only, not %s' % (
+      name, wanted, minecraft, name.capitalize(), loader))
+  version = reader.string(loader, name, 'loader.')
+  if version != wanted:
+    raise reader.fail('"loader" is %s %s: this unitTAS runs %s with %s %s only' % (
+      name.capitalize(), version, minecraft, name.capitalize(), wanted))
+  return name, version
 
 
 def _library(reader: _Reader, entry: str) -> Any:

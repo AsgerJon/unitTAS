@@ -326,6 +326,11 @@ window = { width = 854, height = 480, display = "nested" }   # or "headless", "p
   Java 8 is never downloaded: `java = "/path/to/java"`, `UNITTAS_JAVA8`, or the usual JDK folders.
 - `client = "gradle"` is the mod's own development run, in a `[gradle]` table: `project` (its folder), `task`
   (`runClient`) and `game` (its run folder).
+- **26.3** with Fabric Loader 0.20.1 is the other version a spec may name (`minecraft = "26.3"`, `loader = { fabric =
+  "0.20.1" }`), a real client only for now (no `client = "gradle"` and no `[server]` yet). The probe is the 26.3
+  Fabric probe's jar (`probe = "path/to/unittas-probe-26.3-fabric.jar"`); Java 25 is found as the version asks;
+  the first launch's onboarding and tutorial hints are switched off in its `options.txt`. Tests that name things by
+  mcdex member and places from `self.start` run on both versions unchanged.
 - Paths are taken from the spec's own folder. A mod jar of the spec's own project that is older than the newest file
   under its `src/` is refused, as not built from those sources. Every mistake names the file and the key.
 
@@ -526,7 +531,7 @@ class LeverAndChestTests(ScenarioTestCase):
   the world wrong is the test's FAIL. A game that stops ticking is `NO RESULT`, as ever.
 - **Today** the agent plays 1.7.10 and 26.3: walking, verbs, containers, `examine()` and `identify()` pass their game
   tests on both (26.3 draws a block one of several ways at random, stone plain or mirrored: `identify()` compares
-  each). A scenario run on 26.3 (`unittas run`) comes with SPEC.md 19.7 step 4.
+  each), and the scenarios run on a run of either.
 
 ## A mod's own part
 

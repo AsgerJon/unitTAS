@@ -2,7 +2,9 @@
 A scenario's class for test_scenarios.py to run on a Run (SPEC.md 15.6
 step 5): not a test module (unittest's discovery doesn't load it). Its
 setup is by command; its actions are the agent's; its examinations are
-by command, and noted under its tests' report lines.
+by command, and noted under its tests' report lines. Its blocks whose
+state is the version's own are ports.BLOCKS': it runs on every port
+(SPEC.md 19.7 step 4).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -10,11 +12,8 @@ from __future__ import annotations
 
 from mcdex import MCBlocks, MCItems
 
+from ports import block
 from unittas.scenario import ScenarioTestCase
-from unittas.values import Block
-
-#  1.7.10's chest with three pink wool in its first slot
-WITH_WOOL = '{Items:[{Slot:0b,id:35s,Count:3b,Damage:6s}]}'
 
 
 class SceneTests(ScenarioTestCase):
@@ -22,10 +21,8 @@ class SceneTests(ScenarioTestCase):
   @classmethod
   def setUpClass(cls) -> None:
     super().setUpClass()
-    cls.scene.place(Block('minecraft:lever', 5), at=(5, 0, 7))
-    #  meta 3: 1.7.10 sets a chest's facing itself as it is added
-    cls.scene.place(Block('minecraft:chest', 3, True, WITH_WOOL),
-                    at=(3, 0, 5))
+    cls.scene.place(block('lever on the ground, off'), at=(5, 0, 7))
+    cls.scene.place(block('chest of three pink wool'), at=(3, 0, 5))
 
   def test_a_the_lever(self) -> None:
     lever = self.scene.thing(MCBlocks.Lever, at=(5, 0, 7))

@@ -5,10 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.entity.Entity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTBase;
-import net.minecraft.server.MinecraftServer;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
@@ -25,8 +21,10 @@ import java.util.Map;
 /**
  * Reflection, the way into what no operation reaches (PROTOCOL.md 5.9): a starting point (from), steps along a path
  * (a field or no-argument method by name, a call with arguments, an index, a key), and the value found turned into JSON,
- * or kept as a ref. Names are the running game's (MCP in a development run, Searge in a real client): the probe maps
- * none, the orchestrator translates readable names. Runs on the request's side.
+ * or kept as a ref. Names are the running game's (1.7.10: MCP in a development run, Searge in a real client; 26.3:
+ * Mojang's own): the probe maps none, the orchestrator translates readable names where the game's are others. Runs on
+ * the request's side. The same in every port (the probe core's); what is the version's own (the request's player, its
+ * world, the game, an entity by its number, the version's stacks, entities and tags as JSON) is the port's Game.
  */
 final class Reflect {
 
@@ -44,31 +42,51 @@ final class Reflect {
 	/** What a JSON value can't become. */
 	private static final Object NO = new Object();
 
-	/** The request's player: the client's own, or on a server the one named; given at preInit by the side's hooks. */
-	interface Players {
-		net.minecraft.entity.player.EntityPlayer of(Call call) throws ProbeException;
+	/** What reflection reaches of the running game that is the version's own: the port gives it as its hooks start. */
+	interface Game {
+		/** The game's own class loader, which holds Minecraft's classes and the mods': both sides'. */
+		ClassLoader loader();
+
+		/** The request's player: the client's own, or on a server the one named. */
+		Object player(Call call) throws ProbeException;
+
+		/** The world the player is in. */
+		Object world(Object player);
+
+		/** "minecraft" on the request's side: the client's game on the client, the server on the server. */
+		Object minecraft(Call call);
+
+		/** The entity by its number in the request's player's world; null for none. */
+		Object entity(Call call, int id) throws ProbeException;
+
+		/** The version's item stacks' class: an argument of it is made from an item's JSON. */
+		Class<?> stackType();
+
+		/** An item stack from an item's JSON, as the version reads it. */
+		Object stack(Call call, JsonObject item) throws ProbeException;
+
+		/** A value of the version's own as JSON (an item stack, an entity, a tag as SNBT); null for any other. */
+		JsonElement value(Call call, Object value) throws ProbeException;
 	}
 
-	/** How a request's player is found (ClientHooks: GameOps.player; ServerHooks: by name), or null before preInit. */
-	static volatile Players players;
-	/** The client's Minecraft for "from": "minecraft" on its side (ClientHooks gives it); null on a dedicated server. */
-	static volatile java.util.function.Supplier<Object> clientGame;
+	/** The port's Game (ClientHooks', ServerHooks', FabricHooks'), or null before its hooks start. */
+	static volatile Game game;
 
 	private Reflect() {
 	}
 
-	/** The game's own class loader (LaunchClassLoader), which holds Minecraft's classes and the mods': both sides'. */
-	static ClassLoader loader() {
-		return MinecraftServer.class.getClassLoader();
-	}
-
-	/** The request's player, by the side's hooks; NotReady before there are any. */
-	static net.minecraft.entity.player.EntityPlayer player(Call call) throws ProbeException {
-		Players found = players;
+	/** The port's Game; NotReady before its hooks start. */
+	private static Game game() throws ProbeException {
+		Game found = game;
 		if (found == null) {
 			throw new ProbeException("NotReady", "no player can be found yet: the game is still loading", null);
 		}
-		return found.of(call);
+		return found;
+	}
+
+	/** The request's player, by the port's Game; NotReady before there is one. */
+	static Object player(Call call) throws ProbeException {
+		return game().player(call);
 	}
 
 	// ---------------------------------------------------------------- where a path starts
@@ -84,9 +102,9 @@ final class Reflect {
 				case "player":
 					return player(call);
 				case "world":
-					return player(call).worldObj;
+					return game().world(player(call));
 				case "minecraft":
-					return call.side == Side.CLIENT && clientGame != null ? clientGame.get() : MinecraftServer.getServer();
+					return game().minecraft(call);
 				default:
 					throw ProbeException.badRequest("from", "from is \"player\", \"world\" or \"minecraft\", not " + name);
 			}
@@ -94,7 +112,7 @@ final class Reflect {
 		JsonObject object = from.getAsJsonObject();
 		if (object.has("entity")) {
 			int id = object.get("entity").getAsInt();
-			Entity found = player(call).worldObj.getEntityByID(id);
+			Object found = game().entity(call, id);
 			if (found == null) {
 				throw new ProbeException("NotFound", "no entity " + id + " in the world", Json.object("what", id));
 			}
@@ -141,7 +159,7 @@ final class Reflect {
 
 	static Class<?> type(String name) throws ProbeException {
 		try {
-			return Class.forName(name, false, loader());
+			return Class.forName(name, false, game().loader());
 		} catch (ClassNotFoundException | LinkageError e) {
 			throw new ProbeException("NotFound", "no class " + name, Json.object("what", name));
 		}
@@ -344,7 +362,8 @@ final class Reflect {
 		List<Method> named = new ArrayList<>(bySignature.values());
 		if (named.isEmpty()) {
 			throw new ProbeException("NotFound", owner(here).getName() + " has no field or method " + name
-				+ " (names are the running game's: MCP in a development run, Searge in a real client)", Json.object("what", name));
+				+ " (names are the running game's: 1.7.10's MCP in a development run, Searge in a real client; 26.3's"
+				+ " Mojang's)", Json.object("what", name));
 		}
 		Method chosen = (Method) choose(call, named, args, sig, name);
 		try {
@@ -478,11 +497,11 @@ final class Reflect {
 					return held == null || boxed.isInstance(held) ? held : NO;
 				}
 				if (object.has("entity")) {
-					Entity found = player(call).worldObj.getEntityByID(object.get("entity").getAsInt());
+					Object found = game().entity(call, object.get("entity").getAsInt());
 					return found != null && boxed.isInstance(found) ? found : NO;
 				}
-				if (object.has("id") && boxed.isAssignableFrom(ItemStack.class)) {
-					return Values.stack(object);
+				if (object.has("id") && boxed.isAssignableFrom(game().stackType())) {
+					return game().stack(call, object);
 				}
 			} catch (ProbeException e) {
 				return NO;
@@ -580,7 +599,7 @@ final class Reflect {
 	// ---------------------------------------------------------------- Java into JSON
 
 	/** The value as JSON (5.9): itself, a summary, SNBT, a list, or a ref; as "ref" a ref, as "text" its toString. */
-	static JsonElement out(Call call, Object value, String as) {
+	static JsonElement out(Call call, Object value, String as) throws ProbeException {
 		if ("text".equals(as)) {
 			return Json.of(value == null ? null : cut(String.valueOf(value)));
 		}
@@ -599,7 +618,7 @@ final class Reflect {
 		return text.length() > 200 ? text.substring(0, 200) + "..." : text;
 	}
 
-	private static JsonElement value(Call call, Object value, int depth) {
+	private static JsonElement value(Call call, Object value, int depth) throws ProbeException {
 		if (value == null) {
 			return JsonNull.INSTANCE;
 		}
@@ -612,14 +631,10 @@ final class Reflect {
 		if (value instanceof Enum<?>) {
 			return Json.of(((Enum<?>) value).name());
 		}
-		if (value instanceof ItemStack) {
-			return Values.item((ItemStack) value);
-		}
-		if (value instanceof Entity) {
-			return Values.entity((Entity) value);
-		}
-		if (value instanceof NBTBase) {
-			return Json.of(Snbt.write((NBTBase) value));
+		Game known = game;
+		JsonElement own = known == null ? null : known.value(call, value);
+		if (own != null) {
+			return own;
 		}
 		if (depth < 3 && value.getClass().isArray() && Array.getLength(value) <= MOST_ELEMENTS) {
 			JsonArray array = new JsonArray();

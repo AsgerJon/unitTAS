@@ -4,8 +4,11 @@ ones by the same names.
 - In the development client: green, red and a suite that isn't there on one Run, the report checked by
   bin/self_red_check.py --python. Its table is the Java run's, less what Python doesn't twin.
 - In the real client (unitTAS's release jar from an instance spec): the green suite, every line ok.
+- On 26.3 (SPEC.md 19.7 step 4): 'unittas run' as a user runs it (python -m unittas, a process of its own) with a 26.3
+  Fabric spec, the probe fabric/'s jar: the green suite, every line ok.
 
   python -m unittas.selftest test_selfsuites.      (through the watcher: "probe test_selfsuites.")
+  python -m unittas.selftest test_selfsuites on 26.3-fabric      ("probe test_selfsuites on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -18,6 +21,8 @@ import subprocess
 import sys
 import unittest
 
+from fabricgame import buildFabric
+from ports import FABRIC_26_3, FORGE_1_7_10, onlyOn
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -32,6 +37,14 @@ sys.path.insert(0, os.path.join(ROOT, 'python', 'tests'))
 RESULT = re.compile(r'^(\S+) \.\.\. (.+?) \(\d+\.\d s\)$')
 
 
+def outcomes(report: str) -> tuple:
+  """A run's report: its lines, and (test, outcome) for each test's line."""
+  with open(report, encoding='utf-8') as file:
+    lines = file.read().split('\n')
+  return lines, [(found.group(1), found.group(2)) for found in map(RESULT.match, lines) if found]
+
+
+@onlyOn(FORGE_1_7_10, why="1.7.10's development and real clients; 26.3's is SelfSuites26Tests'")
 class SelfSuitesTests(unittest.TestCase):
 
   def run_(self, launched, suites: list) -> str:
@@ -71,12 +84,36 @@ class SelfSuitesTests(unittest.TestCase):
     finally:
       os.environ.pop('UNITTAS_GRADLE_HOME', None)
       os.environ.pop('GRADLE_USER_HOME', None)
-    with open(report, encoding='utf-8') as file:
-      lines = file.read().split('\n')
-    outcomes = [(found.group(1), found.group(2)) for found in map(RESULT.match, lines) if found]
+    lines, ended = outcomes(report)
     # the green suite's tests (selfsuite/green.py), WorldTerrainTests' two and WorldTerrainThenFlatTests' one among them
-    self.assertEqual(18, len(outcomes), outcomes)
-    self.assertEqual([], [each for each in outcomes if each[1] != 'ok'], '\n'.join(lines))
+    self.assertEqual(18, len(ended), ended)
+    self.assertEqual([], [each for each in ended if each[1] != 'ok'], '\n'.join(lines))
+    self.assertEqual('OK', [line for line in lines if line][-1])
+
+
+@onlyOn(FABRIC_26_3, why="26.3's real client from a spec; 1.7.10's are SelfSuitesTests'")
+class SelfSuites26Tests(unittest.TestCase):
+
+  def test_1_unittas_run_on_a_26_3_spec(self) -> None:
+    jar = buildFabric(os.path.join(results(), 'fabric-build', 'build.log'))
+    folder = os.path.join(results(), 'specs')
+    os.makedirs(folder, exist_ok=True)
+    spec = os.path.join(folder, 'self-26.3.toml')
+    with open(spec, 'w', encoding='utf-8') as file:
+      # no "java": the launcher finds one the version asks for (25), as a user's spec would leave it
+      file.write('minecraft = "26.3"\nloader = { fabric = "0.20.1" }\nclient = "real"\nprobe = "%s"\ngame = "%s"\n' % (
+        jar, os.path.join(ROOT, 'run', 'fabric-26.3-spec')))
+    run = os.path.join(results(), 'self-26.3')
+    process = subprocess.Popen([sys.executable, '-m', 'unittas', 'run', 'selfsuite.green', '--instance', spec,
+                                '--results', run], cwd=os.path.join(ROOT, 'python', 'tests'),
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    said, _ = process.communicate(timeout=READY_SECONDS + 900)
+    with open(os.path.join(results(), 'self-26.3-said.txt'), 'w', encoding='utf-8') as file:
+      file.write(said)
+    self.assertEqual(0, process.returncode, said)
+    lines, ended = outcomes(os.path.join(run, 'report.txt'))
+    self.assertEqual(18, len(ended), ended)
+    self.assertEqual([], [each for each in ended if each[1] != 'ok'], '\n'.join(lines))
     self.assertEqual('OK', [line for line in lines if line][-1])
 
 

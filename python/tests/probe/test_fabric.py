@@ -109,6 +109,8 @@ class FabricGameTests(unittest.TestCase):
     self.assertIn('container.click', self.connection.hello.ops, "the agent's verbs (19.7 step 3b)")
     for op in ('view.block', 'block.faces', 'texture.get'):
       self.assertIn(op, self.connection.hello.ops, "the agent's observing (19.7 step 3c)")
+    for op in ('reflect.get', 'reflect.set'):
+      self.assertIn(op, self.connection.hello.ops, "reflection (19.7 step 4)")
 
   def test_2b_ready_once_loaded(self) -> None:
     self.assertEqual(TITLE, self.ready['screen'])

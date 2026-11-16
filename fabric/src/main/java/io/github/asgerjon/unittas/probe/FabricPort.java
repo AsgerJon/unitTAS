@@ -122,6 +122,9 @@ public final class FabricPort implements Port {
 		// the agent's verbs' parts (19.7 step 3b; PROTOCOL.md 8.5, 8.7): FabricVerbs'
 		probe.register(Op.onSide("container.click", Side.CLIENT));
 		probe.register(Op.onSide("block.items", Side.SERVER, Side.CLIENT).reading());
+		// reflection (19.7 step 4; PROTOCOL.md 5.9): the core's Reflect with FabricReflect
+		probe.register(Op.onSide("reflect.get", Side.SERVER, Side.CLIENT).reading().needingASide());
+		probe.register(Op.onSide("reflect.set", Side.SERVER, Side.CLIENT).needingASide());
 		// observing (19.7 step 3c; PROTOCOL.md 8.10): FabricView's and FabricLooks'
 		probe.register(Op.onSide("view.block", Side.CLIENT));
 		probe.register(Op.onSide("block.faces", Side.CLIENT).reading());

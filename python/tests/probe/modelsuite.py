@@ -8,7 +8,8 @@ takes the wool out. Left alone, the wool stays (the lock holds). Its
 setup is by command; its actions are the agent's; its examinations are
 by command, and noted under its tests' report lines (what the agent
 knows of its own inventory too). README.md shows it as the example of a
-scenario.
+scenario. Its blocks whose state is the version's own are ports.BLOCKS':
+it runs on every port (SPEC.md 19.7 step 4).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -16,14 +17,12 @@ from __future__ import annotations
 
 from mcdex import MCBlocks, MCItems
 
+from ports import block
 from unittas.scenario import ScenarioTestCase
-from unittas.values import Block
 
 #  The lever, and the chest the hoppers fill: from the start's block
 A = (4, 0, 6)
 B = (0, 0, 6)
-#  1.7.10's chest with one pink wool
-WOOL = '{Items:[{Slot:0b,id:35s,Count:1b,Damage:6s}]}'
 
 
 class LeverAndChestTests(ScenarioTestCase):
@@ -31,15 +30,14 @@ class LeverAndChestTests(ScenarioTestCase):
   @classmethod
   def setUpClass(cls) -> None:
     super().setUpClass()
-    #  1.7.10's blocks as the game keeps them: a chest faces south (3),
-    #  a hopper west (4) points into the block west of it, a lever on
-    #  the ground is 5, and 8 more when on
-    cls.scene.place(Block('minecraft:chest', 3), at=B)
+    #  the blocks as the version keeps them: a hopper pointing west
+    #  points into the block west of it
+    cls.scene.place(block('chest facing south'), at=B)
     for x in (1, 2, 3):
-      cls.scene.place(Block('minecraft:hopper', 4), at=(x, 0, 6))
+      cls.scene.place(block('hopper pointing west'), at=(x, 0, 6))
     #  on before the wool is there: the furthest hopper is locked
-    cls.scene.place(Block('minecraft:lever', 13), at=A)
-    cls.scene.place(Block('minecraft:chest', 3, True, WOOL), at=(3, 1, 6))
+    cls.scene.place(block('lever on the ground, on'), at=A)
+    cls.scene.place(block('chest of one pink wool'), at=(3, 1, 6))
 
   def test_0_locked(self) -> None:
     """Left alone, the wool stays where it is: the lock holds."""

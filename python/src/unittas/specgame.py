@@ -40,7 +40,7 @@ from .display import environment, prefix
 from .launcher import PLAYER_NAME
 from .game import LaunchedGame
 from .release import gameJvms, putMods
-from .spec import MavenLibrary, SpecError
+from .spec import MINECRAFT, MavenLibrary, SpecError
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Callable, Optional
@@ -49,6 +49,12 @@ if TYPE_CHECKING:  # pragma: no cover
 
 #  Where a built package keeps the probe jars it carries (SPEC.md 9.6, decision 1); none in a development install.
 BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probes')
+#  each version's probe among the bundled ones, by its file's name: 1.7.10's is the release jar (unittas-0.1.0.jar),
+#  26.3's the Fabric probe's (unittas-probe-26.3-fabric-0.1.0.jar)
+PROBES = {MINECRAFT: 'unittas-[0-9]*.jar', '26.3': 'unittas-probe-26.3-fabric*.jar'}
+#  a returning player's options for each version's first launch: 26.3 opens on its accessibility onboarding, and a
+#  world's first minutes show the movement tutorial's hints; the spec's own options are set after
+RETURNING = {MINECRAFT: {}, '26.3': {'onboardAccessibility': False, 'tutorialStep': 'none'}}
 
 
 def gameFor(spec: InstanceSpec, results: str, name: str = 'game', cache: Optional[Cache] = None) -> LaunchedGame:
@@ -111,8 +117,11 @@ def _optionText(value) -> str:
 
 
 def _writeOptions(spec: InstanceSpec, gameDir: str) -> None:
-  """The spec's options set in the game's options.txt (key:value lines), the rest of it kept."""
-  options = spec.options
+  """
+  The spec's options set in the game's options.txt (key:value lines), the rest of it kept; a returning player's
+  first, for a version whose first launch would ask otherwise.
+  """
+  options = dict(RETURNING[spec.minecraft], **spec.options)
   if not options:
     return
   path = os.path.join(gameDir, 'options.txt')
@@ -181,10 +190,11 @@ class RealGame(LaunchedGame):
       if not os.path.isfile(probe):
         raise SpecError('%s: "probe": %s is no file' % (self.spec.path, probe))
       return probe
-    found = sorted(glob.glob(os.path.join(self.bundled, '*.jar')))
+    found = sorted(path for path in glob.glob(os.path.join(self.bundled, PROBES[self.spec.minecraft]))
+                   if not path.endswith('-dev.jar'))
     if not found:
-      raise SpecError('%s: "probe" is "bundled", but this unittas carries no probe (a development install): name one, '
-                      'probe = "path/to/the probe jar"' % self.spec.path)
+      raise SpecError('%s: "probe" is "bundled", but this unittas carries no probe for %s (a development install): '
+                      'name one, probe = "path/to/the probe jar"' % (self.spec.path, self.spec.minecraft))
     return found[-1]
 
   def library(self, library) -> str:
@@ -228,6 +238,10 @@ class RealGame(LaunchedGame):
     words, why = prefix(self.spec.display, self.spec.width, self.spec.height, which=self.which)
     self.displayNote = why
     launch = [sys.executable, '-I', '-m', 'unittas.launcher', '--game', self.gameDir, '--cache', self.cache.root]
+    if self.spec.minecraft != MINECRAFT:
+      #  1.7.10 Forge is the launcher's own; another version and its loader are said
+      launch += ['--minecraft', self.spec.minecraft, '--loader', self.spec.loaderName, '--loader-version',
+                 self.spec.loaderVersion]
     if self.spec.java:
       launch += ['--java', self.spec.java]
     if self.username:

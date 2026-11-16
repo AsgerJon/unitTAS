@@ -680,8 +680,12 @@ final class FabricThings {
 		Minecraft mc = Minecraft.getInstance();
 		JsonElement given = call.args.get("screen");
 		if (given != null && given.isJsonObject()) {
-			throw new ProbeException("Unsupported", "a screen made by reflection comes with 26.3's reflection (step 7)",
-				null);
+			Object made = Reflect.make(call, given.getAsJsonObject());
+			if (!(made instanceof Screen)) {
+				throw ProbeException.badRequest("screen", made.getClass().getName() + " is no screen");
+			}
+			mc.gui.setScreen((Screen) made);
+			return new JsonObject();
 		}
 		String name = call.string("screen", null);
 		if (!"pause".equals(name) && mc.player == null) {

@@ -1,7 +1,8 @@
 """
-The 'self' suite's twins (src/self/java/.../self/*.java), by the same names: every one must pass. StepTests stays
-Java's own: it forces a race inside the JVM's step queue, which no request over the socket can. Each waits by ticks,
-never by the clock (SPEC.md 9.8).
+The 'self' suite's twins (src/self/java/.../self/*.java), by the same names: every one must pass, on 1.7.10 and on
+26.3 (SPEC.md 19.7 step 4). StepTests stays Java's own: it forces a race inside the JVM's step queue, which no request
+over the socket can. Each waits by ticks, never by the clock (SPEC.md 9.8). Places are from the run's start (y 4 in
+1.7.10's flat world, -60 in 26.3's); things by mcdex member; what reflection reaches by each version's names (NAMES).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -9,11 +10,34 @@ from __future__ import annotations
 
 import time
 
+from mcdex import MCItems, MCSounds, Version
+
 from unittas.run import Run
 from unittas.testcase import GameTestCase
-from unittas.values import Block, Item
+from unittas.things import resolve
 
 SELF_PLUGIN = 'io.github.asgerjon.unittas.self.SelfPlugin'
+#  what the suite reaches by reflection, as each version names it: 1.7.10's MCP (a real client's Searge, translated
+#  from them by the run's mappings), 26.3's Mojang's own
+NAMES = {
+  'grab the mouse': {Version.V1_7_10: ['mouseHelper', {'call': 'grabMouseCursor'}],
+                     Version.V26_3: ['mouseHandler', {'call': 'grabMouse'}]},
+  'flying': {Version.V1_7_10: ['capabilities', 'isFlying'], Version.V26_3: ['abilities', 'flying']},
+  'send the abilities': {Version.V1_7_10: [{'call': 'sendPlayerAbilities'}],
+                         Version.V26_3: [{'call': 'onUpdateAbilities'}]},
+  'five levels': {Version.V1_7_10: [{'call': 'addExperienceLevel', 'args': [5]}],
+                  Version.V26_3: [{'call': 'giveExperienceLevels', 'args': [5]}]},
+}
+
+
+def named(test: GameTestCase, what: str) -> list:
+  """A path by the game's version's names."""
+  return NAMES[what][test.game.version]
+
+
+def flatY() -> int:
+  """The run's flat world's start's height: the feet on its grass (4 in 1.7.10, -60 in 26.3)."""
+  return int(Run.current.flatStart[1])
 
 
 def waitTicks(test: GameTestCase, holds, ticks: int, what: str) -> None:
@@ -44,14 +68,17 @@ class ChatTests(GameTestCase):
     self.game.closeScreen()
 
   def testEnterRunsTheCommand(self) -> None:
-    self.game.openScreen('chat', text='/time set 6000')
+    # 7000: the run's steady world is at 6000 already, which 26.3 answers "already set"; the answer names the time in
+    # both versions ("Set the time to 7000" in 1.7.10)
+    self.game.openScreen('chat', text='/time set 7000')
     self.game.key('enter')
-    waitTicks(self, lambda: any('Set the time to 6000' in line.plain for line in self.chat()), 40, 'the answer')
+    waitTicks(self, lambda: any('7000' in line.plain for line in self.chat()), 40, 'the answer')
 
 
 class ClassFixtureTests(GameTestCase):
-  #  where setUpClass builds: away from the spawn point and the other tests' ground
-  X, Y, Z = 40, 4, 40
+  #  where setUpClass builds: away from the spawn point and the other tests' ground; at the start's height
+  X, Z = 40, 40
+  Y = 0
   #  setUpClass's count in each run, by the run: one Python process can hold several runs (the probe's tests run this
   #  suite in a development client and then in a real one), and a class's own state outlives a run
   setUps = {}
@@ -60,6 +87,7 @@ class ClassFixtureTests(GameTestCase):
   def setUpClass(cls) -> None:
     super().setUpClass()
     ClassFixtureTests.setUps[Run.current] = ClassFixtureTests.setUps.get(Run.current, 0) + 1
+    cls.Y = flatY()
     cls.game.setBlock((cls.X, cls.Y, cls.Z), 'minecraft:gold_block')
 
   @classmethod
@@ -84,14 +112,14 @@ class MixinTests(GameTestCase):
     self.assertEqual('unitTAS', self.game.status()['window']['title'])
 
   def testPointerLeftFree(self) -> None:
-    self.game.reflect(['mouseHelper', {'call': 'grabMouseCursor'}], source='minecraft', side='client')
+    self.game.reflect(named(self, 'grab the mouse'), source='minecraft', side='client')
     self.game.ticks(2)
     self.assertFalse(self.game.status()['window']['pointer_grabbed'], 'the game took the mouse pointer')
 
   def testSoundHeard(self) -> None:
-    self.game.request('sound.play', {'id': 'minecraft:gui.button.press'})
-    waitTicks(self, lambda: any(sound.id == 'minecraft:gui.button.press' for sound in self.sounds()), 20,
-              'the sound')
+    button = resolve(MCSounds.UiButtonClick, self.game.version).name
+    self.game.request('sound.play', {'id': button})
+    waitTicks(self, lambda: any(sound.id == button for sound in self.sounds()), 20, 'the sound')
 
 
 class ResetContainerTests(GameTestCase):
@@ -105,18 +133,20 @@ class ResetContainerTests(GameTestCase):
   def testB_bootsReachTheClient(self) -> None:
     self.assertTrue(self.game.request('container.get', side='client')['player_own'],
                     'the reset left the client\'s container open')
-    self.game.setSlot('armor.feet', Item('minecraft:leather_boots', 1, 0))
+    self.game.setSlot('armor.feet', MCItems.LeatherBoots)
     waitTicks(self, lambda: not self.game.slot('armor.feet', side='client').empty, 40, "the boots on the client's feet")
 
 
 class ResetTests(GameTestCase):
 
   def testA_leavesThePlayerFlyingWithExperience(self) -> None:
-    # in the air: a player standing on the ground stops flying at once (1.7.10's own rule, on the client)
-    self.game.teleport((0.5, 8.0, 0.5))
-    self.game.reflectSet(['capabilities', 'isFlying'], True)
-    self.game.reflect([{'call': 'sendPlayerAbilities'}])
-    self.game.reflect([{'call': 'addExperienceLevel', 'args': [5]}])
+    # in the air: a player standing on the ground stops flying at once (the game's own rule, on the client). It falls
+    # from the tick it gets there, so its place isn't verified exactly (verify=False): its flying, which needs it in
+    # the air, is, below
+    self.game.teleport((0.5, flatY() + 4.0, 0.5), verify=False)
+    self.game.reflectSet(named(self, 'flying'), True)
+    self.game.reflect(named(self, 'send the abilities'))
+    self.game.reflect(named(self, 'five levels'))
     waitTicks(self, lambda: self.game.player(side='client').xpLevel == 5, 40, 'the client showing level 5')
     waitTicks(self, lambda: self.game.player(side='client').flying, 40, 'the client flying')
 
@@ -141,21 +171,20 @@ class SlowGameTests(GameTestCase):
 
 
 class WorldFreshATests(GameTestCase):
-  X, Y, Z = 60, 4, 60
+  X, Z = 60, 60
   #  the world it ran in (not "world": that is the class's own world, when it asks for one)
   worldSeen = 0
 
   def testLeavesABlock(self) -> None:
     WorldFreshATests.worldSeen = self.worldNumber()
-    self.game.setBlock((self.X, self.Y, self.Z), 'minecraft:stone')
-    self.assertEqual('minecraft:stone', self.game.block((self.X, self.Y, self.Z)).id)
+    self.game.setBlock((self.X, flatY(), self.Z), 'minecraft:stone')
+    self.assertEqual('minecraft:stone', self.game.block((self.X, flatY(), self.Z)).id)
 
 
 class WorldFreshBTests(GameTestCase):
 
   def testFindsAFreshWorld(self) -> None:
-    self.assertEqual(Block('minecraft:air', 0),
-                     self.game.block((WorldFreshATests.X, WorldFreshATests.Y, WorldFreshATests.Z)),
+    self.assertEqual('minecraft:air', self.game.block((WorldFreshATests.X, flatY(), WorldFreshATests.Z)).id,
                      'the block WorldFreshATests left is still there')
     self.assertEqual(WorldFreshATests.worldSeen + 1, self.worldNumber(), "not the world after WorldFreshATests's")
     if self.game.connection.hello.development:
@@ -170,8 +199,7 @@ class WorldFreshBTests(GameTestCase):
 class WorldTerrainTests(GameTestCase):
   """
   A class that needs real terrain asks for a world of its own: it gets that world, made fresh with its settings, and
-  the reset puts the player where the game put it there (on its ground at the spawn), not at y 4 on the superflat
-  grass.
+  the reset puts the player where the game put it there (on its ground at the spawn), not on the superflat grass.
   """
   world = {'type': 'default', 'seed': 1234}
 
@@ -181,7 +209,7 @@ class WorldTerrainTests(GameTestCase):
 
   def testTheResetPutsThePlayerOnItsGround(self) -> None:
     pos = self.game.player().pos
-    self.assertGreater(pos.y, 5.0, 'the reset put the player at y %s, as on the superflat grass' % pos.y)
+    self.assertGreater(pos.y, flatY() + 1.0, 'the reset put the player at y %s, as on the superflat grass' % pos.y)
     under = self.game.block((int(pos.x // 1), int(pos.y // 1) - 1, int(pos.z // 1)))
     self.assertNotEqual('minecraft:air', under.id, 'the player stands on air')
 
@@ -191,4 +219,4 @@ class WorldTerrainThenFlatTests(GameTestCase):
 
   def testTheSuperflatWorldAgain(self) -> None:
     self.assertEqual('flat', self.game.request('world.get')['type'], "not the run's superflat world")
-    self.assertEqual(4.0, self.game.player().pos.y, "the reset didn't put the player on the superflat grass")
+    self.assertEqual(float(flatY()), self.game.player().pos.y, "the reset didn't put the player on the superflat grass")

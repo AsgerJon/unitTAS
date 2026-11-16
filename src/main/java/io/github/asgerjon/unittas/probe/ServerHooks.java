@@ -51,7 +51,7 @@ public final class ServerHooks {
 		io.github.asgerjon.unittas.TasPlugins.find(table);
 		ServerOps.bind(probe);
 		// reflection on a server: a request's player is the one named, or the only one in
-		Reflect.players = call -> ServerOps.player(call.string("player", null));
+		Reflect.game = new ForgeReflect(call -> ServerOps.player(call.string("player", null)), null);
 		probe.gameState = ServerHooks::state;
 		FMLCommonHandler.instance().bus().register(new ServerHooks(probe));
 		probe.leaveBy(ServerHooks::leave);

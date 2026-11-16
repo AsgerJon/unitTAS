@@ -11,6 +11,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.server.IntegratedServer;
+import org.lwjgl.sdl.SDLMouse;
 
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -50,6 +51,10 @@ public final class FabricHooks {
 		FabricVerbs.bind(probe);
 		FabricView.bind(probe);
 		FabricLooks.bind(probe);
+		// reflection (PROTOCOL.md 5.9; SPEC.md 19.7 step 4): the core's, by Mojang's names
+		Reflect.game = new FabricReflect();
+		probe.op("reflect.get").does(Reflect::get);
+		probe.op("reflect.set").does(Reflect::set);
 		probe.op("screen.get").does(call -> {
 			Screen screen = Minecraft.getInstance().gui.screen();
 			if (screen == null) {
@@ -113,6 +118,9 @@ public final class FabricHooks {
 		snapshot.paused = mc.isPaused();
 		snapshot.width = mc.getWindow().getWidth();
 		snapshot.height = mc.getWindow().getHeight();
+		// whether the window holds the pointer (SDL3's relative mouse mode, which the game's grab sets), as 1.7.10's
+		// Mouse.isGrabbed(): never, while the probe is awake (PROTOCOL.md 2.5)
+		snapshot.pointerGrabbed = SDLMouse.SDL_GetWindowRelativeMouseMode(mc.getWindow().handle());
 		if (!probe.quitting()) {
 			snapshot.state = snapshot.changing ? "changing" : mc.level == null ? "menu" : "world";
 		}

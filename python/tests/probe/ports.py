@@ -71,6 +71,20 @@ BLOCKS = {
     FORGE_1_7_10: Block('minecraft:chest', 3, True, '{Items:[{Slot:0b,id:35s,Count:3b,Damage:6s}]}'),
     FABRIC_26_3: Block('minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",count:3}]}',
                        (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))},
+  #  the model scenario's (modelsuite.py): a chest facing south (1.7.10 sets a chest's facing itself as it is added: 3),
+  #  a hopper pointing west into the block west of it, a lever on the ground and on, a chest of one pink wool
+  'chest facing south': {FORGE_1_7_10: Block('minecraft:chest', 3),
+                         FABRIC_26_3: Block('minecraft:chest', -1, state=(('facing', 'south'), ('type', 'single'),
+                                                                          ('waterlogged', 'false')))},
+  'hopper pointing west': {FORGE_1_7_10: Block('minecraft:hopper', 4),
+                           FABRIC_26_3: Block('minecraft:hopper', -1, state=(('enabled', 'true'), ('facing', 'west')))},
+  'lever on the ground, on': {FORGE_1_7_10: Block('minecraft:lever', 13),
+                              FABRIC_26_3: Block('minecraft:lever', -1, state=(('face', 'floor'), ('facing', 'north'),
+                                                                              ('powered', 'true')))},
+  'chest of one pink wool': {
+    FORGE_1_7_10: Block('minecraft:chest', 3, True, '{Items:[{Slot:0b,id:35s,Count:1b,Damage:6s}]}'),
+    FABRIC_26_3: Block('minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",count:1}]}',
+                       (('facing', 'south'), ('type', 'single'), ('waterlogged', 'false')))},
   #  a furnace facing south: 1.7.10 sets a furnace's facing itself as it is added, south with nothing around (meta 3)
   'furnace facing south': {FORGE_1_7_10: Block('minecraft:furnace', 3),
                            FABRIC_26_3: Block('minecraft:furnace', -1, state=(('facing', 'south'), ('lit', 'false')))},
