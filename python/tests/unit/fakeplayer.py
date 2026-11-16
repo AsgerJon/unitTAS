@@ -2,8 +2,12 @@
 FakePlayer: a client player on flat ground without a game, for the
 agent's tests (not a test module itself). It moves as 1.7.10's does on
 grass, near enough for a controller: each tick the held keys push it
-along its look (0.1 a tick, 0.98 of it forward, 0.3 of that sneaking),
-it moves by its motion, stopped by walls, and keeps 0.546 of it. Its
+along its look or across it (0.1 a tick on the ground, 0.02 in the air,
+0.98 of it, 0.3 of that sneaking), it moves by its motion, stopped by
+walls (a sneaking player on the ground by an edge too), and keeps 0.546
+of it on the ground, 0.91 in the air. On a ladder (its feet in one) its
+motion is held within 0.15 across and 0.15 down, sneaking holds it up,
+and pushing into anything lifts it (0.2 up, before gravity). Its
 crosshair is a ray marched from the eye. Every request waits for the
 end of the next tick first, as the probe runs a client step there
 (Sides), so the agent meets the latency it meets in the game.
@@ -39,6 +43,12 @@ from unittas import png
 
 EYE = 1.62
 HALF = 0.3
+#  A ladder's box along each edge of its block: (x0, z0, x1, z1) in it
+LADDER_EDGES = {'south': (0.0, 0.875, 1.0, 1.0),
+                'north': (0.0, 0.0, 1.0, 0.125),
+                'east': (0.875, 0.0, 1.0, 1.0),
+                'west': (0.0, 0.0, 0.125, 1.0)}
+LADDER_METAS = {'south': 2, 'north': 3, 'east': 4, 'west': 5}
 HEIGHT = 1.8
 GROUND = 4.0
 FRICTION = 0.546
@@ -222,6 +232,10 @@ class FakePlayer:
     #  open, and whether a hand opens it (an iron door doesn't); a stuck
     #  one blocks open or shut
     self.doors = {}
+    #  the ladders' blocks, by (x, y, z): the edge their box is along
+    self.ladders = {}
+    #  how fast it came down each time it landed
+    self.landed = []
 
   # --------------------------------------------------------------- the world
 
@@ -262,12 +276,51 @@ class FakePlayer:
       return [(x, z, x + 0.1875, z + 1)]
     return [(x, z, x + 1, z + 0.1875)]
 
+  def ladderBoxes(self) -> list:
+    """Each ladder block's box: (x0, y0, z0, x1, y1, z1)."""
+    return [(x + x0, float(y), z + z0, x + x1, y + 1.0, z + z1)
+            for (x, y, z), edge in self.ladders.items()
+            for x0, z0, x1, z1 in (LADDER_EDGES[edge],)]
+
+  def overlaps(self, x: float, z: float, box: tuple) -> bool:
+    """Whether the player's box at x, z meets the box's across."""
+    return (x - HALF < box[3] and box[0] < x + HALF and
+            z - HALF < box[5] and box[2] < z + HALF)
+
+  def onLadder(self) -> bool:
+    """Whether its feet are in a ladder's block (1.7.10's isOnLadder)."""
+    return (math.floor(self.x), math.floor(self.y),
+            math.floor(self.z)) in self.ladders
+
   def under(self, x: float, z: float) -> float:
-    """The floor under the player's box at x, z: its columns' highest."""
-    return max(self.raised.get(cell, GROUND) for cell in self.cells(x, z))
+    """
+    The floor under the player's box at x, z: its columns' highest, or a
+    ladder's top it stands on.
+    """
+    floor = max(self.raised.get(cell, GROUND) for cell in self.cells(x, z))
+    for box in self.ladderBoxes():
+      if box[4] <= self.y + 0.5 + 1e-9 and self.overlaps(x, z, box):
+        floor = max(floor, box[4])
+    return floor
+
+  def edged(self, d: float, alongX: bool) -> float:
+    """
+    A sneaking player's move on the ground, cut short of an edge as
+    1.7.10's is: by 0.05 at a time while nothing is within 1 below.
+    """
+    while d != 0.0:
+      x, z = (self.x + d, self.z) if alongX else (self.x, self.z + d)
+      if self.under(x, z) > self.y - 1.0 + 1e-9:
+        break
+      d = 0.0 if abs(d) < 0.05 else d - math.copysign(0.05, d)
+    return d
 
   def blocked(self, x: float, z: float) -> bool:
     """Whether the player's box at x, z meets a wall or a step too high."""
+    for box in self.ladderBoxes():
+      if (box[1] < self.y + HEIGHT and box[4] > self.y + 0.5 + 1e-9 and
+          self.overlaps(x, z, box)):
+        return True
     for cx, cz in self.cells(x, z):
       for cy in (int(GROUND), int(GROUND) + 1):
         if (cx, cy, cz) in self.walls:
@@ -284,47 +337,68 @@ class FakePlayer:
   # ------------------------------------------------------------------- ticks
 
   def step(self) -> None:
-    """One tick: the clicks, then movement, as 1.7.10's on the ground."""
+    """One tick: the clicks, then movement, as 1.7.10's."""
     self.tick += 1
     self.click()
-    forward = 0.0
-    if 'key.forward' in self.keys:
-      forward += 0.98
-    if 'key.back' in self.keys:
-      forward -= 0.98
+    forward = strafe = 0.0
+    for key, along, across in (('key.forward', 0.98, 0.0),
+                               ('key.back', -0.98, 0.0),
+                               ('key.left', 0.0, 0.98),
+                               ('key.right', 0.0, -0.98)):
+      if key in self.keys:
+        forward += along
+        strafe += across
     if 'key.sneak' in self.keys:
       forward *= 0.3
+      strafe *= 0.3
+    size = math.hypot(forward, strafe)
+    if size > 1.0:
+      forward, strafe = forward / size, strafe / size
     yaw = math.radians(self.yaw)
-    push = 0.1 if self.onGround else 0.02
-    self.mx += -math.sin(yaw) * forward * push
-    self.mz += math.cos(yaw) * forward * push
+    grounded = self.onGround
+    push = 0.1 if grounded else 0.02
+    self.mx += (strafe * math.cos(yaw) - forward * math.sin(yaw)) * push
+    self.mz += (forward * math.cos(yaw) + strafe * math.sin(yaw)) * push
+    ladder = self.onLadder()
+    if ladder:
+      self.mx = max(-0.15, min(0.15, self.mx))
+      self.mz = max(-0.15, min(0.15, self.mz))
+      self.my = max(self.my, -0.15)
+      if 'key.sneak' in self.keys and self.my < 0.0:
+        self.my = 0.0
+    sneaking = grounded and 'key.sneak' in self.keys
     self.collided = False
-    if self.blocked(self.x + self.mx, self.z):
+    dx = self.edged(self.mx, True) if sneaking else self.mx
+    if self.blocked(self.x + dx, self.z):
       self.collided = True
       self.mx = 0.0
     else:
-      self.x += self.mx
-    if self.blocked(self.x, self.z + self.mz):
+      self.x += dx
+    dz = self.edged(self.mz, False) if sneaking else self.mz
+    if self.blocked(self.x, self.z + dz):
       self.collided = True
       self.mz = 0.0
     else:
-      self.z += self.mz
+      self.z += dz
     #  up and down: a step up half a block as the game takes it; a jump,
-    #  0.42 up, 0.08 less each tick and 0.98 kept; a fall
+    #  0.42 up, 0.08 less each tick and 0.98 kept; a fall; a climb
     ground = self.under(self.x, self.z)
     if self.onGround and self.y < ground <= self.y + 0.5 + 1e-9:
       self.y = ground
     if 'key.jump' in self.keys and self.onGround:
       self.my = 0.42
+    self.y += self.my
+    if self.y <= ground:
+      if not self.onGround:
+        self.landed.append(-self.my)
+      self.y, self.my, self.onGround = ground, 0.0, True
+    else:
       self.onGround = False
-    if not self.onGround or self.y > ground:
-      self.y += self.my
-      self.my = (self.my - 0.08) * 0.98
-      if self.y <= ground:
-        self.y, self.my, self.onGround = ground, 0.0, True
-      else:
-        self.onGround = False
-    friction = FRICTION if self.onGround else 0.91
+    if self.collided and ladder:
+      self.my = 0.2
+    self.my = (self.my - 0.08) * 0.98
+    #  what it keeps: as it stood when the tick began
+    friction = FRICTION if grounded else 0.91
     self.mx *= friction
     self.mz *= friction
     self.trail.append((self.x, self.z))
@@ -510,6 +584,14 @@ class FakePlayer:
                                    x + 1.0, self.top(x, y, z), z + 1.0]],
                         'liquid': False, 'climbable': False,
                         'opens': False})
+    for (x, y, z), edge in sorted(self.ladders.items()):
+      if abs(x - fx) <= around and abs(z - fz) <= around:
+        x0, z0, x1, z1 = LADDER_EDGES[edge]
+        found.append({'pos': [x, y, z], 'id': 'minecraft:ladder',
+                      'meta': LADDER_METAS[edge],
+                      'boxes': [[x + x0, float(y), z + z0, x + x1, y + 1.0,
+                                 z + z1]],
+                      'liquid': False, 'climbable': True, 'opens': False})
     for (x, z), door in self.doors.items():
       if abs(x - fx) <= around and abs(z - fz) <= around:
         for y in (4, 5):
@@ -533,7 +615,8 @@ class FakePlayer:
                  -0.0784000015258789, self.mz],
       'on_ground': self.onGround,
       'collided': {'horizontally': self.collided, 'vertically': True},
-      'in_water': False, 'in_lava': False, 'on_ladder': False,
+      'in_water': False, 'in_lava': False,
+      'on_ladder': self.onLadder(),
       'sneaking': 'key.sneak' in self.keys, 'sprinting': False,
       'flying': False, 'reach': {'block': REACH, 'entity': 6.0},
       'target': self.target(), 'blocks': self.near(around)}

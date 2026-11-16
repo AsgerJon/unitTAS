@@ -1,7 +1,8 @@
 """
 Terrain: what the agent knows of the ground around it, from what it
 perceives (SPEC.md 15.6 step 7): where a player stands, and the ways
-between where it stands and a place.
+between where it stands and a place: walking, jumping, dropping, through
+doors, up and down ladders.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -34,7 +35,9 @@ class Terrain(BaseObject):
   above, and not in a liquid. Between columns it walks (up or down as
   much as the game steps it), jumps up to JUMP with room above where it
   jumps from, or drops down to DROP; across a corner only walking, with
-  both sides passable.
+  both sides passable. A ladder's thin box doesn't fill its column: from
+  its foot a player climbs to a ledge beside it no higher than its top,
+  and from a ledge beside its top it comes down it.
 
     path, whole = Terrain(seen, 8, 3, 3).path(seen.pos, place)
   """
@@ -60,6 +63,8 @@ class Terrain(BaseObject):
   __columns__: dict = None
   #  Each column's blocks a hand's click opens (a door's halves), by (x, z)
   __doors__: dict = None
+  #  Each column's blocks a player climbs (a ladder, a vine), by (x, z)
+  __ladders__: dict = None
   #  Each column's floors, once asked for
   __floors__: dict = None
   #  The column the player stood in, and how far around it is known
@@ -76,11 +81,15 @@ class Terrain(BaseObject):
                above: int) -> None:
     """The ground 'seen' showed: perceived with around, below, above."""
     BaseObject.__init__(self)
-    columns, doors = {}, {}
+    columns, doors, ladders = {}, {}, {}
     for near in seen.blocks:
       if near.opens:
         #  passable, by opening it: its boxes are the door's, not the way's
         doors.setdefault((near.pos.x, near.pos.z), []).append(near)
+        continue
+      if near.climbable:
+        #  its box is thin, along an edge: the column stays a way
+        ladders.setdefault((near.pos.x, near.pos.z), []).append(near)
         continue
       column = columns.setdefault((near.pos.x, near.pos.z), [])
       if near.liquid:
@@ -89,6 +98,7 @@ class Terrain(BaseObject):
         column.append((box.minY, box.maxY, False))
     self.__columns__ = columns
     self.__doors__ = doors
+    self.__ladders__ = ladders
     self.__floors__ = {}
     self.__centre__ = (math.floor(seen.pos.x), math.floor(seen.pos.z))
     self.__around__ = around
@@ -107,6 +117,15 @@ class Terrain(BaseObject):
     """The blocks in the column (x, z) a hand's click opens, lowest first."""
     return tuple(sorted(self.__doors__.get((x, z), ()),
                         key=lambda near: near.pos.y))
+
+  def ladders(self, x: int, z: int) -> tuple:
+    """The blocks in the column (x, z) a player climbs, lowest first."""
+    return tuple(sorted(self.__ladders__.get((x, z), ()),
+                        key=lambda near: near.pos.y))
+
+  def climbable(self, x: int, z: int, y: int) -> bool:
+    """Whether the block at (x, y, z) is one a player climbs."""
+    return any(near.pos.y == y for near in self.__ladders__.get((x, z), ()))
 
   def floors(self, x: int, z: int) -> tuple:
     """The heights a player stands at in the column (x, z), lowest first."""
@@ -193,6 +212,8 @@ class Terrain(BaseObject):
   def _moves(self, node: tuple) -> Iterator[tuple]:
     """Where a player goes from 'node' in a step: (node, cost, kind)."""
     x, z, h = node
+    #  the ladder its feet are in: up it, as far as its top
+    up = self._run(x, z, math.floor(h + _EPS))
     for dx, dz in _AROUND:
       nx, nz = x + dx, z + dz
       if not self.inside(nx, nz):
@@ -216,6 +237,8 @@ class Terrain(BaseObject):
           if self._clear(nx, nz, f, max(f, h) + self.HEIGHT):
             yield ((nx, nz, f), 3.0, 'door') if door else (
               (nx, nz, f), 1.0, 'walk')
+        elif self._descends(nx, nz, h, f):
+          yield (nx, nz, f), 1.0 + h - f, 'descend'
         elif h - f <= self.DROP + _EPS and self._clear(nx, nz, f,
                                                        h + self.HEIGHT):
           yield (nx, nz, f), 1.5, 'drop'
@@ -223,6 +246,32 @@ class Terrain(BaseObject):
         if (self.STEP + _EPS < f - h <= self.JUMP + _EPS and
             self._clear(x, z, h + self.HEIGHT, f + self.HEIGHT)):
           yield (nx, nz, f), 2.0, 'jump'
+        if (up is not None and not door and
+            self.STEP + _EPS < f - h and f <= up[1] + 1.0 + _EPS and
+            self._clear(x, z, h, f + self.HEIGHT)):
+          yield (nx, nz, f), 1.0 + 1.5 * (f - h), 'climb'
+
+  def _descends(self, x: int, z: int, h: float, f: float) -> bool:
+    """
+    Whether a player at h beside the column (x, z) comes down a ladder
+    in it to its floor f: the ladder at the block under h, down to no
+    more than a drop above f, and nothing in the way.
+    """
+    run = self._run(x, z, math.ceil(h - _EPS) - 1)
+    return (run is not None and f >= run[0] - self.DROP - _EPS and
+            self._clear(x, z, f, h + self.HEIGHT))
+
+  def _run(self, x: int, z: int, y: int) -> Optional[tuple]:
+    """The ladder in the column (x, z) through y: (lowest, highest)."""
+    ys = {near.pos.y for near in self.__ladders__.get((x, z), ())}
+    if y not in ys:
+      return None
+    low, high = y, y
+    while low - 1 in ys:
+      low -= 1
+    while high + 1 in ys:
+      high += 1
+    return low, high
 
   def _side(self, x: int, z: int, h: float, f: float) -> bool:
     """Whether a corner's side column is passable between h and f."""

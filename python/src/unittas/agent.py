@@ -98,10 +98,16 @@ class Agent(BaseObject):
   NUDGE = 0.3
   #  The least margin walkTo takes: a tap moves about 0.065 blocks
   LEAST = 0.05
-  #  How walkTo looks around for its way: blocks across, below, above;
-  #  and how many looks it takes at most to get to a place further off
+  #  How walkTo looks around for its way: blocks across, below, above
+  #  (further up or down to a place's level); and how many looks it takes
+  #  at most to get to a place further off
   LOOK = (8, 3, 3)
   LOOKS = 12
+  #  In the air a player keeps 0.91 of its motion a tick: what it moves
+  #  yet, by its motion; and how far from a place it lets that drift
+  #  take it on, coming down a ladder, before it pushes against it
+  DRIFT = 1.0 / (1.0 - 0.91)
+  HOVER = 0.1
   #  Blocked when it gained less than 0.05 blocks in this many ticks
   #  pushing into something
   STUCK = 10
@@ -194,9 +200,11 @@ class Agent(BaseObject):
   def walkTo(self, place: Union[Vec3, BlockPos], within: float = 0.25,
              ticks: Optional[int] = None) -> Perception:
     """
-    Walks to 'place' on the level it stands on, and stops there: within
-    'within' blocks across, and still. A BlockPos is its floor's middle.
-    What it perceives there.
+    Walks to 'place' and stops there: within 'within' blocks across, and
+    still. A BlockPos is its floor's middle. Its way goes around what is
+    in it, up steps and slabs, jumps up a block, drops down three, opens
+    doors, and goes up and down ladders (SPEC.md 15.6 step 7). What it
+    perceives there.
 
     Parameters
     ----------
@@ -210,8 +218,8 @@ class Agent(BaseObject):
     Raises
     ------
     TesttimeError
-      Something blocks the way, the place is on another level (terrain
-      is SPEC.md 15.6 step 7's), or the tick budget is spent.
+      There is no way to the place in what the agent sees, something it
+      didn't see blocks the way, or the tick budget is spent.
     """
     if isinstance(place, BlockPos):
       place = place.center()
@@ -235,39 +243,211 @@ class Agent(BaseObject):
       return math.hypot(place.x - x, place.z - z) <= within
 
     seen = self.perceive(*self.LOOK)
+    look = self._look(seen.pos, place)
+    if look != self.LOOK:
+      seen = self.perceive(*look)
     first = seen.tick
     if ticks is None:
       ticks = 100 + int(math.ceil(12 * math.hypot(place.x - seen.pos.x,
-                                                 place.z - seen.pos.z)))
+                                                 place.z - seen.pos.z) +
+                                  30 * abs(place.y - seen.pos.y)))
     for _ in range(self.LOOKS):
-      terrain = Terrain(seen, *self.LOOK)
+      terrain = Terrain(seen, *look)
       path, whole = terrain.path(seen.pos, place)
       if path is None:
         infoSpec = """no way to %s from %s in what the agent sees (%d blocks
         around, %d below, %d above)"""
-        info = infoSpec % ((_place(place), _place(seen.pos)) + self.LOOK)
+        info = infoSpec % ((_place(place), _place(seen.pos)) + look)
         raise TesttimeError(step, seen, ' '.join(info.split()))
       try:
-        stops = path[:-1] if whole else path
-        for at, point in enumerate(stops):
+        before = seen.pos
+        for at, point in enumerate(path):
+          #  the place on its level is the stop's, after
+          if (whole and at == len(path) - 1 and
+              abs(point.y - seen.pos.y) <= Terrain.STEP):
+            break
           column = (math.floor(point.x), math.floor(point.z))
           if terrain.doors(*column):
             after = path[at + 1] if at + 1 < len(path) else place
             self._throughDoor(step, terrain.doors(*column)[0].pos, point,
                               after)
-          seen = self._pass(step, point, first, ticks)
-        #  the place up or down a level: over it first, then the stop
-        if whole and abs(path[-1].y - seen.pos.y) > Terrain.STEP:
-          seen = self._pass(step, path[-1], first, ticks)
+          seen = self._toward(step, terrain, before, point, first, ticks,
+                              seen)
+          before = point
       finally:
         self.letGo()
       if whole:
         left = ticks - (seen.tick - first)
         return self._walk(step, place, arrived, max(1, left), seen)
-      seen = self.perceive(*self.LOOK)
+      look = self._look(seen.pos, place)
+      seen = self.perceive(*look)
     infoSpec = """%s is further than %d looks around took the agent, at
     %s"""
     info = infoSpec % (_place(place), self.LOOKS, _place(seen.pos))
+    raise TesttimeError(step, seen, ' '.join(info.split()))
+
+  def _look(self, pos: Vec3, place: Vec3) -> tuple:
+    """
+    How far walkTo looks from 'pos' for its way to 'place': LOOK's, and
+    up or down to the place's floor and the room over it (8 at most).
+    """
+    around, below, above = self.LOOK
+    feet = math.floor(pos.y + 1e-6)
+    below = min(8, max(below, feet - math.floor(place.y) + 1))
+    above = min(8, max(above, math.ceil(place.y) - feet))
+    return around, below, above
+
+  def _toward(self, step: str, terrain: Terrain, before: Vec3,
+              point: Vec3, first: int, ticks: int,
+              seen: Perception) -> Perception:
+    """
+    On to the waypoint 'point' from 'before', the one passed last: up a
+    ladder its feet are in, down a ladder in the point's column, else
+    walking (jumping, dropping) on.
+    """
+    here = (math.floor(before.x), math.floor(before.z))
+    there = (math.floor(point.x), math.floor(point.z))
+    feet = seen.pos.y
+    if point.y > feet + Terrain.STEP and terrain.climbable(
+        here[0], here[1], math.floor(feet + 1e-6)):
+      return self._upLadder(step, before, point, first, ticks)
+    if point.y < feet - Terrain.STEP and terrain.climbable(
+        there[0], there[1], math.ceil(feet - 1e-6) - 1):
+      return self._downLadder(step, terrain, before, point, first, ticks)
+    return self._pass(step, point, first, ticks)
+
+  def _upLadder(self, step: str, foot: Vec3, point: Vec3, first: int,
+                ticks: int) -> Perception:
+    """
+    Up a ladder to the ledge 'point', as a player climbs: still at the
+    middle of its foot's block first (a player drifting across as it
+    climbs slips off), then pushing towards the ledge (1.7.10 lifts a
+    player on a ladder pushing into anything).
+    """
+    middle = Vec3(math.floor(foot.x) + 0.5, foot.y,
+                  math.floor(foot.z) + 0.5)
+    seen = self.perceive()
+
+    def lined(x: float, z: float) -> bool:
+      return math.hypot(middle.x - x, middle.z - z) <= 0.15
+
+    self._walk(step, middle, lined, max(1, ticks - (seen.tick - first)),
+               seen)
+    return self._pass(step, point, first, ticks)
+
+  def _downLadder(self, step: str, terrain: Terrain, top: Vec3,
+                  point: Vec3, first: int, ticks: int) -> Perception:
+    """
+    Down a ladder to 'point', as a player goes: still at the middle of
+    the ledge 'top' beside it; sneaking straight towards it until the
+    game holds it at the edge; still, then one step off; then held over
+    the room the ladder leaves in its column, against its drift, as it
+    slides down. In the air off the ladder beside it: TesttimeError, it
+    slipped off.
+    """
+    middle = Vec3(math.floor(top.x) + 0.5, top.y, math.floor(top.z) + 0.5)
+    column = (math.floor(point.x), math.floor(point.z))
+    #  a point far off straight on: its look doesn't wander near the edge
+    ahead = Vec3(middle.x + 100.0 * (column[0] + 0.5 - middle.x), top.y,
+                 middle.z + 100.0 * (column[1] + 0.5 - middle.z))
+    seen = self.perceive()
+
+    def lined(x: float, z: float) -> bool:
+      return math.hypot(middle.x - x, middle.z - z) <= 0.15
+
+    seen = self._walk(step, middle, lined,
+                      max(1, ticks - (seen.tick - first)), seen)
+    try:
+      #  towards it sneaking: the game holds a sneaking player at an edge
+      still = 0
+      self._hold('key.sneak', True)
+      while seen.onGround and still < 2:
+        self._spent(step, seen, point, first, ticks)
+        self._hold('key.forward', True)
+        self._face(seen, ahead)
+        was, seen = seen, self.perceive()
+        moved = math.hypot(seen.pos.x - was.pos.x, seen.pos.z - was.pos.z)
+        gone = math.hypot(seen.pos.x - middle.x, seen.pos.z - middle.z)
+        still = still + 1 if moved < 0.002 and gone > 0.2 else 0
+      if seen.onGround:
+        #  held there: still, then a step off it, not sneaking
+        self._hold('key.forward', False)
+        while math.hypot(seen.motion.x, seen.motion.z) >= self.STOPPED:
+          self._spent(step, seen, point, first, ticks)
+          self.__game__.ticks(1)
+          seen = self.perceive()
+        self._hold('key.sneak', False)
+        self._hold('key.forward', True)
+        self._hold('key.forward', False)
+        seen = self.perceive()
+      self._hold('key.sneak', False)
+      room = self._room(seen, column, point.y)
+      while not (seen.onGround and abs(point.y - seen.pos.y) < 0.3):
+        self._spent(step, seen, point, first, ticks)
+        feet = math.floor(seen.pos.y + 1e-6)
+        if not (seen.onLadder or seen.onGround) and terrain.climbable(
+            column[0], column[1], feet):
+          infoSpec = """slipped off the ladder at %s: in the air at %s"""
+          info = infoSpec % (_place(BlockPos(column[0], feet, column[1])),
+                             _place(seen.pos))
+          raise TesttimeError(step, seen, info)
+        self._steer(seen, room)
+        seen = self.perceive()
+    finally:
+      self.letGo()
+    return seen
+
+  @staticmethod
+  def _room(seen: Perception, column: tuple, y: float) -> Vec3:
+    """
+    The middle of where a player's middle is in the column, its box
+    clear of the boxes of the ladder there (along an edge each), at y.
+    """
+    x, z = column
+    low, high = [float(x), float(z)], [x + 1.0, z + 1.0]
+    for near in seen.blocks:
+      if not near.climbable or (near.pos.x, near.pos.z) != column:
+        continue
+      for box in near.boxes:
+        for axis, (lo, hi) in enumerate(((box.minX, box.maxX),
+                                         (box.minZ, box.maxZ))):
+          middle = column[axis] + 0.5
+          if lo > middle:
+            high[axis] = min(high[axis], lo - 0.3)
+          elif hi < middle:
+            low[axis] = max(low[axis], hi + 0.3)
+    return Vec3((low[0] + high[0]) / 2, y, (low[1] + high[1]) / 2)
+
+  def _steer(self, seen: Perception, point: Vec3) -> None:
+    """
+    Holds the keys that bring the player to rest over 'point' in the air,
+    by where its drift would take it: towards it, or against the drift,
+    along its look and across it. A tick passes when nothing changes.
+    """
+    ex = point.x - (seen.pos.x + seen.motion.x * self.DRIFT)
+    ez = point.z - (seen.pos.z + seen.motion.z * self.DRIFT)
+    yaw = math.radians(seen.look.yaw)
+    along = -math.sin(yaw) * ex + math.cos(yaw) * ez
+    across = math.cos(yaw) * ex + math.sin(yaw) * ez
+    keys = {'key.forward': along > self.HOVER,
+            'key.back': along < -self.HOVER,
+            'key.left': across > self.HOVER,
+            'key.right': across < -self.HOVER}
+    if all(down == (key in self.__held__) for key, down in keys.items()):
+      self.__game__.ticks(1)
+      return
+    for key, down in sorted(keys.items()):
+      self._hold(key, down)
+
+  def _spent(self, step: str, seen: Perception, point: Vec3, first: int,
+             ticks: int) -> None:
+    """TesttimeError when the walk's tick budget is spent."""
+    if seen.tick - first <= ticks:
+      return
+    across = math.hypot(point.x - seen.pos.x, point.z - seen.pos.z)
+    infoSpec = """the tick budget (%d) is spent on the way, at %s, %.2f
+    blocks from the waypoint %s"""
+    info = infoSpec % (ticks, _place(seen.pos), across, _place(point))
     raise TesttimeError(step, seen, ' '.join(info.split()))
 
   def _throughDoor(self, step: str, door: BlockPos, point: Vec3,
@@ -315,7 +495,8 @@ class Agent(BaseObject):
     """
     Walks to a waypoint without stopping there: on to the next once over
     it, on its level and on the ground. Holds jump while the waypoint is
-    higher than a step, near it.
+    higher than a step, near it; on a ladder it pushes on instead, and
+    climbs.
     """
     pushed = []
     seen = self.perceive()
@@ -324,16 +505,15 @@ class Agent(BaseObject):
       rise = point.y - seen.pos.y
       if across < 0.45 and abs(rise) < 0.3 and seen.onGround:
         return seen
-      if seen.tick - first > ticks:
-        infoSpec = """the tick budget (%d) is spent on the way, at %s, %.2f
-        blocks from the waypoint %s"""
-        info = infoSpec % (ticks, _place(seen.pos), across, _place(point))
-        raise TesttimeError(step, seen, ' '.join(info.split()))
-      pushed.append((seen.tick, across))
-      if rise <= Terrain.STEP:
-        self._blocked(step, seen, point, across, pushed, first)
+      self._spent(step, seen, point, first, ticks)
+      #  what is left of the way: climbing gains it too
+      left = across + max(0.0, rise)
+      pushed.append((seen.tick, left))
+      jump = rise > Terrain.STEP and not seen.onLadder
+      if not jump:
+        self._blocked(step, seen, point, left, pushed, first)
       self._hold('key.sneak', False)
-      self._hold('key.jump', rise > Terrain.STEP and across < 1.6)
+      self._hold('key.jump', jump and across < 1.6)
       self._hold('key.forward', True)
       self._face(seen, point)
       seen = self.perceive()

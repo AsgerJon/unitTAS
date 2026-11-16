@@ -3,7 +3,8 @@ Terrain (SPEC.md 15.6 step 7): what the agent knows of the ground around
 it from what it perceives. Where a player stands in each column (on a
 block, a slab, a stair's top, not in water, not under a low ceiling),
 and the ways between columns: walking up half a block as the game steps,
-jumping up a block with room above, dropping down three. A path from
+jumping up a block with room above, dropping down three; up a ladder
+to a ledge no higher than its top, and down one. A path from
 where it stands to a place, straightened where a straight line is clear,
 around what is in the way; to the edge of what it sees, towards a place
 further off; none to a place it can't get to.
@@ -35,6 +36,21 @@ def door(x: int, z: int, opens: bool = True) -> list:
   return [NearBlock(BlockPos(x, y, z), 'minecraft:wooden_door', 0,
                     (Box(x, y, z, x + 1, y + 1, z + 0.1875),), False, False,
                     opens) for y in (4, 5)]
+
+
+#  A ladder's box along each edge of its block, and the meta that says so
+EDGES = {'south': (2, (0.0, 0.875, 1.0, 1.0)),
+         'north': (3, (0.0, 0.0, 1.0, 0.125)),
+         'east': (4, (0.875, 0.0, 1.0, 1.0)),
+         'west': (5, (0.0, 0.0, 0.125, 1.0))}
+
+
+def ladder(x: int, z: int, ys: range, edge: str = 'south') -> list:
+  """A ladder's blocks at (x, y, z) for each y, along the edge named."""
+  meta, (x0, z0, x1, z1) = EDGES[edge]
+  return [NearBlock(BlockPos(x, y, z), 'minecraft:ladder', meta,
+                    (Box(x + x0, y, z + z0, x + x1, y + 1, z + z1),),
+                    False, True, False) for y in ys]
 
 
 def seen(blocks: list, feet: Vec3 = Vec3(0.5, 4.0, 0.5),
@@ -198,6 +214,55 @@ class PathTests(unittest.TestCase):
   def test_where_it_stands(self) -> None:
     path, whole = terrain().path(Vec3(0.5, 4.0, 0.5), Vec3(0.8, 4.0, 0.2))
     self.assertEqual(([Vec3(0.8, 4.0, 0.2)], True), (path, whole))
+
+
+class LadderTests(unittest.TestCase):
+  """
+  A wall four high across z 3, and a ladder on its north face at x 0
+  (its blocks at z 2, their boxes along their south edge).
+  """
+
+  def high(self, ys: range = range(4, 8), feet: Vec3 = Vec3(0.5, 4.0, 0.5),
+           below: int = 3) -> Terrain:
+    blocks = (wall(3, range(-8, 9), 4) + ladder(0, 2, ys) +
+              [block(x, 3, z) for x in range(-8, 9) for z in range(-8, 9)
+               if z != 3])
+    return Terrain(Perception(pos=feet, eye=feet.above(1.62),
+                              blocks=tuple(blocks)),
+                   around=8, below=below, above=4)
+
+  def test_a_ladder_is_no_wall(self) -> None:
+    """Its thin box doesn't fill its column: a player stands under it."""
+    here = self.high()
+    self.assertEqual((4.0,), here.floors(0, 2))
+    self.assertEqual([4, 5, 6, 7],
+                     [near.pos.y for near in here.ladders(0, 2)])
+    self.assertTrue(here.climbable(0, 2, 7))
+    self.assertFalse(here.climbable(0, 2, 8))
+    self.assertEqual((8.0,), here.floors(0, 3), 'the wall\'s top')
+
+  def test_up_a_ladder(self) -> None:
+    here = self.high()
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 8.0, 3.5))
+    self.assertTrue(whole)
+    #  to its foot, then up it onto the wall
+    self.assertEqual([Vec3(0.5, 4.0, 2.5), Vec3(0.5, 8.0, 3.5)], path[-2:])
+
+  def test_not_above_its_top(self) -> None:
+    here = self.high(ys=range(4, 6))
+    path, whole = here.path(Vec3(0.5, 4.0, 0.5), Vec3(0.5, 8.0, 3.5))
+    self.assertIsNone(path)
+
+  def test_down_a_ladder(self) -> None:
+    here = self.high(feet=Vec3(0.5, 8.0, 3.5), below=5)
+    path, whole = here.path(Vec3(0.5, 8.0, 3.5), Vec3(0.5, 4.0, 0.5))
+    self.assertTrue(whole)
+    self.assertEqual([Vec3(0.5, 4.0, 2.5), Vec3(0.5, 4.0, 0.5)], path)
+
+  def test_not_down_four_without_one(self) -> None:
+    here = self.high(ys=range(0), feet=Vec3(0.5, 8.0, 3.5), below=5)
+    path, whole = here.path(Vec3(0.5, 8.0, 3.5), Vec3(0.5, 4.0, 0.5))
+    self.assertIsNone(path)
 
 
 if __name__ == '__main__':
