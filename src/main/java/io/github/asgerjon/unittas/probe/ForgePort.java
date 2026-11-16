@@ -142,6 +142,8 @@ public final class ForgePort implements Port {
 		probe.register(Op.onSide("world.reset", Side.SERVER));
 		// the game's things (8.4 to 8.10), given their bodies at preInit (ThingOps)
 		probe.register(Op.onSide("player.look", Side.CLIENT));
+		// what the player perceives, for the agent (SPEC.md 15.6 step 1), given its body at preInit (Perceive)
+		probe.register(Op.onSide("player.perceive", Side.CLIENT).reading());
 		probe.register(Op.onSide("inventory.set", Side.SERVER));
 		probe.register(Op.onSide("block.get", Side.SERVER, Side.CLIENT).reading());
 		probe.register(Op.onSide("block.ground", Side.SERVER, Side.CLIENT).reading());

@@ -68,6 +68,7 @@ public final class ClientHooks {
 		GameOps.bind(probe);
 		ResetOps.bind(probe);
 		ThingOps.bind(probe);
+		Perceive.bind(probe);
 		JoinOps.bind(probe);
 		// reflection's side-specific parts: the client's player (or the named one on its server) and its Minecraft
 		Reflect.players = GameOps::player;

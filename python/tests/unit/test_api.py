@@ -24,9 +24,11 @@ from unittas.codec import toJson
 from unittas.errors import Missing, NoResult, NotFound, UnknownVersion
 from unittas.link import Listener
 from unittas.mappings import Mappings
+from unittas.perception import Perception
 from unittas.values import Block, BlockPos, ChatLine, Entity, Inventory, Item, Look, Player, Screen, Sound, Vec3
 from unittas.wire import Role
 from worktoy.waitaminute.desc import ReadOnlyError
+from test_perception import LOOKING_DOWN
 from test_values import PIG, PLAYER
 
 WOOL = {'id': 'minecraft:wool', 'count': 3, 'meta': 14}
@@ -341,6 +343,16 @@ class GameTests(unittest.TestCase):
       ('player.teleport', None, {'pos': [0.5, 70.0, 0.5], 'dimension': 'minecraft:the_end'}),
       ('player.look', None, {'yaw': 45.0, 'pitch': 10.0}),
     ], self.sent())
+
+  def test_what_the_player_perceives(self) -> None:
+    """player.perceive on the client (SPEC.md 15.6 step 1), as a Perception."""
+    game = self.game({'player.perceive': lambda args, side: LOOKING_DOWN})
+    seen = game.perceive()
+    self.assertIsInstance(seen, Perception)
+    self.assertEqual(BlockPos(0, 3, 0), seen.target.pos)
+    game.perceive(around=4)
+    self.assertEqual([('player.perceive', None, {'around': 2}),
+                      ('player.perceive', None, {'around': 4})], self.sent())
 
   def test_blocks_and_entities(self) -> None:
     game = self.game({

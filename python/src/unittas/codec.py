@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .box import Box
+from .nearblock import NearBlock
+from .perception import Perception
+from .target import FACES, Target
 from .values import (Block, BlockPos, ChatLine, Effect, Entity, Inventory, Item, LogLine, Look, Player, Screen, Sound,
                      Vec3)
 
@@ -25,7 +29,8 @@ if TYPE_CHECKING:  # pragma: no cover
 _MISSING = object()
 _NAMES = {Vec3: 'a position', BlockPos: 'a block position', Look: 'a look', Item: 'an item', Block: 'a block',
           Inventory: 'an inventory', Entity: 'an entity', Effect: 'an effect', Player: 'a player',
-          ChatLine: 'a chat line', Sound: 'a sound', LogLine: 'a log line', Screen: 'a screen'}
+          ChatLine: 'a chat line', Sound: 'a sound', LogLine: 'a log line', Screen: 'a screen', Box: 'a box',
+          Target: 'a target', NearBlock: 'a block near', Perception: 'a perception'}
 
 
 # ---------------------------------------------------------------- reading the fields
@@ -286,6 +291,91 @@ def _screenJson(screen: Screen) -> dict:
   return {'class': screen.className, 'chat': screen.chat, 'container': screen.container, 'pauses': screen.pauses}
 
 
+def _box(data: Any) -> Box:
+  if not isinstance(data, list) or len(data) != 6:
+    raise ValueError('a box is a list of six numbers (its least corner, then its greatest), not %r' % (data,))
+  return Box(*[_check(number, float, 'a box', axis) for number, axis in
+               zip(data, ('minX', 'minY', 'minZ', 'maxX', 'maxY', 'maxZ'))])
+
+
+def _boxJson(box: Box) -> list:
+  return [box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ]
+
+
+def _target(data: Any) -> Target:
+  """The crosshair's target, in player.use's shape with what was hit; Target.NOTHING for null."""
+  if data is None:
+    return Target.NOTHING
+  body = _object(data, Target)
+  what = 'a target'
+  hit = _vec3(_need(body, 'hit', list, what))
+  if 'block' in body:
+    face = _need(body, 'face', str, what)
+    if face not in FACES:
+      raise ValueError('a target\'s "face" is one of %s, not %r' % (', '.join(FACES), face))
+    return Target(kind='block', pos=_blockPos(body['block']), face=face, id=_need(body, 'id', str, what),
+                  meta=_need(body, 'meta', int, what), hit=hit)
+  if 'entity' in body:
+    return Target(kind='entity', entity=_need(body, 'entity', int, what), type=_need(body, 'type', str, what),
+                  hit=hit)
+  raise ValueError('a target has neither "block" nor "entity": %r' % (data,))
+
+
+def _targetJson(target: Target) -> Any:
+  if target.kind == 'block':
+    return {'block': _blockPosJson(target.pos), 'face': target.face, 'hit': _vec3Json(target.hit), 'id': target.id,
+            'meta': target.meta}
+  if target.kind == 'entity':
+    return {'entity': target.entity, 'type': target.type, 'hit': _vec3Json(target.hit)}
+  return None
+
+
+def _nearBlock(data: Any) -> NearBlock:
+  body = _object(data, NearBlock)
+  what = 'a block near'
+  return NearBlock(_blockPos(_need(body, 'pos', list, what)), _need(body, 'id', str, what),
+                   _need(body, 'meta', int, what), tuple(_box(box) for box in _need(body, 'boxes', list, what)),
+                   _need(body, 'liquid', bool, what), _need(body, 'climbable', bool, what))
+
+
+def _nearBlockJson(block: NearBlock) -> dict:
+  return {'pos': _blockPosJson(block.pos), 'id': block.id, 'meta': block.meta,
+          'boxes': [_boxJson(box) for box in block.boxes], 'liquid': block.liquid, 'climbable': block.climbable}
+
+
+def _perception(data: Any) -> Perception:
+  body = _object(data, Perception)
+  what = 'a perception'
+  collided = _need(body, 'collided', dict, what)
+  reach = _need(body, 'reach', dict, what)
+  if 'target' not in body:
+    raise ValueError('%s has no "target"' % what)
+  return Perception(
+    tick=_need(body, 'tick', int, what), pos=_vec3(_need(body, 'pos', list, what)),
+    eye=_vec3(_need(body, 'eye', list, what)), box=_box(_need(body, 'box', list, what)),
+    look=_look(_need(body, 'look', dict, what)), motion=_vec3(_need(body, 'motion', list, what)),
+    onGround=_need(body, 'on_ground', bool, what),
+    collidedHorizontally=_need(collided, 'horizontally', bool, 'a perception\'s "collided"'),
+    collidedVertically=_need(collided, 'vertically', bool, 'a perception\'s "collided"'),
+    inWater=_need(body, 'in_water', bool, what), inLava=_need(body, 'in_lava', bool, what),
+    onLadder=_need(body, 'on_ladder', bool, what), sneaking=_need(body, 'sneaking', bool, what),
+    sprinting=_need(body, 'sprinting', bool, what), flying=_need(body, 'flying', bool, what),
+    blockReach=_need(reach, 'block', float, 'a perception\'s "reach"'),
+    entityReach=_need(reach, 'entity', float, 'a perception\'s "reach"'),
+    target=_target(body['target']),
+    blocks=tuple(_nearBlock(block) for block in _need(body, 'blocks', list, what)))
+
+
+def _perceptionJson(seen: Perception) -> dict:
+  return {'tick': seen.tick, 'pos': _vec3Json(seen.pos), 'eye': _vec3Json(seen.eye), 'box': _boxJson(seen.box),
+          'look': _lookJson(seen.look), 'motion': _vec3Json(seen.motion), 'on_ground': seen.onGround,
+          'collided': {'horizontally': seen.collidedHorizontally, 'vertically': seen.collidedVertically},
+          'in_water': seen.inWater, 'in_lava': seen.inLava, 'on_ladder': seen.onLadder, 'sneaking': seen.sneaking,
+          'sprinting': seen.sprinting, 'flying': seen.flying,
+          'reach': {'block': seen.blockReach, 'entity': seen.entityReach}, 'target': _targetJson(seen.target),
+          'blocks': [_nearBlockJson(block) for block in seen.blocks]}
+
+
 def _vec3Json(vec: Vec3) -> list:
   return [vec.x, vec.y, vec.z]
 
@@ -300,10 +390,12 @@ def _lookJson(look: Look) -> dict:
 
 _READERS = {Vec3: _vec3, BlockPos: _blockPos, Look: _look, Item: _item, Block: _block, Inventory: _inventory,
             Entity: _entity, Effect: _effect, Player: _player, ChatLine: _chatLine, Sound: _sound,
-            LogLine: _logLine, Screen: _screen}
+            LogLine: _logLine, Screen: _screen, Box: _box, Target: _target, NearBlock: _nearBlock,
+            Perception: _perception}
 _WRITERS = {Vec3: _vec3Json, BlockPos: _blockPosJson, Look: _lookJson, Item: _itemJson, Block: _blockJson,
             Inventory: _inventoryJson, Entity: _entityJson, Effect: _effectJson, Player: _playerJson,
-            ChatLine: _chatLineJson, Sound: _soundJson, LogLine: _logLineJson, Screen: _screenJson}
+            ChatLine: _chatLineJson, Sound: _soundJson, LogLine: _logLineJson, Screen: _screenJson, Box: _boxJson,
+            Target: _targetJson, NearBlock: _nearBlockJson, Perception: _perceptionJson}
 
 
 def fromJson(kind: type, data: Any) -> Any:

@@ -61,8 +61,15 @@ final class Values {
 		return item;
 	}
 
-	/** Where an entity stands: its feet (a client player's posY is at its eyes in 1.7.10: yOffset says how far). */
+	/**
+	 * Where an entity stands: its feet (a client player's posY is at its eyes in 1.7.10: yOffset says how far). A
+	 * player's are its collision box's foot: a sneaking client player's posY is 0.08 lower (its eye drops), while the
+	 * box stays on the ground.
+	 */
 	static List<Double> pos(Entity entity) {
+		if (entity instanceof EntityPlayer) {
+			return Arrays.asList(entity.posX, entity.boundingBox.minY, entity.posZ);
+		}
 		return Arrays.asList(entity.posX, entity.posY - entity.yOffset, entity.posZ);
 	}
 

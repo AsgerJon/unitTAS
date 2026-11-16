@@ -27,6 +27,7 @@ from worktoy.ezdata import EZData, EZField
 
 from .codec import fromJson, toJson
 from .errors import Cancelled, NoResult, UnknownVersion
+from .perception import Perception
 from .values import Block, BlockPos, ChatLine, Entity, Inventory, Item, LogLine, Look, Player, Screen, Sound, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -263,6 +264,14 @@ class Game:
 
   def look(self, yaw: float, pitch: float) -> None:
     self.request('player.look', toJson(Look(yaw, pitch)))
+
+  def perceive(self, around: int = 2) -> Perception:
+    """
+    What the client's player perceives now (SPEC.md 15.6 step 1): where it is and how it moves, what its crosshair
+    targets by the game's own pick, its reach, and the blocks that aren't air within 'around' blocks across, from the
+    one below its feet to the one above its head.
+    """
+    return fromJson(Perception, self.request('player.perceive', {'around': around}))
 
   # ---------------------------------------------------------------- the inventory
 

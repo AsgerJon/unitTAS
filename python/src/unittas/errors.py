@@ -13,6 +13,8 @@ connection itself, and one for each error type an answer can carry
 - NoMcdexThing: a thing the game reports that mcdex has no member for.
 - NeedFailed, Missing: a test's need the game doesn't meet, a FAIL
   (SPEC.md 13.2, 14.4); Missing is a thing vanilla lacks in that version.
+- TesttimeError: a step the agent couldn't complete, the test's ERROR
+  (SPEC.md 15.2).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -247,6 +249,27 @@ class Missing(NeedFailed):
                                              member.name, why))
     self.member = member
     self.version = version
+
+
+class TesttimeError(UnitTasError, RuntimeError):
+  """
+  A step the agent couldn't complete (SPEC.md 15.2): no way there, out of
+  reach, the tick budget spent. The test's ERROR, not its FAIL: the world
+  wasn't found wrong, the scenario couldn't be played. The message names
+  the step, what the agent did and what it saw.
+
+  Attributes
+  ----------
+  step : str
+    The agent's step, by its method's name ('walkTo').
+  seen : Perception
+    What the agent perceived last.
+  """
+
+  def __init__(self, step: str, seen: Any, why: str) -> None:
+    UnitTasError.__init__(self, '%s: %s' % (step, why))
+    self.step = step
+    self.seen = seen
 
 
 NO_RESULT_ERRORS = (Stalled, TimedOut, LinkError)
