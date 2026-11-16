@@ -9,6 +9,9 @@ connection itself, and one for each error type an answer can carry
   failed, with the error's fields as they came.
 - NoResult: no test result could be obtained.
 - UnknownVersion: a game whose version mcdex has no release for.
+- NoMcdexData: a version mcdex has no data on for a thing's catalogue.
+- NeedFailed, Missing: a test's need the game doesn't meet, a FAIL
+  (SPEC.md 13.2, 14.4); Missing is a thing vanilla lacks in that version.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -169,6 +172,56 @@ class UnknownVersion(NoResult):
 
 #  What ends a test with no result rather than a verdict: the game stuck, gone, or past a wall-clock guard. A mod's
 #  code that threw (GameError) is a result: an ERROR.
+class NoMcdexData(NoResult):
+  """
+  mcdex has no data on a thing in the game's version (a particle before
+  1.8, say), so whether the game has it can't be told: a test naming it
+  there has no result (SPEC.md 14.8, M3).
+
+  Attributes
+  ----------
+  member : Any
+    The mcdex member the test named.
+  version : Any
+    The game's version, mcdex's member.
+  """
+
+  def __init__(self, member: Any, version: Any, why: str) -> None:
+    NoResult.__init__(self, '%s.%s: %s' % (type(member).__name__,
+                                           member.name, why))
+    self.member = member
+    self.version = version
+
+
+class NeedFailed(UnitTasError, AssertionError):
+  """
+  Something a test needs that the game doesn't meet: a FAIL, saying which
+  need and why (SPEC.md 13.2, 14.4). unittest counts an AssertionError as
+  a failure, not an error.
+  """
+
+
+class Missing(NeedFailed):
+  """
+  A thing vanilla lacks in the game's version, by mcdex's own answer
+  (NotInVersion), which the message gives: 'MCItems.Elytra: Vanilla
+  1.7.10 has no 'elytra'; vanilla added it in 1.9!'.
+
+  Attributes
+  ----------
+  member : Any
+    The mcdex member the test named.
+  version : Any
+    The game's version, mcdex's member.
+  """
+
+  def __init__(self, member: Any, version: Any, why: str) -> None:
+    NeedFailed.__init__(self, '%s.%s: %s' % (type(member).__name__,
+                                             member.name, why))
+    self.member = member
+    self.version = version
+
+
 NO_RESULT_ERRORS = (Stalled, TimedOut, LinkError)
 
 

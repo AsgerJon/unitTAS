@@ -232,12 +232,16 @@ class Game:
     """The player kicked, as /kick does: its client is shown the reason."""
     self.request('player.kick', {'player': player, 'reason': reason})
 
-  def teleport(self, pos: Any, dimension: Optional[str] = None, look: Optional[Look] = None,
+  def teleport(self, pos: Any, dimension: Any = None, look: Optional[Look] = None,
                timeout: Optional[float] = None) -> None:
+    """To pos, in 'dimension' if given: its id, or an MCDimensions member (SPEC.md 14.4)."""
     args = {'pos': _vec3(pos)}
     if look is not None:
       args['look'] = toJson(look)
     if dimension is not None:
+      if not isinstance(dimension, (str, int)):
+        from .things import dimensionOf
+        dimension = dimensionOf(dimension, self.version)
       args['dimension'] = dimension
     self.request('player.teleport', args, timeout=timeout)
 
@@ -256,7 +260,18 @@ class Game:
   def inventory(self, side: Optional[str] = None) -> Inventory:
     return fromJson(Inventory, self.request('inventory.get', None, side))
 
-  def setSlot(self, name: str, item: Item) -> None:
+  def setSlot(self, name: str, item: Any, count: int = 1) -> None:
+    """
+    The slot set to 'item': an Item, or an MCItems member as the game's
+    version has it, 'count' of them (SPEC.md 14.4). Missing where vanilla
+    lacks the member, before the game is asked.
+    """
+    if isinstance(item, Item):
+      if count != 1:
+        raise TypeError("setSlot's count is for an MCItems member; an Item carries its own (%d)" % item.count)
+    else:
+      from .things import itemOf
+      item = itemOf(item, self.version, count)
     self.request('inventory.set', {'slot': name, 'item': toJson(item)})
 
   # ---------------------------------------------------------------- blocks
@@ -267,13 +282,41 @@ class Game:
       args['tile'] = True
     return fromJson(Block, self.request('block.get', args, side))
 
-  def setBlock(self, pos: Any, block: Union[Block, str]) -> None:
-    self.request('block.set', {'pos': _blockPos(pos),
-                               'block': toJson(block if isinstance(block, Block) else Block(block, 0))})
+  def setBlock(self, pos: Any, block: Any) -> None:
+    """
+    The block at pos set to 'block': a Block, an id, or an MCBlocks member
+    as the game's version has it, with its block entity's data where the
+    version tells it apart by that (1.7.10's skulls, its flower pots).
+    """
+    tile = ''
+    if isinstance(block, str):
+      block = Block(block, 0)
+    elif not isinstance(block, Block):
+      from .things import blockOf
+      block, tile = blockOf(block, self.version)
+    args = {'pos': _blockPos(pos), 'block': toJson(block)}
+    if tile:
+      args['tile'] = tile
+    self.request('block.set', args)
 
   # ---------------------------------------------------------------- entities
 
-  def spawn(self, kind: str, pos: Any, nbt: Optional[str] = None) -> Entity:
+  def spawn(self, kind: Any, pos: Any, nbt: Optional[str] = None) -> Entity:
+    """
+    An entity of 'kind' (its type, or an MCEntities member as the game's
+    version has it) spawned at pos, with 'nbt' if given. A member whose
+    version tells it apart by its data (1.7.10's wither skeleton) brings
+    that data, and then takes none besides.
+    """
+    if not isinstance(kind, str):
+      from .things import entityOf
+      member = kind
+      kind, data = entityOf(member, self.version)
+      if data:
+        if nbt is not None:
+          raise TypeError('%s.%s is spawned with its own data (%s) in this version; give it none besides' % (
+            type(member).__name__, member.name, data))
+        nbt = data
     args = {'type': kind, 'pos': _vec3(pos)}
     if nbt is not None:
       args['nbt'] = nbt
@@ -282,10 +325,24 @@ class Game:
   def entity(self, entity: Union[Entity, int], side: Optional[str] = None) -> Entity:
     return fromJson(Entity, self.request('entity.get', {'entity': _entityId(entity)}, side))
 
-  def entities(self, near: Any = 'player', radius: float = 16, type: Optional[str] = None,
+  def entities(self, near: Any = 'player', radius: float = 16, type: Any = None,
                side: Optional[str] = None) -> tuple:
+    """
+    The entities near, nearest first; of 'type' if given: its id, or an
+    MCEntities member. A member its version tells apart by its data needs
+    each entity's data read, which comes with SPEC.md 14.5 step 4.
+    """
     args = {'near': {'pos': near if near == 'player' else _vec3(near), 'radius': radius}}
     if type is not None:
+      if not isinstance(type, (str, list, tuple)):
+        from .things import entityOf
+        member = type
+        type, data = entityOf(member, self.version)
+        if data:
+          #  'type' is this method's parameter here, so the member's class is read as __class__
+          raise NotImplementedError("%s.%s is a %s told apart by its data (%s) in this version: listing it needs "
+                                    "each entity's data read (SPEC.md 14.5 step 4)"
+                                    % (member.__class__.__name__, member.name, type, data))
       args['type'] = type
     return tuple(fromJson(Entity, each) for each in self.request('entity.list', args, side))
 

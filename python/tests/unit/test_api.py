@@ -15,11 +15,13 @@ import time
 import unittest
 
 import mcdex
-from mcdex import Version
+from mcdex import (MCBlocks, MCDimensions, MCEntities, MCItems,
+                   Version)
 
 from fakeprobe import FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
-from unittas.errors import NoResult, NotFound, UnknownVersion
+from unittas.codec import toJson
+from unittas.errors import Missing, NoResult, NotFound, UnknownVersion
 from unittas.link import Listener
 from unittas.mappings import Mappings
 from unittas.values import Block, BlockPos, ChatLine, Entity, Inventory, Item, Look, Player, Screen, Sound, Vec3
@@ -87,6 +89,97 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(ReadOnlyError):
       game.version = Version.V26_3
     self.assertIs(Version.V1_7_10, game.version)
+
+  def things(self, minecraft: str) -> Game:
+    """A game of that version that takes things and answers plainly."""
+    return self.game({'inventory.set': lambda args, side: {},
+                      'block.set': lambda args, side: {},
+                      'entity.spawn': lambda args, side: dict(PIG),
+                      'player.teleport': lambda args, side: {},
+                      'entity.list': lambda args, side: []},
+                     minecraft=minecraft)
+
+  def args(self, op: str) -> list:
+    """The arguments of each request of that op, in order."""
+    return [args for name, side, args in self.sent() if name == op]
+
+  def test_things_by_mcdex_member_in_1_7_10(self) -> None:
+    """Each member as 1.7.10 has it (SPEC.md 14.4)."""
+    game = self.things('1.7.10')
+    game.setSlot('chest', MCItems.PinkWool, 3)
+    game.setBlock((1, 4, 1), MCBlocks.RedWool)
+    game.setBlock((2, 4, 2), MCBlocks.WitherSkeletonSkull)
+    game.spawn(MCEntities.WitherSkeleton, (0, 4, 0))
+    game.teleport((0, 64, 0), dimension=MCDimensions.TheNether)
+    game.entities(type=MCEntities.Zombie)
+    self.assertEqual(toJson(Item('minecraft:wool', 3, 6)),
+                     self.args('inventory.set')[0]['item'])
+    plain, skull = self.args('block.set')
+    self.assertEqual(toJson(Block('minecraft:wool', 14)), plain['block'])
+    self.assertNotIn('tile', plain)
+    self.assertEqual(toJson(Block('minecraft:skull', 1)), skull['block'])
+    self.assertEqual('{SkullType:1b}', skull['tile'])
+    spawned = self.args('entity.spawn')[0]
+    self.assertEqual(('Skeleton', '{SkeletonType:1}'),
+                     (spawned['type'], spawned['nbt']))
+    self.assertEqual(-1, self.args('player.teleport')[0]['dimension'])
+    self.assertEqual('Zombie', self.args('entity.list')[0]['type'])
+
+  def test_things_by_mcdex_member_in_26_3(self) -> None:
+    """The same members as 26.3 has them."""
+    game = self.things('26.3')
+    game.setSlot('chest', MCItems.PinkWool)
+    game.setBlock((1, 4, 1), MCBlocks.RedWool)
+    game.spawn(MCEntities.WitherSkeleton, (0, 4, 0))
+    game.teleport((0, 64, 0), dimension=MCDimensions.TheNether)
+    self.assertEqual(toJson(Item('minecraft:pink_wool', 1, 0)),
+                     self.args('inventory.set')[0]['item'])
+    self.assertEqual(toJson(Block('minecraft:red_wool', 0)),
+                     self.args('block.set')[0]['block'])
+    spawned = self.args('entity.spawn')[0]
+    self.assertEqual('minecraft:wither_skeleton', spawned['type'])
+    self.assertNotIn('nbt', spawned)
+    self.assertEqual('minecraft:the_nether',
+                     self.args('player.teleport')[0]['dimension'])
+
+  def test_a_member_vanilla_lacks_is_missing_and_nothing_is_sent(
+      self) -> None:
+    """A FAIL with mcdex's reason, before the game is asked."""
+    game = self.things('1.7.10')
+    with self.assertRaises(Missing) as raised:
+      game.setSlot('chest', MCItems.Elytra)
+    self.assertIn("Vanilla 1.7.10 has no 'elytra'", str(raised.exception))
+    self.assertEqual([], self.args('inventory.set'))
+
+  def test_strings_and_values_go_through_as_before(self) -> None:
+    """The version-bound way stays (M1)."""
+    game = self.things('1.7.10')
+    game.setSlot('held', Item('minecraft:stone', 2, 0))
+    game.setBlock((0, 4, 0), 'minecraft:gold_block')
+    game.spawn('Pig', (0, 4, 0), nbt='{Saddle:1b}')
+    game.teleport((0, 64, 0), dimension='minecraft:the_end')
+    self.assertEqual(toJson(Item('minecraft:stone', 2, 0)),
+                     self.args('inventory.set')[0]['item'])
+    self.assertEqual(('Pig', '{Saddle:1b}'),
+                     (self.args('entity.spawn')[0]['type'],
+                      self.args('entity.spawn')[0]['nbt']))
+    self.assertEqual('minecraft:the_end',
+                     self.args('player.teleport')[0]['dimension'])
+
+  def test_mistakes_with_members_are_refused(self) -> None:
+    """Loudly, before the game is asked."""
+    game = self.things('1.7.10')
+    with self.assertRaises(TypeError):
+      game.setSlot('held', Item('minecraft:stone', 1, 0), 3)
+    with self.assertRaises(TypeError):
+      game.setSlot('held', MCBlocks.RedWool)
+    with self.assertRaises(TypeError):
+      game.spawn(MCEntities.WitherSkeleton, (0, 4, 0), nbt='{Health:1f}')
+    #  a type that needs the entity's data to tell it apart: SPEC.md 14.5
+    #  step 4 reads it
+    with self.assertRaises(NotImplementedError):
+      game.entities(type=MCEntities.WitherSkeleton)
+    self.assertEqual([], self.sent())
 
   def test_command(self) -> None:
     game = self.game({'command.run': lambda args, side: {'result': 1, 'lines': ['Given [Red Wool] * 1'], 'errors': []}})
