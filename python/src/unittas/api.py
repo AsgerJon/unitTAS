@@ -322,29 +322,45 @@ class Game:
       args['nbt'] = nbt
     return fromJson(Entity, self.request('entity.spawn', args))
 
-  def entity(self, entity: Union[Entity, int], side: Optional[str] = None) -> Entity:
-    return fromJson(Entity, self.request('entity.get', {'entity': _entityId(entity)}, side))
+  def entity(self, entity: Union[Entity, int], side: Optional[str] = None, nbt: bool = False) -> Entity:
+    """The entity's summary, read again; with its NBT (Entity.snbt) when 'nbt' is asked for."""
+    args = {'entity': _entityId(entity)}
+    if nbt:
+      args['nbt'] = True
+    return fromJson(Entity, self.request('entity.get', args, side))
+
+  def membersOf(self, value: Any) -> frozenset:
+    """
+    The mcdex members a value the game reported is in its version (SPEC.md 14.3): an Item, a Block (read with
+    tile=True where its members differ by data), an Entity (its data read here when its members differ by it) or an
+    Effect. Empty where mcdex has no member for it.
+    """
+    from .things import membersOf, needsData
+    if isinstance(value, Entity) and not value.nbtAsked and needsData(value, self.version):
+      value = self.entity(value, nbt=True)
+    return membersOf(value, self.version)
 
   def entities(self, near: Any = 'player', radius: float = 16, type: Any = None,
                side: Optional[str] = None) -> tuple:
     """
     The entities near, nearest first; of 'type' if given: its id, or an
-    MCEntities member. A member its version tells apart by its data needs
-    each entity's data read, which comes with SPEC.md 14.5 step 4.
+    MCEntities member. For a member its version tells apart by data
+    (1.7.10's wither skeleton, a skeleton of type 1), each entity of its
+    type has its data read, and those that are the member are kept.
     """
     args = {'near': {'pos': near if near == 'player' else _vec3(near), 'radius': radius}}
+    member, data = None, ''
     if type is not None:
       if not isinstance(type, (str, list, tuple)):
         from .things import entityOf
         member = type
         type, data = entityOf(member, self.version)
-        if data:
-          #  'type' is this method's parameter here, so the member's class is read as __class__
-          raise NotImplementedError("%s.%s is a %s told apart by its data (%s) in this version: listing it needs "
-                                    "each entity's data read (SPEC.md 14.5 step 4)"
-                                    % (member.__class__.__name__, member.name, type, data))
       args['type'] = type
-    return tuple(fromJson(Entity, each) for each in self.request('entity.list', args, side))
+    found = tuple(fromJson(Entity, each) for each in self.request('entity.list', args, side))
+    if data:
+      #  a member its version tells apart by data (1.7.10's wither skeleton): each one's data read
+      found = tuple(each for each in found if member in self.membersOf(each))
+    return found
 
   def remove(self, entity: Union[Entity, int]) -> None:
     self.request('entity.remove', {'entity': _entityId(entity)})

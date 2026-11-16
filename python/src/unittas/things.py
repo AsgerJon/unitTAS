@@ -10,20 +10,25 @@ where a member is used (it takes about 0.7 s).
 - resolve: a member's id in a version; Missing where vanilla lacks it,
   NoMcdexData where mcdex has no data for that version.
 - itemOf, blockOf, entityOf, dimensionOf: a member as the probe takes it.
+- membersOf: a value the game reports, as the set of members it is.
+- needsData: whether telling a value's members apart needs its data.
+- describe: a value as its id's text, for messages.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from mcdex import MCBlocks, MCDimensions, MCEntities, MCItems, NotInVersion
+from mcdex import (MCBlocks, MCDimensions, MCEffects, MCEntities, MCItems,
+                   NotInVersion)
 from worktoy.ezdata import EZData, EZField
 
 from .errors import Missing, NoMcdexData
 from .snbt import loads
-from .values import Block, Item
+from .values import Block, Effect, Entity, Item
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Union
@@ -177,3 +182,134 @@ def dimensionOf(member: Any, version: Version) -> Union[int, str]:
   thing = resolve(member, version)
   _plain(thing, member, 'a dimension', 'hasMeta', 'state', 'nbt')
   return thing.number if thing.isNumber else thing.name
+
+
+@lru_cache(maxsize=None)
+def _index(catalogue: type, version: Version) -> dict:
+  """
+  The catalogue's ids in the version, by name (or number as text): each
+  name's (ThingId, member) pairs. Built at first use; mcdex is settled.
+  """
+  out = {}
+  for member in catalogue:
+    try:
+      found = member[version]
+    except NotInVersion:
+      continue
+    except ValueError:
+      #  mcdex has no data on that version: nothing there to find
+      continue
+    thing = parse(found.minecraftId)
+    key = str(thing.number) if thing.isNumber else thing.name
+    out.setdefault(key, []).append((thing, member))
+  return {key: tuple(pairs) for key, pairs in out.items()}
+
+
+def _subset(want: Any, have: Any) -> bool:
+  """
+  Whether mcdex's NBT 'want' is within the value's 'have': each key of a
+  compound there and within, lists equal, numbers by value (mcdex's
+  '{SkeletonType:1}' is the game's 'SkeletonType:1b').
+  """
+  if isinstance(want, dict):
+    if not isinstance(have, dict):
+      return False
+    return all(key in have and _subset(value, have[key])
+               for key, value in want.items())
+  if isinstance(want, list):
+    if not isinstance(have, list) or len(want) != len(have):
+      return False
+    return all(_subset(a, b) for a, b in zip(want, have))
+  if isinstance(want, (int, float)) and not isinstance(want, bool):
+    return (isinstance(have, (int, float)) and not isinstance(have, bool)
+            and want == have)
+  return want == have
+
+
+def _reported(value: Any) -> tuple:
+  """
+  A value's catalogue, its keys in the index (most telling first), its
+  meta (None for a kind without one), its data's SNBT, and whether its
+  data was read.
+  """
+  if isinstance(value, Item):
+    return MCItems, (value.id,), value.meta, value.snbt, True
+  if isinstance(value, Block):
+    return (MCBlocks, (value.id,), value.meta, value.tileSnbt,
+            value.tileAsked)
+  if isinstance(value, Entity):
+    return MCEntities, (value.type,), None, value.snbt, value.nbtAsked
+  if isinstance(value, Effect):
+    keys = (value.effect, str(value.id)) if value.effect else (
+      str(value.id),)
+    return MCEffects, keys, None, '', True
+  raise TypeError('an Item, a Block, an Entity or an Effect reads back '
+                  'as mcdex members, not %r' % (value,))
+
+
+def _candidates(value: Any, version: Version) -> tuple:
+  """The (ThingId, member) pairs whose name the value's id has."""
+  catalogue, keys, _, _, _ = _reported(value)
+  index = _index(catalogue, version)
+  for key in keys:
+    if key in index:
+      return index[key]
+  return ()
+
+
+def needsData(value: Any, version: Version) -> bool:
+  """Whether some member the value's name fits is told apart by data."""
+  return any(thing.nbt for thing, _ in _candidates(value, version))
+
+
+def membersOf(value: Any, version: Version) -> frozenset:
+  """
+  The members a value the game reports is, in the version (SPEC.md
+  14.3): those whose id it fits (the name; the meta where mcdex's id has
+  one, so a tool's damage doesn't count; mcdex's NBT within the value's),
+  the most specific of them: a member whose meta or data matched beats
+  one that names neither, so a potted poppy is no empty flower pot and a
+  wither skeleton no plain skeleton. Twins and an old id two things
+  shared give several. Empty where mcdex has no member for it (M6).
+
+  Raises
+  ------
+  ValueError
+    A member it may be is told apart by data the value wasn't read with
+    (a block without tile=True, an entity without nbt=True).
+  """
+  _, _, meta, snbt, asked = _reported(value)
+  have = None
+  matched = []
+  for thing, member in _candidates(value, version):
+    if thing.hasMeta and thing.meta != meta:
+      continue
+    if thing.nbt:
+      if not asked:
+        raise ValueError('%s may be %s.%s, told apart by its data %s, '
+                         'which it was read without'
+                         % (describe(value), type(member).__name__,
+                            member.name, thing.nbt))
+      if have is None:
+        have = loads(snbt) if snbt else {}
+      if not _subset(loads(thing.nbt), have):
+        continue
+    matched.append((int(thing.hasMeta) + int(bool(thing.nbt)), member))
+  if not matched:
+    return frozenset()
+  best = max(score for score, _ in matched)
+  return frozenset(member for score, member in matched if score == best)
+
+
+def describe(value: Any) -> str:
+  """A value as its id's text, as mcdex writes ids: 'minecraft:wool:14'."""
+  if isinstance(value, Item):
+    return value.id + (':%d' % value.meta if value.meta else '') + value.snbt
+  if isinstance(value, Block):
+    meta = ':%d' % value.meta if value.meta else ''
+    return value.id + meta + (value.tileSnbt if value.tileAsked else '')
+  if isinstance(value, Entity):
+    return value.type + value.snbt
+  if isinstance(value, Effect):
+    return value.effect or str(value.id)
+  return repr(value)

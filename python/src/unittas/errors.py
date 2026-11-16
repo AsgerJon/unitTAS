@@ -10,6 +10,7 @@ connection itself, and one for each error type an answer can carry
 - NoResult: no test result could be obtained.
 - UnknownVersion: a game whose version mcdex has no release for.
 - NoMcdexData: a version mcdex has no data on for a thing's catalogue.
+- NoMcdexThing: a thing the game reports that mcdex has no member for.
 - NeedFailed, Missing: a test's need the game doesn't meet, a FAIL
   (SPEC.md 13.2, 14.4); Missing is a thing vanilla lacks in that version.
 """
@@ -190,6 +191,31 @@ class NoMcdexData(NoResult):
     NoResult.__init__(self, '%s.%s: %s' % (type(member).__name__,
                                            member.name, why))
     self.member = member
+    self.version = version
+
+
+class NoMcdexThing(NoResult):
+  """
+  A thing the game reports that mcdex has no member for in its version
+  (1.7.10's lit furnace, say): whether it's the member a test asserts
+  can't be told, and the game may well be right, so the test has no
+  result (SPEC.md 14.8, M6).
+
+  Attributes
+  ----------
+  text : str
+    The thing as the game reported it.
+  version : Any
+    The game's version, mcdex's member.
+  """
+
+  def __init__(self, text: str, version: Any, member: Any) -> None:
+    infoSpec = """mcdex knows no thing by %s in %s, so whether it's %s.%s
+    can't be told"""
+    info = infoSpec % (text, version.value, type(member).__name__,
+                       member.name)
+    NoResult.__init__(self, ' '.join(info.split()))
+    self.text = text
     self.version = version
 
 

@@ -175,11 +175,32 @@ class GameTests(unittest.TestCase):
       game.setSlot('held', MCBlocks.RedWool)
     with self.assertRaises(TypeError):
       game.spawn(MCEntities.WitherSkeleton, (0, 4, 0), nbt='{Health:1f}')
-    #  a type that needs the entity's data to tell it apart: SPEC.md 14.5
-    #  step 4 reads it
-    with self.assertRaises(NotImplementedError):
-      game.entities(type=MCEntities.WitherSkeleton)
     self.assertEqual([], self.sent())
+
+  def test_an_entity_s_data_and_its_members(self) -> None:
+    """Read with its data when asked; a member told apart by data found."""
+    skeletons = [dict(PIG, entity=1, type='Skeleton'),
+                 dict(PIG, entity=2, type='Skeleton')]
+    data = {1: '{SkeletonType:0b}', 2: '{SkeletonType:1b}'}
+
+    def get(args, side):
+      found = dict(skeletons[args['entity'] - 1])
+      if args.get('nbt'):
+        found['nbt'] = data[args['entity']]
+      return found
+
+    game = self.game({'entity.list': lambda args, side: skeletons,
+                      'entity.get': get}, minecraft='1.7.10')
+    read = game.entity(2, nbt=True)
+    self.assertTrue(read.nbtAsked)
+    self.assertEqual(1, read.nbt['SkeletonType'])
+    self.assertFalse(game.entity(2).nbtAsked)
+    #  the summary alone can't tell a wither skeleton: its data is read
+    self.assertEqual({MCEntities.WitherSkeleton},
+                     game.membersOf(game.entity(2)))
+    found = game.entities(type=MCEntities.WitherSkeleton)
+    self.assertEqual([2], [each.entity for each in found])
+    self.assertEqual('Skeleton', self.args('entity.list')[-1]['type'])
 
   def test_command(self) -> None:
     game = self.game({'command.run': lambda args, side: {'result': 1, 'lines': ['Given [Red Wool] * 1'], 'errors': []}})

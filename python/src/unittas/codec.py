@@ -162,7 +162,8 @@ def _entity(data: Any) -> Entity:
     name=_need(body, 'name', str, what), customName=_maybe(body, 'custom_name', str, what, ''),
     riding=_ridingId(body, what), fireTicks=_need(body, 'fire_ticks', int, what), living=living,
     health=_need(body, 'health', float, what) if living else 0.0,
-    maxHealth=_need(body, 'max_health', float, what) if living else 0.0)
+    maxHealth=_need(body, 'max_health', float, what) if living else 0.0,
+    nbtAsked='nbt' in body, snbt=_maybe(body, 'nbt', str, what, ''))
 
 
 def _riding(ridingId: int) -> Any:
@@ -177,6 +178,8 @@ def _entityJson(entity: Entity) -> dict:
   if entity.living:
     out['health'] = entity.health
     out['max_health'] = entity.maxHealth
+  if entity.nbtAsked:
+    out['nbt'] = entity.snbt
   return out
 
 

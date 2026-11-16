@@ -199,6 +199,34 @@ class GameTestCase(unittest.TestCase):
 
   # (MultiplayerTestCase is below, after the helpers it shares)
 
+  def assertThing(self, value: Any, member: Any, msg: str = '') -> None:
+    """
+    That a value the game reported (an Item, a Block, an Entity, an
+    Effect) is the mcdex member, in the game's version (SPEC.md 14.4):
+    the member is among those the value's id fits, so twins both pass.
+    A FAIL names both ids; an empty slot fails as empty. The member's own
+    lookup comes first: Missing where vanilla lacks it there (a FAIL),
+    no result where mcdex has no data on that version. A value mcdex has
+    no member for is no result (NoMcdexThing, M6): the game may well be
+    right, and unitTAS can't tell.
+    """
+    from .errors import NoMcdexThing
+    from .things import describe, resolve
+    from .values import Item
+    version = self.game.version
+    wanted = resolve(member, version)
+    name = '%s.%s' % (type(member).__name__, member.name)
+    if isinstance(value, Item) and value.empty:
+      self.fail(self._formatMessage(msg, 'the slot is empty, not %s (%s in %s)' % (name, wanted.text(),
+                                                                                    version.value)))
+    members = self.game.membersOf(value)
+    if not members:
+      raise NoMcdexThing(describe(value), version, member)
+    if member not in members:
+      found = ', '.join(sorted('%s.%s' % (type(each).__name__, each.name) for each in members))
+      self.fail(self._formatMessage(msg, '%s is %s in %s, not %s (whose id there is %s)' % (
+        describe(value), found, version.value, name, wanted.text())))
+
   def reportName(self) -> str:
     """The test as the report names it: Class.method, and in save mode its save ('Class.method [folder, load N]')."""
     run = Run.current

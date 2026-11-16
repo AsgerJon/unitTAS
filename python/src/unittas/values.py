@@ -110,7 +110,9 @@ class Entity(EZData, frozen=True):
   """
   An entity's summary. 'customName' is '' for an entity with no name
   tag, 'riding' -1 for one that rides nothing, and 'health' and
-  'maxHealth' 0.0 for one that isn't living.
+  'maxHealth' 0.0 for one that isn't living. Its NBT as SNBT when it was
+  asked for ('nbtAsked'; 'snbt' '' otherwise; 'nbt' is its typed tree, or
+  None).
   """
   entity = EZField[int](0)
   type = EZField[str]('')
@@ -129,6 +131,13 @@ class Entity(EZData, frozen=True):
   living = EZField[bool](False)
   health = EZField[float](0.0)
   maxHealth = EZField[float](0.0)
+  nbtAsked = EZField[bool](False)
+  snbt = EZField[str]('')
+
+  @property
+  def nbt(self):
+    """The NBT as a typed tree (unittas.snbt), or None when not asked."""
+    return _parsed(self.snbt)
 
 
 class Effect(EZData, frozen=True):

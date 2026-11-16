@@ -1,10 +1,12 @@
 """
-Things by mcdex member (SPEC.md 14.3, 14.5 steps 2 and 3), without a
+Things by mcdex member (SPEC.md 14.3, 14.5 steps 2 to 4), without a
 game: each id mcdex holds for a version read into its parts and turned
 into what the probe takes, exactly as the spec's table has them, for
 every id mcdex holds for 1.7.10 and 26.3 in the catalogues the API
 takes; a thing vanilla lacks there is Missing, and a version mcdex has
-no data for is no result.
+no data for is no result. Back: a value the game reports is the set of
+members its id fits, the most specific first (twins both; a tool's
+damage no meta; data a subset); assertThing on it.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -15,10 +17,12 @@ import unittest
 from mcdex import (MCBlocks, MCDimensions, MCEffects, MCEntities, MCItems,
                    MCParticles, NotInVersion, Version)
 
-from unittas.errors import Missing, NeedFailed, NoMcdexData, NoResult
+from unittas.errors import (Missing, NeedFailed, NoMcdexData, NoMcdexThing,
+                            NoResult)
+from unittas.testcase import GameTestCase
 from unittas.things import (ThingId, blockOf, dimensionOf, entityOf, itemOf,
-                            parse, resolve)
-from unittas.values import Block, Item
+                            membersOf, parse, resolve)
+from unittas.values import Block, Effect, Entity, Item
 
 VERSIONS = (Version.V1_7_10, Version.V26_3)
 
@@ -158,6 +162,146 @@ class MissingTests(unittest.TestCase):
       resolve(particle, Version.V1_7_10)
     self.assertIsInstance(raised.exception, NoResult)
     self.assertIn('no data', str(raised.exception))
+
+
+class ReadBackTests(unittest.TestCase):
+  """A value the game reports, as the set of members its id fits."""
+
+  def test_an_item(self) -> None:
+    self.assertEqual({MCItems.PinkWool},
+                     membersOf(Item('minecraft:wool', 1, 6),
+                               Version.V1_7_10))
+    self.assertEqual({MCItems.PinkWool},
+                     membersOf(Item('minecraft:pink_wool', 1, 0),
+                               Version.V26_3))
+
+  def test_twins_are_both(self) -> None:
+    """Two members with one id: the game can't tell them apart."""
+    for version in VERSIONS:
+      with self.subTest(version=str(version)):
+        self.assertEqual({MCItems.Steak, MCItems.CookedBeef},
+                         membersOf(Item('minecraft:cooked_beef', 1, 0),
+                                   version))
+
+  def test_an_old_id_two_things_shared(self) -> None:
+    """1.12.2's pumpkin was both the pumpkin and the carved one."""
+    self.assertEqual({MCBlocks.Pumpkin, MCBlocks.CarvedPumpkin},
+                     membersOf(Block('minecraft:pumpkin', 0),
+                               Version.V1_12_2))
+
+  def test_a_tool_s_damage_is_no_meta(self) -> None:
+    """mcdex's id has no meta, so the item's (its damage) doesn't count."""
+    self.assertEqual({MCItems.IronPickaxe},
+                     membersOf(Item('minecraft:iron_pickaxe', 1, 37),
+                               Version.V1_7_10))
+
+  def test_a_spawn_egg_s_data_is_a_subset(self) -> None:
+    """The egg's reported data holds more than its EntityTag."""
+    egg = Item('minecraft:spawn_egg', 1, 0,
+               '{EntityTag:{id:"Bat"},display:{Name:"Flappy"}}')
+    self.assertEqual({MCItems.BatSpawnEgg}, membersOf(egg, Version.V1_10))
+
+  def test_block_entity_data_tells_blocks_apart(self) -> None:
+    """The most specific match wins: a potted poppy is no empty pot."""
+    skull = Block('minecraft:skull', 1, True, '{SkullType:1b,Rot:4b}')
+    self.assertEqual({MCBlocks.WitherSkeletonSkull},
+                     membersOf(skull, Version.V1_7_10))
+    pot = Block('minecraft:flower_pot', 0, True, '{Item:38,Data:0}')
+    self.assertEqual({MCBlocks.PottedPoppy},
+                     membersOf(pot, Version.V1_7_10))
+    empty = Block('minecraft:flower_pot', 0, True, '{Item:0,Data:0}')
+    self.assertEqual({MCBlocks.FlowerPot}, membersOf(empty, Version.V1_7_10))
+
+  def test_data_not_read_is_refused(self) -> None:
+    """A block or entity whose members differ by data, its data unread."""
+    with self.assertRaises(ValueError):
+      membersOf(Block('minecraft:skull', 1), Version.V1_7_10)
+    with self.assertRaises(ValueError):
+      membersOf(Entity(type='Skeleton'), Version.V1_7_10)
+
+  def test_an_entity_by_its_data(self) -> None:
+    """1.7.10's wither skeleton is a skeleton of type 1; numbers by value."""
+    wither = Entity(type='Skeleton', nbtAsked=True,
+                    snbt='{SkeletonType:1b,Health:20s}')
+    plain = Entity(type='Skeleton', nbtAsked=True, snbt='{SkeletonType:0b}')
+    self.assertEqual({MCEntities.WitherSkeleton},
+                     membersOf(wither, Version.V1_7_10))
+    self.assertEqual({MCEntities.Skeleton},
+                     membersOf(plain, Version.V1_7_10))
+    self.assertEqual({MCEntities.WitherSkeleton},
+                     membersOf(Entity(type='minecraft:wither_skeleton'),
+                               Version.V26_3))
+
+  def test_an_effect(self) -> None:
+    """1.7.10's by its number, 26.3's by its name."""
+    self.assertEqual({MCEffects.Poison},
+                     membersOf(Effect(id=19), Version.V1_7_10))
+    self.assertEqual({MCEffects.Poison},
+                     membersOf(Effect(effect='minecraft:poison'),
+                               Version.V26_3))
+
+  def test_an_id_mcdex_has_no_member_for_is_an_empty_set(self) -> None:
+    """1.7.10's lit furnace (M6): the assertion says what that means."""
+    self.assertEqual(set(), membersOf(Block('minecraft:lit_furnace', 2),
+                                      Version.V1_7_10))
+
+
+class _Game:
+  """A game's version and its reading back, without a game."""
+
+  def __init__(self, version: Version) -> None:
+    self.version = version
+
+  def membersOf(self, value: object) -> frozenset:
+    return membersOf(value, self.version)
+
+
+class AssertThingTests(unittest.TestCase):
+  """GameTestCase.assertThing: a value the game reported, as a member."""
+
+  def case(self, version: Version) -> GameTestCase:
+    class Case(GameTestCase):
+      def runTest(self) -> None:
+        pass
+
+    case = Case()
+    case.game = _Game(version)
+    return case
+
+  def test_it_passes_for_any_member_the_value_is(self) -> None:
+    case = self.case(Version.V1_7_10)
+    case.assertThing(Item('minecraft:wool', 1, 6), MCItems.PinkWool)
+    case.assertThing(Item('minecraft:cooked_beef', 1, 0), MCItems.Steak)
+    case.assertThing(Item('minecraft:cooked_beef', 1, 0),
+                     MCItems.CookedBeef)
+
+  def test_another_thing_fails_naming_both_ids(self) -> None:
+    case = self.case(Version.V1_7_10)
+    with self.assertRaises(AssertionError) as raised:
+      case.assertThing(Item('minecraft:wool', 1, 14), MCItems.PinkWool)
+    said = str(raised.exception)
+    self.assertIn('minecraft:wool:14', said)
+    self.assertIn('MCItems.PinkWool', said)
+    self.assertIn('minecraft:wool:6', said)
+
+  def test_an_empty_slot_fails(self) -> None:
+    case = self.case(Version.V1_7_10)
+    with self.assertRaises(AssertionError) as raised:
+      case.assertThing(Item.EMPTY, MCItems.PinkWool)
+    self.assertIn('empty', str(raised.exception))
+
+  def test_a_member_vanilla_lacks_is_missing(self) -> None:
+    case = self.case(Version.V1_7_10)
+    with self.assertRaises(Missing):
+      case.assertThing(Item('minecraft:stone', 1, 0), MCItems.Elytra)
+
+  def test_a_value_mcdex_knows_no_member_for_is_no_result(self) -> None:
+    """M6: the game may well be right, and unitTAS can't tell."""
+    case = self.case(Version.V1_7_10)
+    with self.assertRaises(NoMcdexThing) as raised:
+      case.assertThing(Block('minecraft:lit_furnace', 2), MCBlocks.Furnace)
+    self.assertIsInstance(raised.exception, NoResult)
+    self.assertIn('minecraft:lit_furnace', str(raised.exception))
 
 
 if __name__ == '__main__':
