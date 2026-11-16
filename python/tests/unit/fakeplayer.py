@@ -14,6 +14,10 @@ against the face hit, unless the player stands there); key.attack held
 breaks the block targeted, at once in creative, after 'hardness' ticks
 otherwise, and then waits 5 ticks before the next. The hotbar keys
 select a slot, and the client's inventory is read as the probe gives it.
+A chest used opens its screen: container.get shows its 27 slots, then
+the player's 27 and its hotbar's 9, as 1.7.10's ContainerChest; a
+quick_move click moves a stack across, merging first, as 1.7.10's
+transferStackInSlot does; screen.close closes it.
 
 The ground's top is at y 4; walls are full blocks at whole positions.
 """
@@ -23,6 +27,8 @@ from __future__ import annotations
 
 import math
 from typing import Any
+
+from fakeprobe import FakeError
 
 EYE = 1.62
 HALF = 0.3
@@ -68,6 +74,10 @@ class FakePlayer:
     self.pressed = set()
     #  the nine hotbar slots, as inventory.get gives items, and the rest
     self.hotbar = [None] * 9
+    self.rest = [None] * 27
+    #  the chests, by place: 27 slots each; the one whose screen is open
+    self.chests = {}
+    self.screen = None
     self.selected = 0
     #  what its clicks did: ('use', pos), ('placed', pos), ('broke', pos)
     self.clicks = []
@@ -154,6 +164,10 @@ class FakePlayer:
             z < self.z + HALF and self.z - HALF < z + 1)
 
   def use(self, pos: tuple, face: str) -> None:
+    if self.walls.get(pos) == 'minecraft:chest':
+      self.screen = pos
+      self.clicks.append(('open', pos))
+      return
     if self.walls.get(pos) == 'minecraft:lever':
       self.levers[pos] = not self.levers.get(pos, False)
       self.clicks.append(('use', pos))
@@ -186,6 +200,59 @@ class FakePlayer:
     self.clicks.append(('broke', pos))
     self.mining = None
     self.hitDelay = 5
+
+  # -------------------------------------------------------------- containers
+
+  def slotsShown(self) -> list:
+    """The open chest's slots, then the player's 27, then its hotbar."""
+    return self.chests[self.screen] + self.rest + self.hotbar
+
+  def setSlot(self, index: int, item: Any) -> None:
+    if index < 27:
+      self.chests[self.screen][index] = item
+    elif index < 54:
+      self.rest[index - 27] = item
+    else:
+      self.hotbar[index - 54] = item
+
+  def quickMove(self, index: int) -> None:
+    """A shift-click: the stack to the other side, merging first."""
+    shown = self.slotsShown()
+    stack = shown[index]
+    if stack is None:
+      return
+    stack = dict(stack)
+    into = list(range(62, 26, -1)) if index < 27 else list(range(27))
+    for target in into:
+      there = shown[target]
+      if there and (there['id'], there['meta']) == (stack['id'],
+                                                    stack['meta']):
+        moved = min(64 - there['count'], stack['count'])
+        self.setSlot(target, dict(there, count=there['count'] + moved))
+        stack['count'] -= moved
+        shown = self.slotsShown()
+      if not stack['count']:
+        break
+    for target in into:
+      if stack['count'] and shown[target] is None:
+        self.setSlot(target, dict(stack))
+        stack['count'] = 0
+        shown = self.slotsShown()
+    self.setSlot(index, stack if stack['count'] else None)
+
+  def containerShown(self) -> dict:
+    if self.screen is None:
+      slots = [None] * 9 + self.rest + self.hotbar
+      return {'class': 'net.minecraft.inventory.ContainerPlayer',
+              'window': 0, 'player_own': True,
+              'slots': [{'index': i, 'item': item}
+                        for i, item in enumerate(slots)],
+              'player_slots': [9, 44]}
+    return {'class': 'net.minecraft.inventory.ContainerChest', 'window': 1,
+            'player_own': False,
+            'slots': [{'index': i, 'item': item}
+                      for i, item in enumerate(self.slotsShown())],
+            'player_slots': [27, 62]}
 
   # ------------------------------------------------------- what it perceives
 
@@ -274,8 +341,21 @@ class FakePlayer:
       self.step()
       return {}
 
+    def click(args: dict) -> dict:
+      if self.screen is None:
+        raise FakeError('NotReady', 'no container screen is open')
+      if args.get('mode') == 'quick_move':
+        self.quickMove(int(args['slot']))
+      self.run(2)
+      return {}
+
+    def close(args: dict) -> dict:
+      self.screen = None
+      self.step()
+      return {}
+
     def inventory(args: dict) -> Any:
-      main = list(self.hotbar) + [None] * 27
+      main = list(self.hotbar) + list(self.rest)
       if args.get('slot') == 'held':
         return main[self.selected]
       return {'selected': self.selected, 'main': main,
@@ -289,6 +369,10 @@ class FakePlayer:
       'key.down': at('key.down', down),
       'key.tap': at('key.tap', tap),
       'inventory.get': at('inventory.get', inventory),
+      'container.get': at('container.get',
+                          lambda args: self.containerShown()),
+      'container.click': at('container.click', click),
+      'screen.close': at('screen.close', close),
       'key.up': at('key.up',
                    lambda args: self.keys.discard(args['key']) or {}),
       'ticks.wait': at('ticks.wait', wait),

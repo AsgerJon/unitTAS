@@ -26,6 +26,7 @@ from worktoy.desc import Field
 from worktoy.ezdata import EZData, EZField
 
 from .codec import fromJson, toJson
+from .container import Container
 from .errors import Cancelled, NoResult, UnknownVersion
 from .perception import Perception
 from .values import Block, BlockPos, ChatLine, Entity, Inventory, Item, LogLine, Look, Player, Screen, Sound, Vec3
@@ -284,6 +285,17 @@ class Game:
 
   def inventory(self, side: Optional[str] = None) -> Inventory:
     return fromJson(Inventory, self.request('inventory.get', None, side))
+
+  def container(self, side: str = 'client') -> Container:
+    """The open container as its screen shows it (the client's, left out); the player's own when none is open."""
+    return fromJson(Container, self.request('container.get', None, side))
+
+  def click(self, slot: int, button: int = 0, mode: str = 'pickup') -> None:
+    """
+    A click on a slot of the open container's screen, as the mouse's (PROTOCOL.md 8.5): 'mode' is pickup,
+    quick_move (shift), swap (button: the hotbar's index), clone, throw, quick_craft or pickup_all.
+    """
+    self.request('container.click', {'slot': slot, 'button': button, 'mode': mode})
 
   def setSlot(self, name: str, item: Any, count: int = 1) -> None:
     """

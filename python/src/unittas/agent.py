@@ -15,12 +15,13 @@ from worktoy.desc import Field
 from worktoy.mcls import BaseObject
 
 from .errors import TesttimeError
-from .values import BlockPos, Vec3
+from .values import BlockPos, Item, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional, Union
 
   from .api import Game
+  from .container import Container
   from .perception import Perception
   from .target import Target
 
@@ -271,7 +272,12 @@ class Agent(BaseObject):
     TesttimeError
       As reach and lookAt do: no way into reach, the block not targeted.
     """
-    self._ready('use', pos, ticks)
+    return self._use('use', pos, ticks)
+
+  def _use(self, step: str, pos: BlockPos,
+           ticks: Optional[int]) -> Perception:
+    """use, as the step named."""
+    self._ready(step, pos, ticks)
     self.__game__.tap('key.use')
     return self.perceive()
 
@@ -360,6 +366,100 @@ class Agent(BaseObject):
     shows a face to click from %s"""
     info = infoSpec % (_place(pos), _place(eye))
     raise TesttimeError('place', there, ' '.join(info.split()))
+
+  # -------------------------------------------------------------- containers
+
+  def open(self, pos: BlockPos, ticks: Optional[int] = None) -> Container:
+    """
+    Opens the container at 'pos' (a chest, a furnace), as a player does:
+    uses it, and sees its screen open, within 10 ticks. The container as
+    its screen shows it.
+
+    Raises
+    ------
+    TesttimeError
+      As use does, or no container's screen opens.
+    """
+    seen = self._use('open', pos, ticks)
+    for _ in range(10):
+      shown = self.__game__.container()
+      if not shown.playerOwn:
+        return shown
+      self.__game__.ticks(1)
+    infoSpec = """using %s at %s opened no container's screen in 10
+    ticks"""
+    info = infoSpec % (seen.target.id or 'the block', _place(pos))
+    raise TesttimeError('open', self.perceive(), ' '.join(info.split()))
+
+  def contents(self) -> tuple:
+    """What the open container holds, as its screen shows it."""
+    return self._opened('contents').contents
+
+  def take(self, item: Any) -> Item:
+    """
+    Takes a stack of 'item' (an mcdex member) from the open container
+    into the inventory, as a player does: a shift-click on its slot. What
+    moved.
+
+    Raises
+    ------
+    TesttimeError
+      No container is open, none of the item is in it, or the click
+      moved none of it (no room).
+    """
+    shown = self._opened('take')
+    return self._shift('take', shown, shown.theirs, item, 'the container')
+
+  def put(self, item: Any) -> Item:
+    """
+    Puts a stack of 'item' (an mcdex member) from the inventory into the
+    open container, as a player does: a shift-click on its slot. What
+    moved.
+
+    Raises
+    ------
+    TesttimeError
+      No container is open, none of the item is in the inventory, or the
+      click moved none of it (no room).
+    """
+    shown = self._opened('put')
+    return self._shift('put', shown, shown.own, item, 'the inventory')
+
+  def close(self) -> None:
+    """Closes the open screen, as Esc does."""
+    self.__game__.closeScreen()
+
+  def _opened(self, step: str) -> Container:
+    """The open container; TesttimeError when none is."""
+    shown = self.__game__.container()
+    if shown.playerOwn:
+      raise TesttimeError(step, self.perceive(), 'no container is open')
+    return shown
+
+  def _shift(self, step: str, shown: Container, among: tuple, item: Any,
+             where: str) -> Item:
+    """Shift-clicks the first slot among those holding 'item'."""
+    held = []
+    for slot in among:
+      stack = shown.slots[slot]
+      if stack.empty:
+        continue
+      if item not in self.__game__.membersOf(stack):
+        if stack.id not in held:
+          held.append(stack.id)
+        continue
+      self.__game__.click(slot, mode='quick_move')
+      after = self.__game__.container().slots[slot]
+      left = 0 if after.empty or after.id != stack.id else after.count
+      if left >= stack.count:
+        infoSpec = """shift-clicking slot %d (%d %s) moved none of it: no
+        room on the other side"""
+        info = infoSpec % (slot, stack.count, stack.id)
+        raise TesttimeError(step, self.perceive(), ' '.join(info.split()))
+      return Item(stack.id, stack.count - left, stack.meta, stack.snbt)
+    info = 'no %s.%s in %s (%s)' % (type(item).__name__, item.name, where,
+                                    ', '.join(held) or 'it is empty')
+    raise TesttimeError(step, self.perceive(), info)
 
   # ------------------------------------------------------ the verbs' parts
 

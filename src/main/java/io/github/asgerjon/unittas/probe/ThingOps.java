@@ -65,6 +65,7 @@ final class ThingOps {
 		probe.op("key.tap").does(ThingOps::tapDown).settles(ThingOps::tapUp);
 		probe.op("screen.type").does(ThingOps::type).settles(ThingOps::settle4);
 		probe.op("screen.key").does(ThingOps::screenKey).settles(ThingOps::settle4);
+		probe.op("container.click").does(ThingOps::containerClick).settles((call, value) -> wait(call, 2, value));
 		probe.op("chat.read").does(ThingOps::chatRead);
 		probe.op("chat.send").does(ThingOps::chatSend).settles(ThingOps::chatLines);
 		probe.op("camera.set").does(ThingOps::camera).settles((call, value) -> wait(call, 2, value));
@@ -410,6 +411,36 @@ final class ThingOps {
 				+ " up, down, left, right, home, end, page_up, page_down or f1 to f12, not " + name);
 		}
 		typed(screen, (char) key[1], key[0]);
+		return new JsonObject();
+	}
+
+	/** container.click's modes, by 1.7.10's window click types (0 to 6). */
+	private static final java.util.List<String> CLICK_MODES = java.util.Arrays.asList(
+		"pickup", "quick_move", "swap", "clone", "throw", "quick_craft", "pickup_all");
+
+	/**
+	 * container.click (8.5): a click on a slot of the open container's screen, as the mouse's does, through the screen's
+	 * own handleMouseClick (the game's window click, its packet included). NotReady without a container's screen.
+	 */
+	private static JsonElement containerClick(Call call) throws ProbeException {
+		GuiScreen screen = Minecraft.getMinecraft().currentScreen;
+		if (!(screen instanceof net.minecraft.client.gui.inventory.GuiContainer)) {
+			throw new ProbeException("NotReady", "container.click needs a container's screen open, not "
+				+ (screen == null ? "none" : screen.getClass().getName()), null);
+		}
+		net.minecraft.client.gui.inventory.GuiContainer gui = (net.minecraft.client.gui.inventory.GuiContainer) screen;
+		int size = gui.inventorySlots.inventorySlots.size();
+		if (!call.has("slot")) {
+			throw ProbeException.badRequest("slot", "slot is a slot's number in the open container, 0 to " + (size - 1));
+		}
+		int index = (int) call.number("slot", 0, 0, size - 1);
+		int button = (int) call.number("button", 0, 0, 8);
+		String mode = call.string("mode", "pickup");
+		int type = CLICK_MODES.indexOf(mode);
+		if (type < 0) {
+			throw ProbeException.badRequest("mode", "mode is one of " + CLICK_MODES + ", not " + mode);
+		}
+		Input.handleMouseClick(gui, gui.inventorySlots.getSlot(index), index, button, type);
 		return new JsonObject();
 	}
 

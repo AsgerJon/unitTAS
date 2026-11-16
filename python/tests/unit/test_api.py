@@ -28,6 +28,7 @@ from unittas.perception import Perception
 from unittas.values import Block, BlockPos, ChatLine, Entity, Inventory, Item, Look, Player, Screen, Sound, Vec3
 from unittas.wire import Role
 from worktoy.waitaminute.desc import ReadOnlyError
+from test_container import CHEST
 from test_perception import LOOKING_DOWN
 from test_values import PIG, PLAYER
 
@@ -353,6 +354,22 @@ class GameTests(unittest.TestCase):
     game.perceive(around=4)
     self.assertEqual([('player.perceive', None, {'around': 2}),
                       ('player.perceive', None, {'around': 4})], self.sent())
+
+  def test_the_open_container_and_its_clicks(self) -> None:
+    """container.get on the client, container.click (SPEC.md 15.6 step 4)."""
+    game = self.game({'container.get': lambda args, side: CHEST,
+                      'container.click': lambda args, side: {}})
+    self.assertEqual(3, game.container().window)
+    game.click(5)
+    game.click(30, mode='quick_move')
+    game.click(2, button=1)
+    self.assertEqual([
+      ('container.get', 'client', {}),
+      ('container.click', None, {'slot': 5, 'button': 0, 'mode': 'pickup'}),
+      ('container.click', None, {'slot': 30, 'button': 0,
+                                 'mode': 'quick_move'}),
+      ('container.click', None, {'slot': 2, 'button': 1, 'mode': 'pickup'}),
+    ], self.sent())
 
   def test_blocks_and_entities(self) -> None:
     game = self.game({

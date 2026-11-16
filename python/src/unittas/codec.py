@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .box import Box
+from .container import Container
 from .nearblock import NearBlock
 from .perception import Perception
 from .target import FACES, Target
@@ -30,7 +31,7 @@ _MISSING = object()
 _NAMES = {Vec3: 'a position', BlockPos: 'a block position', Look: 'a look', Item: 'an item', Block: 'a block',
           Inventory: 'an inventory', Entity: 'an entity', Effect: 'an effect', Player: 'a player',
           ChatLine: 'a chat line', Sound: 'a sound', LogLine: 'a log line', Screen: 'a screen', Box: 'a box',
-          Target: 'a target', NearBlock: 'a block near', Perception: 'a perception'}
+          Target: 'a target', NearBlock: 'a block near', Perception: 'a perception', Container: 'a container'}
 
 
 # ---------------------------------------------------------------- reading the fields
@@ -376,6 +377,35 @@ def _perceptionJson(seen: Perception) -> dict:
           'blocks': [_nearBlockJson(block) for block in seen.blocks]}
 
 
+def _container(data: Any) -> Container:
+  body = _object(data, Container)
+  what = 'a container'
+  slots = []
+  for at, slot in enumerate(_need(body, 'slots', list, what)):
+    slot = _check(slot, dict, what, 'slots')
+    index = _need(slot, 'index', int, 'a container\'s slot')
+    if index != at:
+      raise ValueError('a container\'s slots come by number: slot %d where %d is' % (index, at))
+    slots.append(_item(slot.get('item')))
+  first, last = -1, -1
+  own = body.get('player_slots', _MISSING)
+  if own is _MISSING:
+    raise ValueError('%s has no "player_slots"' % what)
+  if own is not None:
+    if not isinstance(own, list) or len(own) != 2:
+      raise ValueError('a container\'s "player_slots" is [first, last] or null, not %r' % (own,))
+    first, last = (_check(number, int, what, 'player_slots') for number in own)
+  return Container(_need(body, 'class', str, what), _need(body, 'window', int, what),
+                   _need(body, 'player_own', bool, what), tuple(slots), first, last)
+
+
+def _containerJson(container: Container) -> dict:
+  own = None if container.playerFirst < 0 else [container.playerFirst, container.playerLast]
+  return {'class': container.className, 'window': container.window, 'player_own': container.playerOwn,
+          'slots': [{'index': i, 'item': _itemJson(item)} for i, item in enumerate(container.slots)],
+          'player_slots': own}
+
+
 def _vec3Json(vec: Vec3) -> list:
   return [vec.x, vec.y, vec.z]
 
@@ -391,11 +421,12 @@ def _lookJson(look: Look) -> dict:
 _READERS = {Vec3: _vec3, BlockPos: _blockPos, Look: _look, Item: _item, Block: _block, Inventory: _inventory,
             Entity: _entity, Effect: _effect, Player: _player, ChatLine: _chatLine, Sound: _sound,
             LogLine: _logLine, Screen: _screen, Box: _box, Target: _target, NearBlock: _nearBlock,
-            Perception: _perception}
+            Perception: _perception, Container: _container}
 _WRITERS = {Vec3: _vec3Json, BlockPos: _blockPosJson, Look: _lookJson, Item: _itemJson, Block: _blockJson,
             Inventory: _inventoryJson, Entity: _entityJson, Effect: _effectJson, Player: _playerJson,
             ChatLine: _chatLineJson, Sound: _soundJson, LogLine: _logLineJson, Screen: _screenJson, Box: _boxJson,
-            Target: _targetJson, NearBlock: _nearBlockJson, Perception: _perceptionJson}
+            Target: _targetJson, NearBlock: _nearBlockJson, Perception: _perceptionJson,
+            Container: _containerJson}
 
 
 def fromJson(kind: type, data: Any) -> Any:

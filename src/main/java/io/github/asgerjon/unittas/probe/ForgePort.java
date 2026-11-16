@@ -156,6 +156,7 @@ public final class ForgePort implements Port {
 		probe.register(Op.onSide("key.tap", Side.CLIENT));
 		probe.register(Op.onSide("screen.type", Side.CLIENT));
 		probe.register(Op.onSide("screen.key", Side.CLIENT));
+		probe.register(Op.onSide("container.click", Side.CLIENT));
 		probe.register(Op.onSide("chat.read", Side.CLIENT).reading());
 		probe.register(Op.onSide("chat.send", Side.CLIENT));
 		probe.register(Op.onSide("camera.set", Side.CLIENT));

@@ -28,7 +28,8 @@ from unittas.wire import Role
 
 #  what a player has: the keys, the look, its senses and its own inventory
 PLAYERS_MEANS = {'player.perceive', 'player.look', 'key.down', 'key.up',
-                 'key.tap', 'ticks.wait', 'inventory.get'}
+                 'key.tap', 'ticks.wait', 'inventory.get', 'container.get',
+                 'container.click', 'screen.close'}
 #  test_walks_efficiently's forty walks, in ticks: what they took when
 #  written (1168), and a tenth more
 SPENT = 1285

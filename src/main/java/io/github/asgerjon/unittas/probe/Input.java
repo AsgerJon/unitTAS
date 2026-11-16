@@ -2,6 +2,8 @@ package io.github.asgerjon.unittas.probe;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.inventory.Slot;
 import net.minecraft.client.settings.KeyBinding;
 import org.lwjgl.input.Keyboard;
 
@@ -79,6 +81,39 @@ public final class Input {
 			throw new IllegalStateException(screen.getClass().getName() + ".keyTyped threw", thrown);
 		} catch (IllegalAccessException e) {
 			throw new IllegalStateException("Can't type into " + screen, e);
+		}
+	}
+
+	/**
+	 * Sends GuiContainer.handleMouseClick to the screen (dev names first, then the obfuscated ones): what its mouse
+	 * click on a slot does, the screen's own overrides (the creative inventory's) included. What it throws comes out as
+	 * itself.
+	 */
+	public static void handleMouseClick(GuiContainer screen, Slot slot, int index, int button, int type) {
+		Method click;
+		try {
+			try {
+				click = GuiContainer.class.getDeclaredMethod("handleMouseClick", Slot.class, int.class, int.class, int.class);
+			} catch (NoSuchMethodException e) {
+				click = GuiContainer.class.getDeclaredMethod("func_146984_a", Slot.class, int.class, int.class, int.class);
+			}
+			click.setAccessible(true);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Can't find GuiContainer.handleMouseClick to click in " + screen, e);
+		}
+		try {
+			click.invoke(screen, slot, index, button, type);
+		} catch (InvocationTargetException e) {
+			Throwable thrown = e.getCause();
+			if (thrown instanceof RuntimeException) {
+				throw (RuntimeException) thrown;
+			}
+			if (thrown instanceof Error) {
+				throw (Error) thrown;
+			}
+			throw new IllegalStateException(screen.getClass().getName() + ".handleMouseClick threw", thrown);
+		} catch (IllegalAccessException e) {
+			throw new IllegalStateException("Can't click in " + screen, e);
 		}
 	}
 
