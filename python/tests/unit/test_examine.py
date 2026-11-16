@@ -11,6 +11,7 @@ can't target, a side above or below, each refused by name.
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -42,7 +43,7 @@ class ExamineTests(PlayedTests):
     self.folder = tempfile.mkdtemp(prefix='unittas-frames-')
     self.addCleanup(shutil.rmtree, self.folder, True)
     self.agent = Agent(self.agent.game, frames=self.folder)
-    self.player.walls[(3, 4, 6)] = 'minecraft:stone'
+    self.player.walls[(3, 4, 6)] = 'minecraft:obsidian'
 
   def test_examines_a_block(self) -> None:
     view = self.agent.examine(STONE)
@@ -51,6 +52,8 @@ class ExamineTests(PlayedTests):
     self.assertEqual(((200, 40, 40),) * 256, view.pixels())
     self.assertEqual(self.folder, os.path.dirname(view.file))
     self.assertTrue(os.path.isfile(view.file))
+    with open(view.file[:-4] + '.json', encoding='utf-8') as file:
+      self.assertEqual(view.answer, json.load(file))
     self.assertGreater(self.player.z, 1.0, 'it walked into reach')
     self.assertEqual(set(), set(self.player.ops) - PLAYERS_MEANS -
                      {'view.block'})

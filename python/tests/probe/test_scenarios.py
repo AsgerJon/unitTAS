@@ -65,7 +65,9 @@ class ScenarioRunTests(unittest.TestCase):
       SAID + 'MCBlocks.Stone at (2, 4, 3), isThere: True',
       SAID + 'MCBlocks.Stone at (2, 4, 3), isThere: False',
       'SceneTests.test_d_the_lamp_seen ... ok', SEEN, SEEN], shown, text)
-    frames = sorted(os.listdir(os.path.join(folder, 'frames')))
+    frames = sorted(name for name in os.listdir(os.path.join(folder,
+                                                             'frames'))
+                    if name.endswith('.png'))
     self.assertEqual(['examine-0-5-3-1.png', 'examine-0-5-3-2.png'], frames)
     self.assertTrue(launched.ended(60), 'the run quit the game')
 

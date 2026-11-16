@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import unittest
 
+from fakeplayer import faceCamera
 from unittas import png
 from unittas.blockview import BlockView
 from unittas.values import BlockPos, Look, Vec3
@@ -63,6 +64,7 @@ class BlockViewTests(unittest.TestCase):
     self.assertEqual(Vec3(0.5, 5.62, 0.5), view.eye)
     self.assertEqual(Look(0.0, 10.0), view.look)
     self.assertEqual({'north': 12}, view.faces)
+    self.assertEqual(answer(self.file), view.answer)
     self.assertEqual(12, view.count)
     self.assertAlmostEqual(12 / 30, view.coverage)
     self.assertEqual((RED,) * 12, view.pixels())
@@ -116,6 +118,73 @@ class BlockViewTests(unittest.TestCase):
       BlockView(BlockPos(0, 5, 3), {key: value for key, value in
                                     answer(self.file).items()
                                     if key != 'camera'})
+
+
+class SquaredUpTests(unittest.TestCase):
+  """
+  A face set square (SPEC.md 15.4): each texel's middle on the face put
+  through the frame's camera, the frame's pixel there when it is the
+  block's. A face turned away gives nothing.
+  """
+
+  def setUp(self) -> None:
+    self.folder = tempfile.mkdtemp(prefix='unittas-square-')
+    self.addCleanup(shutil.rmtree, self.folder, True)
+
+  def drawn(self, face: str, eye: tuple, hide: int = 0) -> BlockView:
+    """
+    A 64 by 48 frame with the face of the block at (3, 4, 6) drawn one
+    pixel a texel at [24, 16, 40, 32): texel (i, j) coloured (i * 16, j *
+    16, 99); its first 'hide' columns not the block's.
+    """
+    data = bytearray()
+    for y in range(48):
+      for x in range(64):
+        inside = 24 <= x < 40 and 16 <= y < 32
+        data += bytes(((x - 24) * 16, (y - 16) * 16, 99) if inside
+                      else GREY)
+    path = os.path.join(self.folder, face + '.png')
+    png.write(path, 64, 48, 3, bytes(data))
+    mask = ['0' * hide + '1' * (16 - hide)] * 16
+    camera = faceCamera((3, 4, 6), face, eye, (24, 16, 40, 32), 64, 48)
+    return BlockView(BlockPos(3, 4, 6), {
+      'file': path, 'width': 64, 'height': 48, 'tick': 1, 'camera': camera,
+      'rect': [24, 16, 40, 32], 'mask': mask,
+      'faces': {face: 256 - 16 * hide}, 'covered': []})
+
+  def test_each_face_square(self) -> None:
+    eyes = {'north': (3.5, 5.62, 3.0), 'south': (3.5, 5.62, 9.0),
+            'west': (0.5, 5.62, 6.5), 'east': (6.5, 5.62, 6.5),
+            'up': (3.5, 7.0, 6.5)}
+    texels = tuple((i * 16, j * 16, 99) for j in range(16)
+                   for i in range(16))
+    for face, eye in eyes.items():
+      with self.subTest(face=face):
+        self.assertEqual(texels, self.drawn(face, eye).square(face))
+
+  def test_a_point_on_the_frame(self) -> None:
+    view = self.drawn('north', (3.5, 5.62, 3.0))
+    #  the north face's top left, as one facing it sees it: (4, 5, 6)
+    x, y = view.project(4.0, 5.0, 6.0)
+    self.assertAlmostEqual(24.0, x)
+    self.assertAlmostEqual(16.0, y)
+
+  def test_what_isn_t_the_block_s(self) -> None:
+    square = self.drawn('north', (3.5, 5.62, 3.0), hide=4).square('north')
+    self.assertEqual([None] * 4, list(square[:4]))
+    self.assertEqual((4 * 16, 0, 99), square[4])
+    self.assertEqual(16 * 12, sum(1 for each in square if each))
+
+  def test_a_face_turned_away(self) -> None:
+    #  the south face from the north: nothing of it
+    view = self.drawn('north', (3.5, 5.62, 3.0))
+    self.assertEqual((None,) * 256, view.square('south'))
+
+  def test_a_finer_texture(self) -> None:
+    square = self.drawn('north', (3.5, 5.62, 3.0)).square('north', size=32)
+    self.assertEqual(32 * 32, len(square))
+    #  texels 0 and 1 of 32 both fall in the frame's first pixel
+    self.assertEqual(square[0], square[1])
 
 
 if __name__ == '__main__':

@@ -144,6 +144,10 @@ class Thing(BaseObject):
     """
     return self.__scene__.agent.examine(self.__pos__, side)
 
+  def identify(self, among: Optional[Any] = None) -> Any:
+    """What it is by its looks alone, as the agent tells (SPEC.md 15.4)."""
+    return self.__scene__.agent.identify(self.__pos__, among)
+
   # ------------------------------------------- examinations, by command
 
   def isThere(self) -> bool:

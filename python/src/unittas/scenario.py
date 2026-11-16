@@ -7,12 +7,16 @@ it (SPEC.md 15.3).
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from .agent import Agent
 from .run import Run
 from .scene import Scene
 from .testcase import GameTestCase
-from .values import Vec3
+from .values import BlockPos, Vec3
+
+if TYPE_CHECKING:  # pragma: no cover
+  from typing import Any, Optional
 
 
 class ScenarioTestCase(GameTestCase):
@@ -44,3 +48,18 @@ class ScenarioTestCase(GameTestCase):
     super().setUpClass()
     cls.agent = Agent(cls.game, os.path.join(Run.current.results, 'frames'))
     cls.scene = Scene(cls.agent, Vec3(*Run.current.start).block())
+
+  def assertIdentifies(self, pos: BlockPos, member: Any,
+                       among: Optional[Any] = None, msg: str = '') -> None:
+    """
+    That the agent tells the block at 'pos' is 'member' by its looks alone
+    (SPEC.md 15.4), among 'among' or every full cube: a FAIL naming what it
+    is by its looks otherwise. What can't be told is the agent's
+    TesttimeError, an ERROR.
+    """
+    found = self.agent.identify(pos, among)
+    if found is not member:
+      self.fail(msg or 'the block at (%d, %d, %d) is %s.%s by its looks, '
+                'not %s.%s' % (pos.x, pos.y, pos.z, type(found).__name__,
+                               found.name, type(member).__name__,
+                               member.name))

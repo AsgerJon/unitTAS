@@ -31,6 +31,7 @@ The ground's top is at y 4; walls are full blocks at whole positions.
 from __future__ import annotations
 
 import math
+import random
 from typing import Any
 
 from fakeprobe import FakeError
@@ -44,6 +45,106 @@ FRICTION = 0.546
 REACH = 5.0
 #  what a click places: the blocks among the items (a stick places none)
 BLOCK_ITEMS = {'minecraft:stone', 'minecraft:dirt'}
+
+
+def _texture(name: str) -> list:
+  """A 16 by 16 texture for an icon: its pattern and colour by its name."""
+  chance = random.Random(name)
+  colour = {'wool_colored_red': (170, 45, 45),
+            'wool_colored_blue': (50, 60, 160)}.get(name, (
+              chance.randrange(60, 200), chance.randrange(60, 200),
+              chance.randrange(60, 200)))
+  if name.startswith('wool_colored_'):
+    chance = random.Random('wool')
+  out = []
+  for _ in range(256):
+    shade = 0.45 + chance.random() * 0.55
+    r, g, b = (int(c * shade) for c in colour)
+    out.append((0xFF << 24) | (r << 16) | (g << 8) | b)
+  return out
+
+
+def _all(icon: str) -> dict:
+  return {face: icon for face in ('down', 'up', 'north', 'south', 'west',
+                                  'east')}
+
+
+def _facing(top: str, side: str, front: str, meta: int) -> dict:
+  """A furnace's or a dispenser's faces at a facing meta (2 to 5)."""
+  faces = {'down': top, 'up': top}
+  for number, face in ((2, 'north'), (3, 'south'), (4, 'west'), (5, 'east')):
+    faces[face] = front if number == meta else side
+  return faces
+
+
+#  How the fake's blocks look, as block.faces answers: by (id, meta) asked
+LOOKS = {
+  ('minecraft:stone', 0): [(0, _all('stone'))],
+  ('minecraft:cobblestone', 0): [(0, _all('cobblestone'))],
+  ('minecraft:furnace', 0): [(m, _facing('furnace_top', 'furnace_side',
+                                         'furnace_front_off', m))
+                             for m in (2, 3, 4, 5)],
+  ('minecraft:dispenser', 0): [(m, _facing('furnace_top', 'furnace_side',
+                                           'dispenser_front_horizontal', m))
+                               for m in (2, 3, 4, 5)],
+  ('minecraft:crafting_table', 0): [(0, {
+    'down': 'planks_oak', 'up': 'crafting_table_top',
+    'north': 'crafting_table_front', 'south': 'crafting_table_side',
+    'west': 'crafting_table_front', 'east': 'crafting_table_side'})],
+  ('minecraft:wool', 14): [(14, _all('wool_colored_red'))],
+  ('minecraft:wool', 11): [(11, _all('wool_colored_blue'))],
+}
+
+
+#  Where a texel (u, v) of each face is, from the block's least corner, as
+#  1.7.10 draws it: a side face's texture upright and unmirrored to one
+#  facing it, the top's and the bottom's along x and z.
+FACE_POINT = {
+  'down': lambda u, v: (u, 0.0, v), 'up': lambda u, v: (u, 1.0, v),
+  'north': lambda u, v: (1.0 - u, 1.0 - v, 0.0),
+  'south': lambda u, v: (u, 1.0 - v, 1.0),
+  'west': lambda u, v: (0.0, 1.0 - v, u),
+  'east': lambda u, v: (1.0, 1.0 - v, 1.0 - u)}
+
+
+def faceCamera(pos: tuple, face: str, eye: tuple, rect: tuple,
+               width: int, height: int) -> dict:
+  """
+  A view.block camera that draws the face of the block at 'pos' square
+  onto 'rect' of a width by height frame, one pixel a texel when the
+  rect is 16 by 16: orthographic, its matrices as the probe sends them.
+  """
+  x0, y0, x1, y1 = rect
+  origin = [float(p) for p in pos]
+  corner = [o + c for o, c in zip(origin, FACE_POINT[face](0.0, 0.0))]
+  along = [o + c - k for o, c, k in zip(origin, FACE_POINT[face](1.0, 0.0),
+                                        corner)]
+  down = [o + c - k for o, c, k in zip(origin, FACE_POINT[face](0.0, 1.0),
+                                       corner)]
+  #  u = along . (W - corner), v = down . (W - corner): along and down
+  #  are axis-aligned unit vectors, so each is its own inverse
+  rows = []
+  for axis, start, size, flip in ((along, x0, x1 - x0, False),
+                                  (down, y0, y1 - y0, True)):
+    #  pixel = start + size * t, and the ndc from the pixel, GL's way up
+    if flip:
+      scale = -2.0 * size / height
+      shift = 1.0 - 2.0 * start / height
+    else:
+      scale = 2.0 * size / width
+      shift = 2.0 * start / width - 1.0
+    coefficients = [scale * a for a in axis]
+    constant = shift - sum(c * k for c, k in zip(coefficients, corner))
+    #  relative to the eye, as the probe's camera is
+    constant += sum(c * e for c, e in zip(coefficients, eye))
+    rows.append(coefficients + [constant])
+  rows.append([0.0, 0.0, 0.0, 0.0])
+  rows.append([0.0, 0.0, 0.0, 1.0])
+  projection = [rows[r][c] for c in range(4) for r in range(4)]
+  identity = [1.0 if r == c else 0.0 for c in range(4) for r in range(4)]
+  return {'pos': list(eye), 'look': {'yaw': 0.0, 'pitch': 0.0},
+          'modelview': identity, 'projection': projection,
+          'viewport': [0, 0, width, height]}
 
 
 class FakePlayer:
@@ -87,8 +188,12 @@ class FakePlayer:
     self.selected = 0
     #  what its clicks did: ('use', pos), ('placed', pos), ('broke', pos)
     self.clicks = []
-    #  whether its views see nothing
+    #  whether its views see nothing; the light its views show faces in
     self.blind = False
+    self.light = 0.8
+    #  the blocks' metas, by place (a furnace's facing); how blocks look
+    self.metas = {}
+    self.looks = dict(LOOKS)
 
   # --------------------------------------------------------------- the world
 
@@ -210,6 +315,17 @@ class FakePlayer:
     self.hitDelay = 5
 
   # -------------------------------------------------------------- containers
+
+  def worldFaces(self, pos: tuple) -> Any:
+    """The faces the block at 'pos' shows, by its id and meta; None."""
+    meta = self.metas.get(pos, 0)
+    for (kind, _), variants in self.looks.items():
+      if kind != self.walls.get(pos):
+        continue
+      for variant, faces in variants:
+        if variant == meta:
+          return faces
+    return None
 
   def slotsShown(self) -> list:
     """The open chest's slots, then the player's 27, then its hotbar."""
@@ -379,6 +495,7 @@ class FakePlayer:
         self.walls.pop(pos, None)
         return {}
       self.walls[pos] = block['id']
+      self.metas[pos] = block.get('meta', 0)
       if block['id'] == 'minecraft:lever':
         self.levers[pos] = bool(block.get('meta', 0) & 8)
       if block['id'] == 'minecraft:chest':
@@ -398,22 +515,47 @@ class FakePlayer:
       target = self.target()
       mine = (not self.blind and target is not None and
               tuple(target['block']) == pos)
+      eye = (self.x, GROUND + EYE, self.z)
+      faces = self.worldFaces(pos) if mine else None
+      texture = _texture(faces[target['face']]) if faces else None
       data = bytearray()
       for y in range(48):
         for x in range(64):
           inside = 24 <= x < 40 and 16 <= y < 32
-          data += bytes((200, 40, 40) if inside and mine else (90, 90, 90))
+          if inside and texture:
+            argb = texture[(y - 16) * 16 + (x - 24)]
+            data += bytes(int(((argb >> shift) & 255) * self.light)
+                          for shift in (16, 8, 0))
+          else:
+            data += bytes((200, 40, 40) if inside and mine else (90, 90, 90))
       png.write(args['file'], 64, 48, 3, bytes(data))
+      camera = (faceCamera(pos, target['face'], eye, (24, 16, 40, 32), 64,
+                           48) if mine else
+                {'pos': list(eye),
+                 'look': {'yaw': self.yaw, 'pitch': self.pitch},
+                 'modelview': [0.0] * 16, 'projection': [0.0] * 16,
+                 'viewport': [0, 0, 64, 48]})
       return {'file': args['file'], 'width': 64, 'height': 48,
-              'tick': self.tick,
-              'camera': {'pos': [self.x, GROUND + EYE, self.z],
-                         'look': {'yaw': self.yaw, 'pitch': self.pitch},
-                         'modelview': [0.0] * 16, 'projection': [0.0] * 16,
-                         'viewport': [0, 0, 64, 48]},
+              'tick': self.tick, 'camera': camera,
               'rect': [24, 16, 40, 32],
               'mask': [('1' if mine else '0') * 16] * 16,
               'faces': {target['face']: 256} if mine else {},
               'covered': []}
+
+    def blockFaces(args: dict) -> dict:
+      out = []
+      for block in args['blocks']:
+        variants = [{'metas': [m], 'faces': faces}
+                    for (kind, _), each in sorted(self.looks.items())
+                    if kind == block['id'] for m, faces in each]
+        out.append({'cube': bool(variants), 'tint': 0xFFFFFF,
+                    'variants': variants})
+      return {'blocks': out}
+
+    def textures(args: dict) -> dict:
+      return {'icons': {name: {'width': 16, 'height': 16,
+                               'pixels': _texture(name)}
+                        for name in args['icons']}}
 
     def inventory(args: dict) -> Any:
       main = list(self.hotbar) + list(self.rest)
@@ -438,6 +580,8 @@ class FakePlayer:
       'block.set': at('block.set', blockSet),
       'block.items': at('block.items', blockItems),
       'view.block': at('view.block', view),
+      'block.faces': at('block.faces', blockFaces),
+      'texture.get': at('texture.get', textures),
       'key.up': at('key.up',
                    lambda args: self.keys.discard(args['key']) or {}),
       'ticks.wait': at('ticks.wait', wait),

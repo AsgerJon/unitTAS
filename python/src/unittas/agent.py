@@ -8,6 +8,7 @@ what is there and takes the inputs.
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
+import json
 import math
 import os
 import tempfile
@@ -16,8 +17,9 @@ from typing import TYPE_CHECKING
 from worktoy.desc import Field
 from worktoy.mcls import BaseObject
 
-from .errors import TesttimeError
-from .values import BlockPos, Item, Vec3
+from .errors import Missing, TesttimeError
+from .likeness import likeness
+from .values import Block, BlockPos, Item, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional, Union
@@ -100,6 +102,10 @@ class Agent(BaseObject):
   STUCK = 10
   #  How much nearer than its reach the agent goes, to use it surely
   REACH_MARGIN = 1.0
+  #  How far identify's best look must beat the next to be the answer,
+  #  and how alike it must be at least
+  MARGIN = 0.1
+  LIKENESS = 0.5
 
   #  Fallback Variables
 
@@ -111,6 +117,8 @@ class Agent(BaseObject):
   #  Where its views' frames are kept, and how many it has taken
   __frames__: str = None
   __taken__: int = 0
+  #  The game's textures it has asked for, by icon: (size, pixels) or None
+  __textures__: dict = None
 
   #  Public Variables
   game = Field()
@@ -153,6 +161,7 @@ class Agent(BaseObject):
       raise ValueError('an agent\'s frames folder is absolute, not %r' % (
         frames,))
     self.__frames__ = frames
+    self.__textures__ = {}
 
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  PARENT METHODS   # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -439,6 +448,9 @@ class Agent(BaseObject):
     self.__taken__ += 1
     name = 'examine-%d-%d-%d-%d.png' % (pos.x, pos.y, pos.z, self.__taken__)
     view = self.__game__.view(pos, os.path.join(self.__frames__, name))
+    #  the view's camera and mask beside its frame, for review
+    with open(view.file[:-4] + '.json', 'w', encoding='utf-8') as file:
+      json.dump(view.answer, file)
     if not view.count:
       infoSpec = """nothing of the block at %s is in the view from %s
       (frame %s)"""
@@ -451,6 +463,207 @@ class Agent(BaseObject):
     _note(' '.join((infoSpec % (_place(pos), _place(view.eye), view.count,
                                 faces, _shown(view.file))).split()))
     return view
+
+  def identify(self, pos: BlockPos, among: Optional[Any] = None) -> Any:
+    """
+    Says what the block at 'pos' is from its looks alone (SPEC.md 15.4):
+    views from each side the agent can see it from, each face squared up
+    and compared with each candidate's faces as the running game draws
+    them, from the resource pack it has loaded (block.faces, texture.get;
+    every variant that drops as the candidate does, so a furnace's
+    facings count). The candidates are the mcdex blocks 'among' names, or
+    every full cube the game's version has. The best look must beat the
+    next by MARGIN. Air, which shows nothing, is known by touch: the agent
+    walks into its place. The one mcdex member it is.
+
+    Raises
+    ------
+    TesttimeError
+      No side shows the block and it can't be touched; no look beats the
+      next by MARGIN (the scores said); two candidates look the same.
+    NotImplementedError
+      A candidate named isn't drawn as a full cube: identify knows full
+      cubes so far.
+    Missing
+      A candidate named isn't in the game's version.
+    """
+    if not isinstance(pos, BlockPos):
+      raise TypeError('identify takes a BlockPos, not %r' % (pos,))
+    views, why = [], []
+    for side in ('north', 'east', 'south', 'west'):
+      try:
+        views.append(self.examine(pos, side))
+      except TesttimeError as error:
+        why.append(str(error))
+    if not views:
+      return self._byTouch(pos, why)
+    candidates = self._candidates(pos, among)
+    self._fetch(icon for _, look in candidates
+                for variant in look['variants']
+                for icon in variant['faces'].values())
+    squares = {}
+    scored = []
+    for member, look in candidates:
+      best, seen = None, None
+      for variant in look['variants']:
+        score = self._likeness(views, variant['faces'], look['tint'],
+                               squares)
+        if score is not None and (best is None or score > best):
+          best, seen = score, variant['faces']
+      if best is not None:
+        scored.append((best, member, self._signature(seen, look['tint'])))
+    return self._decide(pos, scored, len(views))
+
+  def _candidates(self, pos: BlockPos, among: Optional[Any]) -> list:
+    """(member, look) for each candidate the game draws as a full cube."""
+    from mcdex import MCBlocks
+
+    from .errors import NoMcdexData
+    from .things import blockOf
+    game = self.__game__
+    named = among is not None
+    members, blocks = [], []
+    for member in (list(among) if named else list(MCBlocks)):
+      try:
+        block, _ = blockOf(member, game.version, game.declared())
+      except (Missing, NoMcdexData):
+        if named:
+          raise
+        continue
+      members.append(member)
+      blocks.append(block)
+    out = []
+    for member, block, look in zip(members, blocks,
+                                   game.blockFaces(blocks, pos)):
+      label = '%s.%s' % (type(member).__name__, member.name)
+      if 'error' in look:
+        if named:
+          raise TesttimeError('identify', self.perceive(), '%s: %s' % (
+            label, look['error']))
+        continue
+      if not look['cube']:
+        if named:
+          raise NotImplementedError(
+            "%s isn't drawn as a full cube: identify knows full cubes so "
+            "far (SPEC.md 15.4)" % label)
+        continue
+      #  the member's variants: the metas mcdex reads back as it (a
+      #  furnace's facings; not wool's other colours)
+      variants = [variant for variant in look['variants']
+                  if self._isIt(member, block.id, variant['metas'])]
+      if variants:
+        out.append((member, dict(look, variants=variants)))
+    return out
+
+  def _isIt(self, member: Any, kind: str, metas: list) -> bool:
+    """Whether mcdex reads the block 'kind' at any of 'metas' as 'member'."""
+    for meta in metas:
+      try:
+        if member in self.__game__.membersOf(Block(kind, meta)):
+          return True
+      except ValueError:  # mcdex needs its block entity's data to say
+        continue
+    return False
+
+  def _fetch(self, icons: Any) -> None:
+    """The game's textures for these icons, those not asked for yet."""
+    wanted = sorted(set(icon for icon in icons if icon) -
+                    set(self.__textures__))
+    if not wanted:
+      return
+    for name, texture in self.__game__.textures(wanted).items():
+      if 'error' in texture or texture['width'] != texture['height']:
+        self.__textures__[name] = None
+      else:
+        self.__textures__[name] = (texture['width'],
+                                   tuple(texture['pixels']))
+
+  def _likeness(self, views: list, faces: dict, tint: int,
+                squares: dict) -> Optional[float]:
+    """A variant's likeness to the views: each face's, by its pixels."""
+    total = weight = 0.0
+    for at, view in enumerate(views):
+      for face, count in view.faces.items():
+        texture = self.__textures__.get(faces.get(face, ''))
+        if texture is None:
+          continue
+        size, pixels = texture
+        key = (at, face, size)
+        if key not in squares:
+          squares[key] = view.square(face, size)
+        score = likeness(squares[key], pixels, tint)
+        if score is not None:
+          total += score * count
+          weight += count
+    return total / weight if weight else None
+
+  @staticmethod
+  def _signature(faces: dict, tint: int) -> str:
+    """
+    What a candidate looks like where it looks most like the views: its
+    best variant's faces and its tint. Two candidates alike there look
+    the same (1.7.10's infested stone has stone's look among its own).
+    """
+    return json.dumps([tint, faces], sort_keys=True)
+
+  def _decide(self, pos: BlockPos, scored: list, views: int) -> Any:
+    """The best look's member, if it beats the next look by MARGIN."""
+    def named(member: Any) -> str:
+      return '%s.%s' % (type(member).__name__, member.name)
+
+    if not scored:
+      raise TesttimeError('identify', self.perceive(),
+                          'no candidate could be compared with the views')
+    scored.sort(key=lambda each: -each[0])
+    best, member, look = scored[0]
+    same = sorted(named(each) for score, each, sign in scored
+                  if sign == look)
+    others = [(score, each) for score, each, sign in scored if sign != look]
+    top = ', '.join('%s %.2f' % (named(each), score)
+                    for score, each, _ in scored[:4])
+    if len(same) > 1:
+      raise TesttimeError('identify', self.perceive(), '%s look the same' % (
+        ' and '.join(same),))
+    if best < self.LIKENESS:
+      infoSpec = """the block at %s looks like none of the candidates: the
+      likest is %.2f, under %.2f (%s), from %d views"""
+      info = infoSpec % (_place(pos), best, self.LIKENESS, top, views)
+      raise TesttimeError('identify', self.perceive(), ' '.join(
+        info.split()))
+    if others and best - others[0][0] < self.MARGIN:
+      infoSpec = """the block at %s: no look beats the next by %.2f (%s),
+      from %d views"""
+      info = infoSpec % (_place(pos), self.MARGIN, top, views)
+      raise TesttimeError('identify', self.perceive(), ' '.join(
+        info.split()))
+    next_ = ('; next %s %.2f' % (named(others[0][1]), others[0][0])
+             if others else '')
+    _note('identified by observation: the block at %s as %s (%.2f%s), from '
+          '%d views' % (_place(pos), named(member), best, next_, views))
+    return member
+
+  def _byTouch(self, pos: BlockPos, why: list) -> Any:
+    """
+    Nothing of the block shows from any side: air, if the agent can walk
+    into its place. Climbing to touch one above is SPEC.md 15.6 step 7's.
+    """
+    from mcdex import MCBlocks
+    seen = self.perceive()
+    if pos.y != int(math.floor(seen.pos.y + 1e-6)):
+      infoSpec = """no side shows the block at %s, and touching it needs
+      climbing: %s"""
+      raise TesttimeError('identify', seen, ' '.join((infoSpec % (
+        _place(pos), '; '.join(why))).split()))
+    try:
+      self._walkTo('identify', pos.center(), 0.25, None)
+    except TesttimeError as error:
+      infoSpec = """no side shows the block at %s, and something stops the
+      player stepping into it: %s"""
+      raise TesttimeError('identify', error.seen, ' '.join((infoSpec % (
+        _place(pos), error)).split())) from error
+    _note('identified by touch: the block at %s as MCBlocks.Air (no side '
+          'shows it, and the agent walked into it)' % (_place(pos),))
+    return MCBlocks.Air
 
   def _fromSide(self, pos: BlockPos, side: str) -> Perception:
     """Stands 'side' of the block and looks at that face of it."""

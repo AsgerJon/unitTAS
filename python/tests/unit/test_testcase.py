@@ -54,6 +54,26 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
     self.assertEqual('    examined by command: MCBlocks.Stone at (1, 4, 1), isThere: True', lines[at[0] + 1])
     self.assertTrue(lines[at[0] + 2].startswith('ScenarioCases.test_b_examines_nothing ... ok'), lines)
 
+  def test_asserting_what_a_block_is(self) -> None:
+    """assertIdentifies (15.4): the agent's identify, a FAIL when it says another member."""
+    from mcdex import MCBlocks
+    from unittas.values import BlockPos
+
+    class Seen:
+      asked = []
+
+      def identify(self, pos, among=None):
+        Seen.asked.append((pos, among))
+        return MCBlocks.Stone
+
+    #  the agent sits on the class, as setUpClass puts it there
+    stub = type('Stub', (gamecases.ScenarioCases,), {'agent': Seen()})
+    case = stub('test_b_examines_nothing')
+    case.assertIdentifies(BlockPos(3, 4, 6), MCBlocks.Stone, among=[MCBlocks.Stone])
+    with self.assertRaisesRegex(AssertionError, 'the block at .* is MCBlocks.Stone by its looks, not MCBlocks.Furnace'):
+      case.assertIdentifies(BlockPos(3, 4, 6), MCBlocks.Furnace)
+    self.assertEqual([(BlockPos(3, 4, 6), [MCBlocks.Stone]), (BlockPos(3, 4, 6), None)], Seen.asked)
+
   def test_a_frame_named_from_the_run_s_results(self) -> None:
     """An observation's frame on the report line: from the run's results (15.6 step 6)."""
     from unittas.agent import _shown

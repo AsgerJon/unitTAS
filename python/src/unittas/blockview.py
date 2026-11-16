@@ -15,7 +15,36 @@ from . import png
 from .values import BlockPos, Look, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
-  from typing import Any
+  from typing import Any, Optional
+
+
+#  Where a texel (u, v) of each face is, from the block's least corner, as
+#  1.7.10 draws it: a side face's texture upright and unmirrored to one
+#  facing it, the top's and the bottom's along x and z.
+_FACE_POINT = {
+  'down': lambda u, v: (u, 0.0, v), 'up': lambda u, v: (u, 1.0, v),
+  'north': lambda u, v: (1.0 - u, 1.0 - v, 0.0),
+  'south': lambda u, v: (u, 1.0 - v, 1.0),
+  'west': lambda u, v: (0.0, 1.0 - v, u),
+  'east': lambda u, v: (1.0, 1.0 - v, 1.0 - u)}
+#  Whether an eye at (x, y, z) from the block's least corner is on the
+#  face's outer side, where the face can be seen from
+_FACE_SEEN = {
+  'down': lambda x, y, z: y < 0.0, 'up': lambda x, y, z: y > 1.0,
+  'north': lambda x, y, z: z < 0.0, 'south': lambda x, y, z: z > 1.0,
+  'west': lambda x, y, z: x < 0.0, 'east': lambda x, y, z: x > 1.0}
+
+
+def _apply(matrix: list, vector: list) -> list:
+  """A column-major 4 by 4 matrix times a column of four."""
+  return [sum(matrix[c * 4 + r] * vector[c] for c in range(4))
+          for r in range(4)]
+
+
+def _times(a: list, b: list) -> list:
+  """Two column-major 4 by 4 matrices' product, a times b."""
+  return [sum(a[k * 4 + r] * b[c * 4 + k] for k in range(4))
+          for c in range(4) for r in range(4)]
 
 
 def _need(answer: dict, key: str) -> Any:
@@ -53,8 +82,9 @@ class BlockView(BaseObject):
   __answer__: dict = None
   __rect__: tuple = None
   __mask__: tuple = None
-  #  the block's pixels, once read from the frame
+  #  the block's pixels, once read from the frame; the frame, once read
   __pixels__: tuple = None
+  __frame__: tuple = None
 
   #  Public Variables
   pos = Field()
@@ -70,6 +100,7 @@ class BlockView(BaseObject):
   count = Field()
   coverage = Field()
   covered = Field()
+  answer = Field()
 
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   #  GETTERS  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -120,6 +151,11 @@ class BlockView(BaseObject):
   def _getFaces(self) -> dict:
     """How many of the block's pixels show each of its faces."""
     return dict(self.__answer__['faces'])
+
+  @answer.GET
+  def _getAnswer(self) -> dict:
+    """view.block's answer the view was made from, as it came."""
+    return dict(self.__answer__)
 
   @covered.GET
   def _getCovered(self) -> tuple:
@@ -219,11 +255,69 @@ class BlockView(BaseObject):
       data += bytes(colour) + (b'\xff' if mine else b'\x00')
     png.write(path, x1 - x0, y1 - y0, 4, bytes(data))
 
+  def project(self, x: float, y: float, z: float) -> Optional[tuple]:
+    """
+    Where the world's point (x, y, z) falls on the frame, (x, y) in its
+    pixels from its top left, by the frame's own camera; None behind it.
+    """
+    camera = self.__answer__['camera']
+    eye = camera['pos']
+    clip = _apply(_times(camera['projection'], camera['modelview']),
+                  [x - eye[0], y - eye[1], z - eye[2], 1.0])
+    if clip[3] <= 1e-9:
+      return None
+    vx, vy, vw, vh = camera['viewport']
+    across = vx + (clip[0] / clip[3] + 1) / 2 * vw
+    up = vy + (clip[1] / clip[3] + 1) / 2 * vh
+    return across, self.height - up
+
+  def square(self, face: str, size: int = 16) -> tuple:
+    """
+    The face set square (SPEC.md 15.4): for each of a size by size
+    texture's texels, row by row from the top as the game draws it, the
+    frame's pixel at the texel's middle, (r, g, b), when that pixel is
+    the block's; None where it isn't (hidden, or off the frame), and for
+    every texel of a face turned away from the eye.
+    """
+    if face not in _FACE_POINT:
+      raise ValueError('a face is one of %s, not %r' % (
+        ', '.join(_FACE_POINT), face))
+    pos, eye = self.__pos__, self.__answer__['camera']['pos']
+    if not self.__rect__ or not _FACE_SEEN[face](
+        eye[0] - pos.x, eye[1] - pos.y, eye[2] - pos.z):
+      return (None,) * (size * size)
+    width, height, channels, data = self._frame()
+    x0, y0, x1, y1 = self.__rect__
+    out = []
+    for j in range(size):
+      for i in range(size):
+        dx, dy, dz = _FACE_POINT[face]((i + 0.5) / size, (j + 0.5) / size)
+        at = self.project(pos.x + dx, pos.y + dy, pos.z + dz)
+        if at is None:
+          out.append(None)
+          continue
+        px, py = int(at[0] // 1), int(at[1] // 1)
+        if not (x0 <= px < x1 and y0 <= py < y1):
+          out.append(None)
+          continue
+        if self.__mask__[py - y0][px - x0] != '1':
+          out.append(None)
+          continue
+        start = (py * width + px) * channels
+        out.append(tuple(data[start:start + 3]))
+    return tuple(out)
+
+  def _frame(self) -> tuple:
+    """The frame, read once: (width, height, channels, data)."""
+    if self.__frame__ is None:
+      self.__frame__ = png.read(self.file)
+    return self.__frame__
+
   def _box(self) -> list:
     """Each pixel of the box, with whether it is the block's."""
     if not self.__rect__:
       return []
-    width, height, channels, data = png.read(self.file)
+    width, height, channels, data = self._frame()
     x0, y0, x1, y1 = self.__rect__
     out = []
     for y in range(y0, y1):

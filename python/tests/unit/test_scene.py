@@ -108,6 +108,11 @@ class SceneTests(PlayedTests):
     self.assertEqual(stone.pos, view.pos)
     self.assertEqual({'west': 256}, view.faces)
 
+  def test_a_thing_identified(self) -> None:
+    furnace = self.scene.place(Block('minecraft:furnace', 2), at=(3, 0, 6))
+    self.assertIs(MCBlocks.Furnace, furnace.identify(
+      among=[MCBlocks.Furnace, MCBlocks.Stone]))
+
   def test_notes_go_to_the_run(self) -> None:
     noted = _Noted()
     Run.current = noted

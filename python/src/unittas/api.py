@@ -454,6 +454,20 @@ class Game:
     answer = self.request('view.block', {'pos': _blockPos(pos), 'file': file, 'settle_ticks': settleTicks})
     return BlockView(pos if isinstance(pos, BlockPos) else BlockPos(*pos), answer)
 
+  def blockFaces(self, blocks: list, pos: Any) -> tuple:
+    """
+    How each block (a Block) looks in the running game (block.faces, SPEC.md 15.4): for each, in order, its
+    {'cube', 'tint', 'variants': [{'meta', 'faces': {face: icon}}]}, its tint as at 'pos'; or {'error': ...} for a
+    block the game doesn't have.
+    """
+    answer = self.request('block.faces', {'pos': _blockPos(pos),
+                                          'blocks': [{'id': each.id, 'meta': each.meta} for each in blocks]})
+    return tuple(answer['blocks'])
+
+  def textures(self, icons: list) -> dict:
+    """Each icon by its name, from the block atlas the game has loaded: {'width', 'height', 'pixels'} or {'error'}."""
+    return dict(self.request('texture.get', {'icons': list(icons)})['icons'])
+
   def screenshot(self, file: str) -> Any:
     return self.request('screenshot', {'file': file})
 
