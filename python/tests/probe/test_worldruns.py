@@ -58,17 +58,23 @@ class WorldRunTests(unittest.TestCase):
        ('EWorldTests.test_b_leaves_wool', 'ok'),
        ('EWorldTests.test_c_finds_the_wool', 'ok'),
        ('EWorldTests.test_d_breaks_the_gold', 'ok'),
-       ('EWorldTests.test_e_finds_the_gold_again', 'ok')], found)
+       ('EWorldTests.test_e_finds_the_gold_again', 'ok'),
+       ('EWorldTests.test_f_on_its_own_layers', 'ok')], found)
     worlds = [line for line in lines if line.startswith('world ')]
-    self.assertEqual(4, len(worlds), worlds)
+    self.assertEqual(5, len(worlds), worlds)
     self.assertEqual("world 1: the run's first, for EWorldTests", worlds[0])
     self.assertRegex(worlds[1], r'^world 2: EWorldTests\.terrain for '
                                 r'EWorldTests, made as it says \(type '
-                                r'default, seed 8675309; made in')
+                                r'default, seed 8675309')
     self.assertRegex(worlds[2], r'^world 3: EWorldTests\.arena for '
                                 r'EWorldTests, made as it says')
     self.assertRegex(worlds[3], r'^world 4: EWorldTests\.arena for '
                                 r'EWorldTests, as its setUp left it')
+    self.assertRegex(worlds[4], r'^world 5: EWorldTests\.layered for '
+                                r'EWorldTests, made as it says \(type '
+                                r'flat, .*layers 1xminecraft:bedrock:0 '
+                                r'2xminecraft:stone:0 1xminecraft:wool:14'
+                                r'.*rules doDaylightCycle=False')
     self.assertTrue(launched.ended(60), 'the run quit the game')
 
 

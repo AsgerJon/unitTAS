@@ -14,10 +14,13 @@ import unittest
 
 from worktoy.desc import FixBox
 
+from mcdex import MCBlocks
+
 from unittas._test_world import World
 from unittas.run import Run
 from unittas.testcase import GameTestCase, MultiplayerTestCase
 from unittas.values import Vec3
+from unittas.worldkind import WorldKind
 
 
 class ATests(GameTestCase):
@@ -199,3 +202,22 @@ class WorldCases(GameTestCase):
   @plains
   def test_d_in_plains_again(self) -> None:
     self.assertEqual(8675309, self.plains.seed)
+
+
+class CaseDeep(World):
+  """A flat world of a block vanilla 1.7.10 lacks: its check fails."""
+  kind = FixBox[WorldKind](WorldKind.Flat)
+  layers = FixBox[tuple](((MCBlocks.Deepslate, 3),))
+
+
+class DeepCases(GameTestCase):
+  """Tests in a world 1.7.10 can't make: each FAILs naming the check."""
+  deep = CaseDeep()
+
+  @deep
+  def test_a_in_the_deep(self) -> None:
+    pass
+
+  @deep
+  def test_b_in_the_deep_again(self) -> None:
+    pass

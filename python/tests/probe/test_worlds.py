@@ -183,6 +183,35 @@ class WorldTests(unittest.TestCase):
       self.request('world.create', {'folder': 'unittas'})
     self.assertEqual('menu', self.request('status')['state'])
 
+  def test_13b_a_flat_world_by_its_layers(self) -> None:
+    """
+    Layers as this version's own blocks, bottom up, and a biome by its id
+    (SPEC.md 17.4): the probe writes 1.7.10's text itself, its blocks by
+    number. What doesn't fit is refused before anything is made.
+    """
+    layers = [{'id': 'minecraft:bedrock', 'meta': 0, 'count': 1},
+              {'id': 'minecraft:stone', 'meta': 0, 'count': 2},
+              {'id': 'minecraft:wool', 'meta': 14, 'count': 1}]
+    with self.assertRaises(BadRequest):
+      self.request('world.create', {'folder': 'unittas-layers', 'type': 'flat', 'layers': layers,
+                                    'generator': LAYERS})
+    with self.assertRaises(BadRequest):
+      self.request('world.create', {'folder': 'unittas-layers', 'type': 'default', 'layers': layers})
+    with self.assertRaises(NotFound):
+      self.request('world.create', {'folder': 'unittas-layers', 'type': 'flat', 'biome': '2',
+                                    'layers': [{'id': 'minecraft:no_such_block', 'meta': 0, 'count': 1}]})
+    self.assertEqual('menu', self.request('status')['state'])
+    shutil.rmtree(os.path.join(self.saves, 'unittas-layers'), ignore_errors=True)
+    self.request('world.create', {'folder': 'unittas-layers', 'type': 'flat', 'layers': layers, 'biome': '2'},
+                 timeout=240)
+    try:
+      self.assertEqual('2;7,2x1,35:14;2;', self.request('world.get')['generator'])
+      self.assertEqual({'id': 'minecraft:wool', 'meta': 14},
+                       self.request('block.get', {'pos': [0, 3, 0]}, side='server'))
+      self.assertEqual([0, 3, 0], self.request('block.ground', {'x': 0, 'z': 0}, side='server')['pos'])
+    finally:
+      self.request('world.close', timeout=240)
+
   def test_14_quit(self) -> None:
     self.assertEqual({}, self.request('quit', {'reason': 'test_14'}))
     self.assertTrue(self.game.ended(120))

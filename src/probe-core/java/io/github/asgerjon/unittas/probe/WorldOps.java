@@ -89,13 +89,48 @@ final class WorldOps {
 		return given;
 	}
 
+	/** world.create's layers: [{"id": …, "meta": n, "count": n}, …], bottom up, at least one. */
+	private static java.util.List<FlatLayer> layers(Call call) throws ProbeException {
+		com.google.gson.JsonElement given = call.args.get("layers");
+		if (given == null || !given.isJsonArray() || given.getAsJsonArray().size() == 0) {
+			throw ProbeException.badRequest("layers", "layers is a list of {\"id\", \"meta\", \"count\"}, bottom up, at least one");
+		}
+		java.util.List<FlatLayer> out = new java.util.ArrayList<>();
+		for (com.google.gson.JsonElement each : given.getAsJsonArray()) {
+			if (!each.isJsonObject()) {
+				throw ProbeException.badRequest("layers", "a layer is {\"id\", \"meta\", \"count\"}, not " + each);
+			}
+			com.google.gson.JsonObject layer = each.getAsJsonObject();
+			String id = Json.string(layer, "id");
+			int meta = layer.has("meta") ? layer.get("meta").getAsInt() : 0;
+			int count = layer.has("count") ? layer.get("count").getAsInt() : 1;
+			if (id == null || meta < 0 || count < 1) {
+				throw ProbeException.badRequest("layers", "a layer is a block's id, a meta of 0 or more, a count of 1 or more: " + each);
+			}
+			out.add(new FlatLayer(id, meta, count));
+		}
+		return out;
+	}
+
 	private static JsonElement create(Call call, GameWorlds worlds) throws ProbeException, InterruptedException {
 		Probe probe = call.probe;
 		String folder = folder(call, TEST_FOLDER);
 		String name = call.string("name", TEST_NAME);
 		long seed = call.number("seed", SEED, Long.MIN_VALUE, Long.MAX_VALUE);
 		String type = oneOf(call, "type", "flat", TYPES);
-		String generator = call.string("generator", "flat".equals(type) ? worlds.testLayers() : "");
+		String generator;
+		if (call.has("layers")) {
+			// a flat world by its layers and biome, which the port writes as its version's own text (SPEC.md 17.4)
+			if (call.has("generator")) {
+				throw ProbeException.badRequest("layers", "a flat world is given by its layers or by generator text, not both");
+			}
+			if (!"flat".equals(type)) {
+				throw ProbeException.badRequest("layers", "layers are a flat world's, not a " + type + " world's");
+			}
+			generator = worlds.flatLayers(layers(call), call.string("biome", ""));
+		} else {
+			generator = call.string("generator", "flat".equals(type) ? worlds.testLayers() : "");
+		}
 		worlds.checkGenerator(type, generator);
 		String mode = oneOf(call, "game_mode", "creative", GAME_MODES);
 		boolean cheats = call.flag("cheats", true);

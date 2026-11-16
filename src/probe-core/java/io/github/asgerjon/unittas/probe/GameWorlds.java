@@ -31,6 +31,16 @@ public interface GameWorlds {
 	void checkGenerator(String type, String generator) throws ProbeException;
 
 	/**
+	 * A flat world's generator options in this version's own form, from its layers (bottom up, blocks by this
+	 * version's own ids) and its biome by this version's own id (SPEC.md 17.4); on the probe's thread. A block this
+	 * game hasn't is NotFound; a biome it can't read, BadRequest. A version that doesn't write them yet refuses.
+	 */
+	default String flatLayers(java.util.List<FlatLayer> layers, String biome) throws ProbeException {
+		throw new ProbeException("Unsupported", "this version's probe takes a flat world's layers as generator text only",
+			io.github.asgerjon.unittas.probe.link.Json.object("what", "layers"));
+	}
+
+	/**
 	 * Makes and opens a world, as the Create New World screen does. It returns once the game has started making it;
 	 * the player joins at the ticks after. 'generator' is the type's own options ("" for the type's default). A
 	 * ProbeException it throws is the operation's answer, as it is.

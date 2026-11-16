@@ -8,16 +8,19 @@ from __future__ import annotations
 from types import FunctionType
 from typing import TYPE_CHECKING
 
+from mcdex import MCBiomes
 from worktoy.desc import Field, FixBox
 from worktoy.dispatch import overload
 from worktoy.mcls import BaseObject
 
+from .gamemode import GameMode
 from .values import BlockPos
+from .worldkind import WorldKind
 
 if TYPE_CHECKING:  # pragma: no cover
-  from typing import Any, Callable
+  from typing import Any, Callable, Optional
 
-  from mcdex import MCBiomes, MCBlocks, MCStructures
+  from mcdex import MCBlocks, MCStructures, Version
 
   from .api import Game
   from .values import Vec3
@@ -65,9 +68,18 @@ class World(BaseObject):
   __entered__: dict = None
 
   #  Public Variables
-  #  The world's options; kind, layers, biome and rules follow once
-  #  WorldKind exists (SPEC.md 17.4)
+  #  The world's options, in mcdex's terms and unitTAS's own (SPEC.md
+  #  17.4): each version makes it as its own. 'layers' are a flat world's,
+  #  bottom up, (MCBlocks member, thickness); 'flatBiome' is a flat
+  #  world's too ('biome' is the read, 17.5); 'rules' maps MCGameRules
+  #  members to their values.
   seed = FixBox[int](0)
+  kind = FixBox[WorldKind](WorldKind.Default)
+  layers = FixBox[tuple](())
+  flatBiome = FixBox[MCBiomes](MCBiomes.Plains)
+  rules = FixBox[dict]({})
+  gameMode = FixBox[GameMode](GameMode.Creative)
+  structures = FixBox[bool](True)
   save = FixBox[str]('')
   fresh = FixBox[bool](False)
 
@@ -121,23 +133,69 @@ class World(BaseObject):
     owner, name = self.__placement__
     return '%s.%s' % (owner.__name__, name)
 
-  def createArgs(self) -> dict:
+  def createArgs(self, version: Version,
+                 declared: Optional[dict] = None) -> dict:
     """
-    world.create's arguments for this world (PROTOCOL.md): default
-    terrain from its seed. Its kind, layers, biome and rules, in each
-    version's own terms, come with SPEC.md 17.7 step 2.
+    world.create's arguments for this world in the version (PROTOCOL.md):
+    its kind, seed, game mode and structures; a flat world's layers as
+    that version's blocks, bottom up, and its biome as that version's
+    id, from which each probe writes its own generator text. 'declared'
+    is the game's mods' declarations (Game.declared).
 
     Raises
     ------
+    Missing
+      A layer's block or the flat biome is one vanilla lacks there and no mod
+      declares: the world's sanity check fails (SPEC.md 17.4).
+    TypeError
+      Layers on a world that isn't flat; a layer that isn't an MCBlocks
+      member with a thickness, or one told apart by block entity data.
     NotImplementedError
       A saved map ('save'): SPEC.md 17.7 step 3.
     """
+    from .things import blockOf, resolve
     if self.save:
       infoSpec = """The world '%s' is the saved map '%s': saved maps come
       with SPEC.md 17.7 step 3."""
       info = infoSpec % (self.label(), self.save)
       raise NotImplementedError(' '.join(info.split()))
-    return {'type': 'default', 'seed': self.seed}
+    args = {'type': self.kind.value, 'seed': self.seed,
+            'game_mode': self.gameMode.value, 'structures': self.structures}
+    if not self.layers:
+      return args
+    if self.kind is not WorldKind.Flat:
+      raise TypeError("%s has layers, which are a flat world's, but its "
+                      "kind is %s" % (self.label(), self.kind))
+    layers = []
+    for layer in self.layers:
+      if not isinstance(layer, tuple) or len(layer) != 2:
+        raise TypeError('%s: a layer is (MCBlocks member, thickness), not %r'
+                        % (self.label(), layer))
+      member, count = layer
+      block, tile = blockOf(member, version, declared)
+      if tile:
+        raise TypeError('%s: %s.%s is told apart by its block entity data '
+                        'there, which a layer has none of'
+                        % (self.label(), type(member).__name__, member.name))
+      layers.append({'id': block.id, 'meta': block.meta, 'count': count})
+    args['layers'] = layers
+    args['biome'] = resolve(self.flatBiome, version, declared).text()
+    return args
+
+  def ruleArgs(self, version: Version,
+               declared: Optional[dict] = None) -> dict:
+    """
+    world.rules.set's rules for this world in the version: each
+    MCGameRules member's name there, to its value.
+
+    Raises
+    ------
+    Missing
+      A rule vanilla lacks there: the world's sanity check fails.
+    """
+    from .things import resolve
+    return {resolve(member, version, declared).text(): value
+            for member, value in self.rules.items()}
 
   def getDecorated(self) -> tuple[str, ...]:
     """The names of the test methods this world decorated, in order."""

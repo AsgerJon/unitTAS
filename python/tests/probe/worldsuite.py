@@ -9,7 +9,10 @@ test_worldruns.py to run in the development client: not a test module
 - Terrain, a seeded world of default terrain: test_b leaves wool, and
   test_c finds it, since a world's tests share it;
 - Arena, fresh: its setUp places gold once; test_d finds it and breaks
-  it, and test_e finds it again, in the copy kept after setUp.
+  it, and test_e finds it again, in the copy kept after setUp;
+- Layered, a flat world described in mcdex's terms (SPEC.md 17.4):
+  bedrock, two stone and red wool on desert, its daylight cycle off;
+  test_f stands on its red wool.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -19,9 +22,12 @@ import math
 
 from worktoy.desc import FixBox
 
+from mcdex import MCBiomes, MCBlocks, MCGameRules
+
 from unittas._test_world import World
 from unittas.testcase import GameTestCase
 from unittas.values import Block, Vec3
+from unittas.worldkind import WorldKind
 
 WOOL = Block('minecraft:wool', 14)
 GOLD = Block('minecraft:gold_block', 0)
@@ -48,11 +54,22 @@ class Arena(World):
     self.game.setBlock(near(self.start), 'minecraft:gold_block')
 
 
+class Layered(World):
+  """A flat world of the version's own blocks for mcdex's."""
+
+  kind = FixBox[WorldKind](WorldKind.Flat)
+  layers = FixBox[tuple](((MCBlocks.Bedrock, 1), (MCBlocks.Stone, 2),
+                          (MCBlocks.RedWool, 1)))
+  flatBiome = FixBox[MCBiomes](MCBiomes.Desert)
+  rules = FixBox[dict]({MCGameRules.AdvanceTime: False})
+
+
 class EWorldTests(GameTestCase):
   """Each test in its world."""
 
   terrain = Terrain()
   arena = Arena()
+  layered = Layered()
 
   def test_a_in_the_run_s_flat_world(self) -> None:
     under = self.start.block().below()
@@ -93,3 +110,12 @@ class EWorldTests(GameTestCase):
   @arena
   def test_e_finds_the_gold_again(self) -> None:
     self.assertEqual(GOLD, self.game.block(near(self.arena.start)))
+
+  @layered
+  def test_f_on_its_own_layers(self) -> None:
+    under = self.start.block().below()
+    self.assertThing(self.game.block(under), MCBlocks.RedWool)
+    self.assertEqual(under, self.game.ground(under.x, under.z))
+    self.assertThing(self.game.block(under.below()), MCBlocks.Stone)
+    rules = self.game.request('world.get')['rules']
+    self.assertEqual('false', rules['doDaylightCycle'])

@@ -114,6 +114,15 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
                       'WorldCases.test_d_in_plains_again',
                       'WorldCases.test_c_in_the_arena'], names)
 
+  def test_a_world_the_version_can_t_make_fails_its_tests(self) -> None:
+    """Its sanity check (SPEC.md 17.4): a FAIL naming it, not an ERROR."""
+    self.run.begin()
+    result = self.runClasses(gamecases.DeepCases)
+    self.assertEqual([], result.errors)
+    self.assertEqual(2, len(result.failures), result.failures)
+    for _, said in result.failures:
+      self.assertIn("Vanilla 1.7.10 has no 'deepslate'", said)
+
   def test_a_multiplayer_class_can_t_ask_for_a_world_yet(self) -> None:
     self.run.begin()
     self.run.multiplayerAllowed = True

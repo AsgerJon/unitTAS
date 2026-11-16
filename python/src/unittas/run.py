@@ -365,7 +365,9 @@ class Run:
   def _makeWorld(self, world: Any, name: str) -> None:
     """A World made fresh for the class 'name', entered, its setUp run; a fresh one's copy kept after it."""
     started = time.monotonic()
-    args = world.createArgs()
+    #  in the game's version, the mods' declarations too; a member it lacks is Missing, the world's sanity check
+    args = world.createArgs(self.game.version, self.game.declared())
+    rules = world.ruleArgs(self.game.version, self.game.declared())
     if self.singleplayerOpen:
       self._closeOwnWorld()
     folder = os.path.join(self.gameDir, 'saves', WORLD_FOLDER)
@@ -381,6 +383,8 @@ class Run:
     spawn = made['spawn']
     self.worldEntered = (start, (int(spawn[0]), int(spawn[1]), int(spawn[2])))
     self.game.request('world.prepare')
+    if rules:
+      self.game.request('world.rules.set', {'rules': rules})
     self.game.request('hooks.run', {'hook': 'setUpWorld'})
     self.worldSetUp = True
     self._enter(world)
@@ -396,7 +400,11 @@ class Run:
       copyExactly(folder, self.setupFolder())
       self._openWorld(world)
     self.worldNumber += 1
-    asked = ', '.join('%s %s' % (key, value) for key, value in args.items())
+    asked = ', '.join('%s %s' % (key, value) for key, value in args.items() if key != 'layers')
+    if 'layers' in args:
+      asked += ', layers %s' % ' '.join('%dx%s:%d' % (each['count'], each['id'], each['meta']) for each in args['layers'])
+    if rules:
+      asked += ', rules %s' % ' '.join('%s=%s' % pair for pair in rules.items())
     self.worldNote = 'world %d: %s for %s, made as it says (%s; made in %.1f s)' % (
       self.worldNumber, world.label(), name, asked, time.monotonic() - started)
 

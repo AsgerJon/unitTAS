@@ -3,6 +3,7 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.TasTrace;
+import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.WorldSettings;
@@ -23,6 +24,39 @@ final class ForgeWorlds implements GameWorlds {
 	@Override
 	public String testLayers() {
 		return Worlds.FLAT_LAYERS;
+	}
+
+	/**
+	 * 1.7.10's flat text from layers: format 2, each layer {@code [count x]number[:meta]} by the block's number, the
+	 * biome by its number ({@code "2;7,2x1,35:14;2;"}), no structures named.
+	 */
+	@Override
+	public String flatLayers(List<FlatLayer> layers, String biome) throws ProbeException {
+		StringBuilder text = new StringBuilder("2;");
+		for (int i = 0; i < layers.size(); i++) {
+			FlatLayer layer = layers.get(i);
+			if (!net.minecraft.block.Block.blockRegistry.containsKey(layer.id)) {
+				throw new ProbeException("NotFound", "this game has no block " + layer.id, Json.object("what", layer.id));
+			}
+			int number = net.minecraft.block.Block.getIdFromBlock(
+				(net.minecraft.block.Block) net.minecraft.block.Block.blockRegistry.getObject(layer.id));
+			if (i > 0) {
+				text.append(',');
+			}
+			if (layer.count != 1) {
+				text.append(layer.count).append('x');
+			}
+			text.append(number);
+			if (layer.meta != 0) {
+				text.append(':').append(layer.meta);
+			}
+		}
+		try {
+			Integer.parseInt(biome);
+		} catch (NumberFormatException e) {
+			throw ProbeException.badRequest("biome", "1.7.10's biome is its number, not " + biome);
+		}
+		return text.append(';').append(biome).append(';').toString();
 	}
 
 	/** 1.7.10 reads any generator options (a flat world's text it can't read is its classic one): none is refused. */

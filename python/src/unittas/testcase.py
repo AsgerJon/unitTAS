@@ -42,7 +42,7 @@ from typing import TYPE_CHECKING
 
 from worktoy.desc import Field
 
-from .errors import NO_RESULT_ERRORS, NoResult
+from .errors import NO_RESULT_ERRORS, NeedFailed, NoResult
 from .run import NO_RESULT, Run
 from .values import Vec3
 
@@ -257,6 +257,15 @@ class GameTestCase(unittest.TestCase):
       return self._noResult(result, run, error.why, started, error.__cause__)
     except NO_RESULT_ERRORS as error:
       return self._noResult(result, run, run.whyNoResult(error), started, error)
+    except NeedFailed:
+      #  its World's sanity check (SPEC.md 17.4): a thing the version lacks, a FAIL naming it, the test not run
+      error = sys.exc_info()
+      result.startTest(self)
+      result.addFailure(self, error)
+      result.stopTest(self)
+      if Run.current is not None:
+        Run.current.afterTest(self.reportName(), 'FAIL', time.monotonic() - started, _said(error), 0)
+      return result
     except Exception:  # no run, or the reset failed (a mod's resetPlayer, say): the test's own error
       error = sys.exc_info()
       result.startTest(self)

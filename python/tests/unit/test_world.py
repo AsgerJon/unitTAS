@@ -15,11 +15,16 @@ import unittest
 
 from worktoy.desc import FixBox
 
+from mcdex import MCBiomes, MCBlocks, MCGameRules, MCItems, Version
+
 from fakeprobe import FakeError
 from test_run import FakeRun
 from test_values import PLAYER
 from unittas._test_world import World
+from unittas.errors import Missing
+from unittas.gamemode import GameMode
 from unittas.values import BlockPos, Vec3
+from unittas.worldkind import WorldKind
 from unittas.worldrun import orderByWorld, worldOf
 
 
@@ -33,6 +38,91 @@ class Arena(World):
   """A world whose tests each enter it as its setUp left it."""
 
   fresh = FixBox[bool](True)
+
+
+class Layered(World):
+  """A flat world described in mcdex's terms (SPEC.md 17.4)."""
+
+  kind = FixBox[WorldKind](WorldKind.Flat)
+  layers = FixBox[tuple](((MCBlocks.Bedrock, 1), (MCBlocks.Dirt, 2),
+                          (MCBlocks.GrassBlock, 1)))
+  flatBiome = FixBox[MCBiomes](MCBiomes.Desert)
+  rules = FixBox[dict]({MCGameRules.AdvanceTime: False})
+  gameMode = FixBox[GameMode](GameMode.Survival)
+  structures = FixBox[bool](False)
+
+
+class DescribedTests(unittest.TestCase):
+  """A world's options, as each version's world.create takes them."""
+
+  def test_a_flat_world_in_1_7_10(self) -> None:
+    self.assertEqual(
+      {'type': 'flat', 'seed': 0, 'game_mode': 'survival',
+       'structures': False,
+       'layers': [{'id': 'minecraft:bedrock', 'meta': 0, 'count': 1},
+                  {'id': 'minecraft:dirt', 'meta': 0, 'count': 2},
+                  {'id': 'minecraft:grass', 'meta': 0, 'count': 1}],
+       'biome': '2'},
+      Layered().createArgs(Version.V1_7_10, {}))
+    self.assertEqual({'doDaylightCycle': False},
+                     Layered().ruleArgs(Version.V1_7_10, {}))
+
+  def test_the_same_world_in_26_3(self) -> None:
+    args = Layered().createArgs(Version.V26_3, {})
+    self.assertEqual(['minecraft:bedrock', 'minecraft:dirt',
+                      'minecraft:grass_block'],
+                     [layer['id'] for layer in args['layers']])
+    self.assertEqual('minecraft:desert', args['biome'])
+    self.assertEqual({'minecraft:advance_time': False},
+                     Layered().ruleArgs(Version.V26_3, {}))
+
+  def test_a_layer_s_meta_is_kept(self) -> None:
+    """1.7.10's red wool is wool of meta 14; 26.3's its own block."""
+    class Woolly(Layered):
+      layers = FixBox[tuple](((MCBlocks.RedWool, 2),))
+    self.assertEqual([{'id': 'minecraft:wool', 'meta': 14, 'count': 2}],
+                     Woolly().createArgs(Version.V1_7_10, {})['layers'])
+    self.assertEqual([{'id': 'minecraft:red_wool', 'meta': 0, 'count': 2}],
+                     Woolly().createArgs(Version.V26_3, {})['layers'])
+
+  def test_a_world_s_defaults(self) -> None:
+    """Default terrain, creative, structures, no rules of its own."""
+    self.assertEqual({'type': 'default', 'seed': 8675309,
+                      'game_mode': 'creative', 'structures': True},
+                     VillagePlains().createArgs(Version.V1_7_10, {}))
+    self.assertEqual({}, VillagePlains().ruleArgs(Version.V1_7_10, {}))
+
+  def test_a_layer_vanilla_lacks_is_missing(self) -> None:
+    """The world's sanity check: its blocks exist in that version."""
+    class Deep(Layered):
+      layers = FixBox[tuple](((MCBlocks.Deepslate, 3),))
+    with self.assertRaises(Missing) as raised:
+      Deep().createArgs(Version.V1_7_10, {})
+    self.assertIn("Vanilla 1.7.10 has no 'deepslate'", str(raised.exception))
+    self.assertEqual('minecraft:deepslate',
+                     Deep().createArgs(Version.V26_3, {})['layers'][0]['id'])
+
+  def test_what_doesn_t_fit_is_refused(self) -> None:
+    """Layers on a world that isn't flat; a layer that isn't a block."""
+    class Hilly(VillagePlains):
+      layers = FixBox[tuple](((MCBlocks.Stone, 1),))
+
+    class Wrong(Layered):
+      layers = FixBox[tuple](((MCItems.Stick, 1),))
+
+    class Potted(Layered):
+      layers = FixBox[tuple](((MCBlocks.PottedPoppy, 1),))
+
+    for world in (Hilly(), Wrong(), Potted()):
+      with self.subTest(world=type(world).__name__):
+        with self.assertRaises(TypeError):
+          world.createArgs(Version.V1_7_10, {})
+
+  def test_the_enumerations_carry_the_probe_s_names(self) -> None:
+    self.assertEqual(['default', 'flat', 'large_biomes', 'amplified'],
+                     [kind.value for kind in WorldKind])
+    self.assertEqual(['survival', 'creative', 'adventure'],
+                     [mode.value for mode in GameMode])
 
 
 class WorldTests(unittest.TestCase):
@@ -505,6 +595,26 @@ class EnteringTests(FakeRun, unittest.TestCase):
     self.run.enterWorld(self.tests, 'test_a')
     self.run.finish()
     self.assertFalse(self.entered(self.plains))
+
+  def test_a_world_s_rules_are_set_once_it_is_made(self) -> None:
+    """Its rules by member, as the version names them, before its setUp."""
+    self.handlers['world.rules.set'] = lambda args, side: {}
+
+    class Tests:
+      layered = Layered()
+
+      @layered
+      def test_a(self) -> None:
+        pass
+
+    self.run.begin()
+    self.run.enterClass('Tests')
+    self.run.enterWorld(Tests, 'test_a')
+    made = self.ops('world.create')[-1]
+    self.assertEqual(('flat', '2'), (made['type'], made['biome']))
+    self.assertEqual(3, len(made['layers']))
+    self.assertEqual({'rules': {'doDaylightCycle': False}},
+                     self.ops('world.rules.set')[-1])
 
   def test_a_world_s_reads_raise_until_it_is_entered(self) -> None:
     """Outside its tests, a world has no start or spawn."""
