@@ -25,7 +25,7 @@ from unittas.api import Game
 from unittas.dev import DevGame
 from unittas.errors import TesttimeError
 from unittas.reset import reset
-from unittas.values import BlockPos, Item
+from unittas.values import Block, BlockPos, Item
 
 CHEST = (3, 4, 5)
 #  1.7.10's chest with three pink wool in its first slot
@@ -51,9 +51,8 @@ class ContainerTests(unittest.TestCase):
 
   def setUp(self) -> None:
     reset(self.game.connection)
-    self.game.request('block.set', {
-      'pos': list(CHEST), 'block': {'id': 'minecraft:chest', 'meta': 2},
-      'tile': WITH_WOOL})
+    #  meta 3: 1.7.10 sets a chest's facing itself as it is added
+    self.game.setBlock(CHEST, Block('minecraft:chest', 3, True, WITH_WOOL))
     self.agent = Agent(self.game)
 
   def tearDown(self) -> None:
@@ -79,7 +78,6 @@ class ContainerTests(unittest.TestCase):
 
   def test_c_puts_a_stack(self) -> None:
     self.game.setSlot('main.2', MCItems.Stone, 16)
-    self.game.ticks(3)
     self.agent.open(BlockPos(*CHEST))
     put = self.agent.put(MCItems.Stone)
     self.assertEqual(Item('minecraft:stone', 16, 0), put)

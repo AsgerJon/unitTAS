@@ -15,6 +15,8 @@ connection itself, and one for each error type an answer can carry
   (SPEC.md 13.2, 14.4); Missing is a thing vanilla lacks in that version.
 - TesttimeError: a step the agent couldn't complete, the test's ERROR
   (SPEC.md 15.2).
+- NotVerified: a change the game was asked for that isn't there on a
+  side when checked, the test's ERROR.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -269,6 +271,33 @@ class TesttimeError(UnitTasError, RuntimeError):
   def __init__(self, step: str, seen: Any, why: str) -> None:
     UnitTasError.__init__(self, '%s: %s' % (step, why))
     self.step = step
+    self.seen = seen
+
+
+class NotVerified(UnitTasError):
+  """
+  A change the game was asked for (a block set, a slot, a teleport) that
+  a side doesn't show when checked: the change isn't done until it is
+  verified. Sand falls, a lever with nothing to hang on pops off. The
+  test's ERROR, naming the change, the side and what the side has.
+
+  Attributes
+  ----------
+  what : str
+    The change, as 'block.set at (1, 4, 1)'.
+  side : str
+    The side that doesn't show it, 'server' or 'client'.
+  seen : Any
+    What the side showed last.
+  """
+
+  def __init__(self, what: str, side: str, seen: Any, ticks: int) -> None:
+    infoSpec = """%s isn't done: the %s doesn't show it after %d ticks
+    (it has %r)"""
+    UnitTasError.__init__(self, ' '.join((infoSpec % (
+      what, side, ticks, seen)).split()))
+    self.what = what
+    self.side = side
     self.seen = seen
 
 

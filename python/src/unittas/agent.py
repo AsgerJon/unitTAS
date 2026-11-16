@@ -19,6 +19,7 @@ from worktoy.mcls import BaseObject
 
 from .errors import Missing, TesttimeError
 from .likeness import likeness
+from .terrain import Terrain
 from .values import Block, BlockPos, Item, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -97,6 +98,10 @@ class Agent(BaseObject):
   NUDGE = 0.3
   #  The least margin walkTo takes: a tap moves about 0.065 blocks
   LEAST = 0.05
+  #  How walkTo looks around for its way: blocks across, below, above;
+  #  and how many looks it takes at most to get to a place further off
+  LOOK = (8, 3, 3)
+  LOOKS = 12
   #  Blocked when it gained less than 0.05 blocks in this many ticks
   #  pushing into something
   STUCK = 10
@@ -171,9 +176,10 @@ class Agent(BaseObject):
   #  DOMAIN SPECIFIC  # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-  def perceive(self, around: int = 2) -> Perception:
+  def perceive(self, around: int = 2, below: int = 1,
+               above: int = 1) -> Perception:
     """What the player perceives now."""
-    return self.__game__.perceive(around)
+    return self.__game__.perceive(around, below, above)
 
   def wait(self, ticks: int) -> None:
     """Waits 'ticks' of the game's ticks, doing nothing."""
@@ -222,19 +228,68 @@ class Agent(BaseObject):
       sneaking tap, is about 0.065 blocks, so the least it can be sure of
       is %r"""
       raise ValueError(' '.join((infoSpec % (within, self.LEAST)).split()))
-    seen = self.perceive()
-    rise = place.y - seen.pos.y
-    if abs(rise) > 0.5:
-      infoSpec = """%s is %.2f blocks %s the feet, at %s: walking climbs
-      nothing yet (terrain is SPEC.md 15.6 step 7's)"""
-      where = 'above' if rise > 0 else 'below'
-      info = infoSpec % (_place(place), abs(rise), where, _place(seen.pos))
-      raise TesttimeError(step, seen, ' '.join(info.split()))
+    if ticks is not None and ticks <= 0:
+      raise ValueError('a tick budget is above 0, not %r' % ticks)
 
     def arrived(x: float, z: float) -> bool:
       return math.hypot(place.x - x, place.z - z) <= within
 
-    return self._walk(step, place, arrived, ticks, seen)
+    seen = self.perceive(*self.LOOK)
+    first = seen.tick
+    if ticks is None:
+      ticks = 100 + int(math.ceil(12 * math.hypot(place.x - seen.pos.x,
+                                                 place.z - seen.pos.z)))
+    for _ in range(self.LOOKS):
+      path, whole = Terrain(seen, *self.LOOK).path(seen.pos, place)
+      if path is None:
+        infoSpec = """no way to %s from %s in what the agent sees (%d blocks
+        around, %d below, %d above)"""
+        info = infoSpec % ((_place(place), _place(seen.pos)) + self.LOOK)
+        raise TesttimeError(step, seen, ' '.join(info.split()))
+      try:
+        for point in path[:-1] if whole else path:
+          seen = self._pass(step, point, first, ticks)
+        #  the place up or down a level: over it first, then the stop
+        if whole and abs(path[-1].y - seen.pos.y) > Terrain.STEP:
+          seen = self._pass(step, path[-1], first, ticks)
+      finally:
+        self.letGo()
+      if whole:
+        left = ticks - (seen.tick - first)
+        return self._walk(step, place, arrived, max(1, left), seen)
+      seen = self.perceive(*self.LOOK)
+    infoSpec = """%s is further than %d looks around took the agent, at
+    %s"""
+    info = infoSpec % (_place(place), self.LOOKS, _place(seen.pos))
+    raise TesttimeError(step, seen, ' '.join(info.split()))
+
+  def _pass(self, step: str, point: Vec3, first: int,
+            ticks: int) -> Perception:
+    """
+    Walks to a waypoint without stopping there: on to the next once over
+    it, on its level and on the ground. Holds jump while the waypoint is
+    higher than a step, near it.
+    """
+    pushed = []
+    seen = self.perceive()
+    while True:
+      across = math.hypot(point.x - seen.pos.x, point.z - seen.pos.z)
+      rise = point.y - seen.pos.y
+      if across < 0.45 and abs(rise) < 0.3 and seen.onGround:
+        return seen
+      if seen.tick - first > ticks:
+        infoSpec = """the tick budget (%d) is spent on the way, at %s, %.2f
+        blocks from the waypoint %s"""
+        info = infoSpec % (ticks, _place(seen.pos), across, _place(point))
+        raise TesttimeError(step, seen, ' '.join(info.split()))
+      pushed.append((seen.tick, across))
+      if rise <= Terrain.STEP:
+        self._blocked(step, seen, point, across, pushed, first)
+      self._hold('key.sneak', False)
+      self._hold('key.jump', rise > Terrain.STEP and across < 1.6)
+      self._hold('key.forward', True)
+      self._face(seen, point)
+      seen = self.perceive()
 
   def reach(self, pos: BlockPos, ticks: Optional[int] = None) -> Perception:
     """

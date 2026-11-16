@@ -28,9 +28,10 @@ from worktoy.ezdata import EZData, EZField
 from .codec import fromJson, toJson
 from .blockview import BlockView
 from .container import Container
-from .errors import Cancelled, NoResult, UnknownVersion
+from .errors import Cancelled, NoResult, NotVerified, UnknownVersion
 from .perception import Perception
 from .values import Block, BlockPos, ChatLine, Entity, Inventory, Item, LogLine, Look, Player, Screen, Sound, Vec3
+from .wire import Role
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional, Union
@@ -58,6 +59,14 @@ def _blockPos(value: Any) -> list:
 
 def _sided(side: Optional[str]) -> dict:
   return {} if side is None else {'side': side}
+
+
+#  How many ticks a side has to show a change before it isn't done
+VERIFY_TICKS = 40
+
+
+def _place(pos: list) -> str:
+  return '(%s)' % ', '.join('%g' % each for each in pos)
 
 
 class Game:
@@ -252,8 +261,13 @@ class Game:
     self.request('player.kick', {'player': player, 'reason': reason})
 
   def teleport(self, pos: Any, dimension: Any = None, look: Optional[Look] = None,
-               timeout: Optional[float] = None) -> None:
-    """To pos, in 'dimension' if given: its id, or an MCDimensions member (SPEC.md 14.4)."""
+               timeout: Optional[float] = None, verify: bool = True) -> None:
+    """
+    To pos, in 'dimension' if given: its id, or an MCDimensions member (SPEC.md 14.4). Done when verified: within a
+    dimension, the player there on the server and on the client (verify=False, said so, leaves it at asking). To
+    another dimension the game places the player as it sends players there (on ground it finds), and the probe's
+    own answer waits for the client to have arrived.
+    """
     args = {'pos': _vec3(pos)}
     if look is not None:
       args['look'] = toJson(look)
@@ -263,17 +277,36 @@ class Game:
         dimension = dimensionOf(dimension, self.version, self.declared())
       args['dimension'] = dimension
     self.request('player.teleport', args, timeout=timeout)
+    if verify and dimension is None:
+      there = {'all': [{'path': ['pos', axis], test: at + step} for axis, at in enumerate(args['pos'])
+                       for test, step in (('ge', -0.01), ('le', 0.01))]}
+      self._verify('player.teleport to %s' % _place(args['pos']), 'player.get', {}, there)
+
+  def _verify(self, what: str, op: str, args: dict, test: dict) -> None:
+    """
+    A change done: the server shows it, and then a client shows it too (the agent perceives the client's world), each
+    within VERIFY_TICKS by wait.until. NotVerified otherwise, naming the side and what it shows.
+    """
+    sides = ['server'] if self.connection.hello.role is Role.SERVER else ['server', 'client']
+    for side in sides:
+      answer = self.waitUntil(op, args, test, side=side, maxTicks=VERIFY_TICKS)
+      if not answer['held']:
+        raise NotVerified(what, side, answer.get('value'), VERIFY_TICKS)
 
   def look(self, yaw: float, pitch: float) -> None:
     self.request('player.look', toJson(Look(yaw, pitch)))
 
-  def perceive(self, around: int = 2) -> Perception:
+  def perceive(self, around: int = 2, below: int = 1, above: int = 1) -> Perception:
     """
     What the client's player perceives now (SPEC.md 15.6 step 1): where it is and how it moves, what its crosshair
-    targets by the game's own pick, its reach, and the blocks that aren't air within 'around' blocks across, from the
-    one below its feet to the one above its head.
+    targets by the game's own pick, its reach, and the blocks that aren't air within 'around' blocks across, from
+    'below' blocks under its feet's block to 'above' blocks over its head's (the defaults: the one below its feet to
+    the one above its head).
     """
-    return fromJson(Perception, self.request('player.perceive', {'around': around}))
+    args = {'around': around}
+    if (below, above) != (1, 1):
+      args.update(below=below, above=above)
+    return fromJson(Perception, self.request('player.perceive', args))
 
   # ---------------------------------------------------------------- the inventory
 
@@ -298,11 +331,13 @@ class Game:
     """
     self.request('container.click', {'slot': slot, 'button': button, 'mode': mode})
 
-  def setSlot(self, name: str, item: Any, count: int = 1) -> None:
+  def setSlot(self, name: str, item: Any, count: int = 1, verify: bool = True) -> None:
     """
     The slot set to 'item': an Item, or an MCItems member as the game's
     version has it, 'count' of them (SPEC.md 14.4). Missing where vanilla
-    lacks the member, before the game is asked.
+    lacks the member, before the game is asked. Done when verified: the
+    slot so on the server and on the client (verify=False, said so,
+    leaves it at asking).
     """
     if isinstance(item, Item):
       if count != 1:
@@ -311,6 +346,13 @@ class Game:
       from .things import itemOf
       item = itemOf(item, self.version, count, self.declared())
     self.request('inventory.set', {'slot': name, 'item': toJson(item)})
+    if verify:
+      if item.empty:
+        test = {'eq': None}
+      else:
+        test = {'all': [{'path': ['id'], 'eq': item.id}, {'path': ['count'], 'eq': item.count},
+                        {'path': ['meta'], 'eq': item.meta}]}
+      self._verify('inventory.set of %s' % name, 'inventory.get', {'slot': name}, test)
 
   # ---------------------------------------------------------------- blocks
 
@@ -336,15 +378,20 @@ class Game:
     answer = self.request('block.items', {'pos': _blockPos(pos)}, side)
     return tuple(fromJson(Item, each) for each in answer['slots'])
 
-  def setBlock(self, pos: Any, block: Any) -> None:
+  def setBlock(self, pos: Any, block: Any, verify: bool = True) -> None:
     """
     The block at pos set to 'block': a Block, an id, or an MCBlocks member
     as the game's version has it, with its block entity's data where the
     version tells it apart by that (1.7.10's skulls, its flower pots).
+    Done when verified: the block there on the server and on the client
+    (verify=False, said so, leaves it at asking: sand that is to fall).
     """
     tile = ''
     if isinstance(block, str):
       block = Block(block, 0)
+    elif isinstance(block, Block):
+      #  a Block carrying its block entity's data (a chest's items) sends it beside the block
+      tile, block = block.tileSnbt, Block(block.id, block.meta)
     elif not isinstance(block, Block):
       from .things import blockOf
       block, tile = blockOf(block, self.version, self.declared())
@@ -352,6 +399,9 @@ class Game:
     if tile:
       args['tile'] = tile
     self.request('block.set', args)
+    if verify:
+      test = {'all': [{'path': ['id'], 'eq': block.id}, {'path': ['meta'], 'eq': block.meta}]}
+      self._verify('block.set at %s' % _place(args['pos']), 'block.get', {'pos': args['pos']}, test)
 
   # ---------------------------------------------------------------- entities
 

@@ -21,7 +21,7 @@ from mcdex import (MCBlocks, MCDimensions, MCEntities, MCItems,
 from fakeprobe import HELLO, FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
 from unittas.codec import toJson
-from unittas.errors import Missing, NoResult, NotFound, UnknownVersion
+from unittas.errors import Missing, NoResult, NotFound, NotVerified, UnknownVersion
 from unittas.link import Listener
 from unittas.mappings import Mappings
 from unittas.perception import Perception
@@ -47,8 +47,8 @@ class GameTests(unittest.TestCase):
     self.addCleanup(self.listener.close)
 
   def game(self, handlers: dict, names: str = 'mcp',
-           minecraft: str = '1.7.10', ops: tuple = ()) -> Game:
-    expected = self.listener.prepare(self.folder, 'alice', Role.CLIENT)
+           minecraft: str = '1.7.10', ops: tuple = (), role: Role = Role.CLIENT) -> Game:
+    expected = self.listener.prepare(self.folder, 'alice', role)
     extra = {'names': names, 'minecraft': minecraft}
     if ops:
       extra['ops'] = list(ops)
@@ -59,12 +59,84 @@ class GameTests(unittest.TestCase):
     self.addCleanup(connection.close)
     self.addCleanup(fake.close)
     self.fake = fake
+    #  a game whose changes hold at once, unless the test says otherwise
+    handlers = dict({'wait.until': lambda args, side: {'held': True, 'tick': 1, 'checks': 1, 'value': None}},
+                    **handlers)
     self.asked = fake.serve(handlers)
     return Game(connection, mappings=MAPPINGS)
 
   def sent(self) -> list:
-    """The requests the fake was sent: (op, side, args)."""
-    return [(request['op'], request.get('side'), request.get('args') or {}) for request in self.asked]
+    """The requests the fake was sent: (op, side, args); the changes' verification left out (verified)."""
+    return [(request['op'], request.get('side'), request.get('args') or {}) for request in self.asked
+            if request['op'] != 'wait.until']
+
+  def verified(self) -> list:
+    """The verifications sent: (side, op, args, test)."""
+    return [(request['args']['side'], request['args']['op'], request['args']['args'], request['args']['test'])
+            for request in self.asked if request['op'] == 'wait.until']
+
+  def test_changes_are_verified(self) -> None:
+    """
+    A change is done when verified: the server holds it, and then the client, each by wait.until (the agent
+    perceives the client's world).
+    """
+    game = self.things('1.7.10')
+    game.setBlock((1, 4, 1), MCBlocks.RedWool)
+    game.setSlot('held', Item('minecraft:stone', 2, 0))
+    game.setSlot('main.3', Item.EMPTY)
+    game.teleport((5.5, 4, 5.5))
+    wool = {'all': [{'path': ['id'], 'eq': 'minecraft:wool'}, {'path': ['meta'], 'eq': 14}]}
+    stone = {'all': [{'path': ['id'], 'eq': 'minecraft:stone'}, {'path': ['count'], 'eq': 2},
+                     {'path': ['meta'], 'eq': 0}]}
+    there = {'all': [{'path': ['pos', axis], test: value} for axis, at in enumerate((5.5, 4.0, 5.5))
+                     for test, value in (('ge', at - 0.01), ('le', at + 0.01))]}
+    self.assertEqual([
+      ('server', 'block.get', {'pos': [1, 4, 1]}, wool), ('client', 'block.get', {'pos': [1, 4, 1]}, wool),
+      ('server', 'inventory.get', {'slot': 'held'}, stone), ('client', 'inventory.get', {'slot': 'held'}, stone),
+      ('server', 'inventory.get', {'slot': 'main.3'}, {'eq': None}),
+      ('client', 'inventory.get', {'slot': 'main.3'}, {'eq': None}),
+      ('server', 'player.get', {}, there), ('client', 'player.get', {}, there)], self.verified())
+
+  def test_a_change_that_doesn_t_hold(self) -> None:
+    """Sand that falls, a lever that pops off: NotVerified, naming the side and what it has."""
+    def notThere(args, side):
+      held = args['side'] == 'server'
+      return {'held': held, 'checks': 40, 'value': {'id': 'minecraft:air', 'meta': 0}}
+    game = self.game({'block.set': lambda args, side: {}, 'wait.until': notThere})
+    with self.assertRaises(NotVerified) as raised:
+      game.setBlock((1, 4, 1), 'minecraft:sand')
+    message = str(raised.exception)
+    self.assertIn('block.set at (1, 4, 1)', message)
+    self.assertIn('the client', message)
+    self.assertIn('minecraft:air', message)
+    self.assertEqual('client', raised.exception.side)
+
+  def test_a_block_with_its_data(self) -> None:
+    """A Block carrying its block entity's data (a chest's items) sends it, and is verified."""
+    game = self.things('1.7.10')
+    game.setBlock((3, 4, 5), Block('minecraft:chest', 2, True, '{Items:[]}'))
+    self.assertEqual([{'pos': [3, 4, 5], 'block': {'id': 'minecraft:chest', 'meta': 2}, 'tile': '{Items:[]}'}],
+                     self.args('block.set'))
+    self.assertEqual(['server', 'client'], [side for side, *_ in self.verified()])
+
+  def test_to_another_dimension(self) -> None:
+    """The game places a traveller (on ground it finds): the probe's own answer waits for the arrival."""
+    game = self.things('1.7.10')
+    game.teleport((0.5, 64, 0.5), dimension=MCDimensions.TheNether)
+    self.assertEqual([], self.verified())
+
+  def test_unverified_when_asked(self) -> None:
+    game = self.things('1.7.10')
+    game.setBlock((1, 4, 1), 'minecraft:sand', verify=False)
+    game.setSlot('held', Item.EMPTY, verify=False)
+    game.teleport((5.5, 4, 5.5), verify=False)
+    self.assertEqual([], self.verified())
+
+  def test_a_server_verifies_on_itself(self) -> None:
+    """A dedicated server's game has no client of its own to verify on."""
+    game = self.game({'block.set': lambda args, side: {}}, role=Role.SERVER)
+    game.setBlock((1, 4, 1), 'minecraft:stone')
+    self.assertEqual(['server'], [side for side, *_ in self.verified()])
 
   def test_version_is_mcdexs(self) -> None:
     """The version the hello names, as mcdex's own Version member."""
@@ -352,8 +424,11 @@ class GameTests(unittest.TestCase):
     self.assertIsInstance(seen, Perception)
     self.assertEqual(BlockPos(0, 3, 0), seen.target.pos)
     game.perceive(around=4)
+    game.perceive(around=8, below=3, above=2)
     self.assertEqual([('player.perceive', None, {'around': 2}),
-                      ('player.perceive', None, {'around': 4})], self.sent())
+                      ('player.perceive', None, {'around': 4}),
+                      ('player.perceive', None, {'around': 8, 'below': 3,
+                                                 'above': 2})], self.sent())
 
   def test_the_open_container_and_its_clicks(self) -> None:
     """container.get on the client, container.click (SPEC.md 15.6 step 4)."""

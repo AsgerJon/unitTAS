@@ -114,8 +114,9 @@ class Scene(BaseObject):
     """
     Puts 'block' (an MCBlocks member, or a Block value as the game's
     version has it) at the place 'at', by command: the scenario's setup,
-    not the agent. The thing there; a Block's member is mcdex's reading of
-    it, unless 'member' says.
+    not the agent; done when the game shows it on both sides
+    (Game.setBlock verifies). The thing there; a Block's member is
+    mcdex's reading of it, unless 'member' says.
     """
     pos = self.at(at)
     if isinstance(block, Block):
@@ -131,6 +132,7 @@ class Scene(BaseObject):
         member = next(iter(found))
     elif member is None:
       member = block
+    #  done when verified: on the client too, where the agent perceives
     self.game.setBlock(pos, block)
     return Thing(self, member, pos)
 

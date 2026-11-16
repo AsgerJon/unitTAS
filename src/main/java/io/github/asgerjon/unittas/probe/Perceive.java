@@ -41,6 +41,9 @@ final class Perceive {
 			throw new ProbeException("NotReady", "player.perceive needs a world", null);
 		}
 		int around = (int) call.number("around", 2, 0, 8);
+		// how far below the feet's block and above the head's it looks, in blocks (terrain: SPEC.md 15.6 step 7)
+		int below = (int) call.number("below", 1, 0, 8);
+		int above = (int) call.number("above", 1, 0, 8);
 		// the game's own pick, as runTick makes it each tick, for the look as it is now
 		mc.entityRenderer.getMouseOver(1.0F);
 		Vec3 eye = mc.renderViewEntity.getPosition(1.0F);
@@ -65,7 +68,7 @@ final class Perceive {
 			"flying", player.capabilities.isFlying,
 			"reach", Json.object("block", (double) blockReach, "entity", entityReach),
 			"target", target(mc.theWorld, mc.objectMouseOver),
-			"blocks", around(mc.theWorld, player, around));
+			"blocks", around(mc.theWorld, player, around, below, above));
 	}
 
 	private static List<Double> box(AxisAlignedBB box) {
@@ -91,17 +94,18 @@ final class Perceive {
 	}
 
 	/**
-	 * The blocks that aren't air within 'reach' blocks of the feet's block across, from the one below the feet to the
-	 * one above the head: each with its collision boxes as the game gives them for this player (none for a flower),
-	 * whether it is a liquid, and whether the player can climb it.
+	 * The blocks that aren't air within 'reach' blocks of the feet's block across, from 'below' blocks below the feet's
+	 * block to 'above' blocks above the head's (1 and 1, the default: the one below the feet to the one above the head):
+	 * each with its collision boxes as the game gives them for this player (none for a flower), whether it is a liquid,
+	 * and whether the player can climb it.
 	 */
-	private static List<Object> around(World world, EntityLivingBase player, int reach) {
+	private static List<Object> around(World world, EntityLivingBase player, int reach, int below, int above) {
 		List<Object> found = new ArrayList<>();
 		int feetX = MathHelper.floor_double(player.posX);
 		// the collision box's bottom, not posY less yOffset: that is the game's own feet, exactly
 		int feetY = MathHelper.floor_double(player.boundingBox.minY);
 		int feetZ = MathHelper.floor_double(player.posZ);
-		for (int y = feetY - 1; y <= feetY + 2; y++) {
+		for (int y = feetY - below; y <= feetY + 1 + above; y++) {
 			for (int x = feetX - reach; x <= feetX + reach; x++) {
 				for (int z = feetZ - reach; z <= feetZ + reach; z++) {
 					Block block = world.getBlock(x, y, z);

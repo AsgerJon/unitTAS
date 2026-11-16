@@ -52,6 +52,8 @@ class SceneTests(PlayedTests):
     found = self.scene.thing(MCBlocks.Lever, at=(5, 0, 7))
     self.assertEqual(lever.pos, found.pos)
     self.assertEqual([], self.player.clicks, 'setup is not the agent')
+    #  each place verified, on the server and on the client
+    self.assertEqual(4, self.player.ops.count('wait.until'))
 
   def test_a_lever_activated_and_examined(self) -> None:
     lever = self.scene.place(LEVER, at=(5, 0, 7))

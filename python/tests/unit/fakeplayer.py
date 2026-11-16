@@ -47,6 +47,21 @@ REACH = 5.0
 BLOCK_ITEMS = {'minecraft:stone', 'minecraft:dirt'}
 
 
+def _holds(value: Any, test: dict) -> bool:
+  """wait.until's test on a value: path, eq, ge, le, all (PROTOCOL.md)."""
+  if 'all' in test:
+    return all(_holds(value, each) for each in test['all'])
+  for step in test.get('path', ()):
+    value = value[step]
+  if 'eq' in test:
+    return value == test['eq']
+  if 'ge' in test:
+    return value >= test['ge']
+  if 'le' in test:
+    return value <= test['le']
+  raise ValueError('the fake knows no test %r' % (test,))
+
+
 def _texture(name: str) -> list:
   """A 16 by 16 texture for an icon: its pattern and colour by its name."""
   chance = random.Random(name)
@@ -194,25 +209,57 @@ class FakePlayer:
     #  the blocks' metas, by place (a furnace's facing); how blocks look
     self.metas = {}
     self.looks = dict(LOOKS)
+    #  its feet's height and its motion up, whether it stands on something
+    self.y = GROUND
+    self.my = 0.0
+    self.onGround = True
+    #  the columns raised above the ground, by (x, z): their tops (4.5 a
+    #  slab, 5 a block, 6 two)
+    self.raised = {}
+    #  every key asked for, down or tapped
+    self.keysAsked = []
 
   # --------------------------------------------------------------- the world
 
   def solid(self, x: int, y: int, z: int) -> bool:
     if y < GROUND:
       return (x, y, z) not in self.dug
+    if y < self.raised.get((x, z), GROUND):
+      return True
     return (x, y, z) in self.walls
 
   def blockId(self, x: int, y: int, z: int) -> str:
-    return 'minecraft:grass' if y < GROUND else self.walls[(x, y, z)]
+    if y < GROUND:
+      return 'minecraft:grass'
+    if y < self.raised.get((x, z), GROUND):
+      return 'minecraft:stone'
+    return self.walls[(x, y, z)]
+
+  def top(self, x: int, y: int, z: int) -> float:
+    """A solid block's box's top: half a block for a raised slab."""
+    return min(y + 1.0, self.raised.get((x, z), y + 1.0)) if (
+      y >= GROUND and (x, z) in self.raised) else y + 1.0
+
+  def cells(self, x: float, z: float) -> list:
+    """The columns the player's box takes up at x, z."""
+    return [(cx, cz)
+            for cx in range(math.floor(x - HALF),
+                            math.floor(x + HALF - 1e-9) + 1)
+            for cz in range(math.floor(z - HALF),
+                            math.floor(z + HALF - 1e-9) + 1)]
+
+  def under(self, x: float, z: float) -> float:
+    """The floor under the player's box at x, z: its columns' highest."""
+    return max(self.raised.get(cell, GROUND) for cell in self.cells(x, z))
 
   def blocked(self, x: float, z: float) -> bool:
-    """Whether the player's box at x, z meets a wall."""
-    for cx in range(math.floor(x - HALF), math.floor(x + HALF - 1e-9) + 1):
-      for cz in range(math.floor(z - HALF),
-                      math.floor(z + HALF - 1e-9) + 1):
-        for cy in (int(GROUND), int(GROUND) + 1):
-          if (cx, cy, cz) in self.walls:
-            return True
+    """Whether the player's box at x, z meets a wall or a step too high."""
+    for cx, cz in self.cells(x, z):
+      for cy in (int(GROUND), int(GROUND) + 1):
+        if (cx, cy, cz) in self.walls:
+          return True
+      if self.raised.get((cx, cz), GROUND) > self.y + 0.5 + 1e-9:
+        return True
     return False
 
   # ------------------------------------------------------------------- ticks
@@ -229,8 +276,9 @@ class FakePlayer:
     if 'key.sneak' in self.keys:
       forward *= 0.3
     yaw = math.radians(self.yaw)
-    self.mx += -math.sin(yaw) * forward * 0.1
-    self.mz += math.cos(yaw) * forward * 0.1
+    push = 0.1 if self.onGround else 0.02
+    self.mx += -math.sin(yaw) * forward * push
+    self.mz += math.cos(yaw) * forward * push
     self.collided = False
     if self.blocked(self.x + self.mx, self.z):
       self.collided = True
@@ -242,10 +290,30 @@ class FakePlayer:
       self.mz = 0.0
     else:
       self.z += self.mz
-    self.mx *= FRICTION
-    self.mz *= FRICTION
+    #  up and down: a step up half a block as the game takes it; a jump,
+    #  0.42 up, 0.08 less each tick and 0.98 kept; a fall
+    ground = self.under(self.x, self.z)
+    if self.onGround and self.y < ground <= self.y + 0.5 + 1e-9:
+      self.y = ground
+    if 'key.jump' in self.keys and self.onGround:
+      self.my = 0.42
+      self.onGround = False
+    if not self.onGround or self.y > ground:
+      self.y += self.my
+      self.my = (self.my - 0.08) * 0.98
+      if self.y <= ground:
+        self.y, self.my, self.onGround = ground, 0.0, True
+      else:
+        self.onGround = False
+    friction = FRICTION if self.onGround else 0.91
+    self.mx *= friction
+    self.mz *= friction
     self.trail.append((self.x, self.z))
     self.bumps += self.collided
+
+  def ops_keys(self) -> set:
+    """Every key it was asked to hold or tap."""
+    return set(self.keysAsked)
 
   def run(self, n: int) -> None:
     for _ in range(n):
@@ -385,7 +453,7 @@ class FakePlayer:
     dx = -math.sin(yaw) * math.cos(pitch)
     dy = -math.sin(pitch)
     dz = math.cos(yaw) * math.cos(pitch)
-    eye = (self.x, GROUND + EYE, self.z)
+    eye = (self.x, self.y + EYE, self.z)
     last = tuple(math.floor(v) for v in eye)
     n = 0
     while n * 0.005 <= REACH:
@@ -405,7 +473,7 @@ class FakePlayer:
   def near(self, around: int) -> list:
     fx, fz = math.floor(self.x), math.floor(self.z)
     found = []
-    for y in range(int(GROUND) - 1, int(GROUND) + 3):
+    for y in range(int(GROUND) - 1, int(GROUND) + 4):
       for x in range(fx - around, fx + around + 1):
         for z in range(fz - around, fz + around + 1):
           if not self.solid(x, y, z):
@@ -413,18 +481,20 @@ class FakePlayer:
           found.append({'pos': [x, y, z], 'id': self.blockId(x, y, z),
                         'meta': 0,
                         'boxes': [[float(x), float(y), float(z),
-                                   x + 1.0, y + 1.0, z + 1.0]],
+                                   x + 1.0, self.top(x, y, z), z + 1.0]],
                         'liquid': False, 'climbable': False})
     return found
 
   def perceived(self, around: int) -> dict:
     return {
-      'tick': self.tick, 'pos': [self.x, GROUND, self.z],
-      'eye': [self.x, GROUND + EYE, self.z],
-      'box': [self.x - HALF, GROUND, self.z - HALF, self.x + HALF,
-              GROUND + HEIGHT, self.z + HALF],
+      'tick': self.tick, 'pos': [self.x, self.y, self.z],
+      'eye': [self.x, self.y + EYE, self.z],
+      'box': [self.x - HALF, self.y, self.z - HALF, self.x + HALF,
+              self.y + HEIGHT, self.z + HALF],
       'look': {'yaw': self.yaw, 'pitch': self.pitch},
-      'motion': [self.mx, -0.0784000015258789, self.mz], 'on_ground': True,
+      'motion': [self.mx, self.my if not self.onGround else
+                 -0.0784000015258789, self.mz],
+      'on_ground': self.onGround,
       'collided': {'horizontally': self.collided, 'vertically': True},
       'in_water': False, 'in_lava': False, 'on_ladder': False,
       'sneaking': 'key.sneak' in self.keys, 'sprinting': False,
@@ -454,6 +524,7 @@ class FakePlayer:
       return {'waited_ms': 50, 'from': self.tick, 'tick': self.tick}
 
     def down(args: dict) -> dict:
+      self.keysAsked.append(args['key'])
       self.keys.add(args['key'])
       self.pressed.add(args['key'])
       return {}
@@ -482,7 +553,7 @@ class FakePlayer:
       pos = tuple(args['pos'])
       if not self.solid(*pos):
         return {'id': 'minecraft:air', 'meta': 0, 'tile': None}
-      meta = 0
+      meta = self.metas.get(pos, 0)
       if pos in self.levers:
         meta = 5 + (8 if self.levers[pos] else 0)
       return {'id': self.blockId(*pos), 'meta': meta, 'tile': None}
@@ -515,7 +586,7 @@ class FakePlayer:
       target = self.target()
       mine = (not self.blind and target is not None and
               tuple(target['block']) == pos)
-      eye = (self.x, GROUND + EYE, self.z)
+      eye = (self.x, self.y + EYE, self.z)
       faces = self.worldFaces(pos) if mine else None
       texture = _texture(faces[target['face']]) if faces else None
       data = bytearray()
@@ -557,6 +628,15 @@ class FakePlayer:
                                'pixels': _texture(name)}
                         for name in args['icons']}}
 
+    def until(args: dict) -> dict:
+      """The fake's changes are there at once: the check holds now or not."""
+      reads = {'block.get': blockGet, 'inventory.get': inventory}
+      if args['op'] not in reads:
+        raise FakeError('Unsupported', 'the fake checks no %s' % args['op'])
+      value = reads[args['op']](args['args'])
+      return {'held': _holds(value, args['test']), 'tick': self.tick,
+              'checks': 1, 'value': value}
+
     def inventory(args: dict) -> Any:
       main = list(self.hotbar) + list(self.rest)
       if args.get('slot') == 'held':
@@ -585,4 +665,5 @@ class FakePlayer:
       'key.up': at('key.up',
                    lambda args: self.keys.discard(args['key']) or {}),
       'ticks.wait': at('ticks.wait', wait),
+      'wait.until': at('wait.until', until),
     }

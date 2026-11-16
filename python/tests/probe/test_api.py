@@ -65,7 +65,8 @@ class ApiTests(unittest.TestCase):
   def test_blocks(self) -> None:
     self.game.setBlock(BlockPos(3, 4, 3), 'minecraft:gold_block')
     self.assertEqual(Block('minecraft:gold_block', 0), self.game.block((3, 4, 3)))
-    self.game.setBlock((5, 4, 3), Block('minecraft:chest', 0))
+    #  meta 3: 1.7.10 sets a chest's facing itself as it is added
+    self.game.setBlock((5, 4, 3), Block('minecraft:chest', 3))
     self.assertEqual('Chest', self.game.block((5, 4, 3), tile=True).tile['id'])
 
   def test_entities(self) -> None:

@@ -2,7 +2,7 @@
 The agent walking in the development client (SPEC.md 15.6 step 2), on
 flat ground, by a player's inputs alone (the keys and the look) and what
 it perceives: to a place and still there, as the server sees it too;
-with a close margin; stopped by a wall, a TesttimeError naming it; into
+with a close margin; around a wall; into
 reach of a block and looking at it until the crosshair targets it; not
 seeing a block behind another, a TesttimeError; the tick budget spent.
 
@@ -86,14 +86,12 @@ class WalkTests(unittest.TestCase):
     self.assertThere(place, seen.pos, 0.1)
 
   def test_c_a_wall_in_the_way(self) -> None:
+    """Walked around, its way found (SPEC.md 15.6 step 7)."""
     for x in range(-3, 4):
       for y in (4, 5):
         self.place((x, y, 3), MCBlocks.Stone)
-    with self.assertRaises(TesttimeError) as raised:
-      self.agent.walkTo(Vec3(0.5, 4.0, 8.5))
-    self.assertIn('blocked by minecraft:stone at (0, 4, 3)',
-                  str(raised.exception))
-    self.assertTrue(raised.exception.seen.collidedHorizontally)
+    place = Vec3(0.5, 4.0, 8.5)
+    self.assertThere(place, self.agent.walkTo(place).pos, 0.25)
 
   def test_d_into_reach_and_looking_at_a_block(self) -> None:
     block = BlockPos(6, 4, 9)

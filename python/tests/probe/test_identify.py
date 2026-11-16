@@ -3,7 +3,7 @@ Blocks identified from their looks alone in the development client
 (SPEC.md 15.4's identify, 15.6 step 6): the agent looks at a block from
 each side, sets each face square and compares it with every full cube's
 faces as the running game draws them, from its own resource pack. A
-furnace facing east, a crafting table and red wool, among all blocks;
+furnace, a crafting table and red wool, among all blocks;
 stone among all is said to look as infested stone does (1.7.10 draws
 that with stone's texture: no player tells them apart by looks); stone
 among a given few, bedrock (stone's pattern, darker and starker) among
@@ -85,9 +85,13 @@ class IdentifyTests(unittest.TestCase):
     self.assertIn('MCBlocks.InfestedStone and MCBlocks.Stone look the same',
                   str(raised.exception))
 
-  def test_b_a_furnace_facing_east(self) -> None:
+  def test_b_a_furnace(self) -> None:
+    """
+    Facing south, meta 3: 1.7.10 sets a furnace's facing itself as it is
+    added, south with nothing around (a meta 5 asked for isn't kept).
+    """
     self.assertIs(MCBlocks.Furnace,
-                  self.identified(Block('minecraft:furnace', 5)))
+                  self.identified(Block('minecraft:furnace', 3)))
 
   def test_c_a_crafting_table(self) -> None:
     self.assertIs(MCBlocks.CraftingTable,

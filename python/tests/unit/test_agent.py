@@ -118,10 +118,10 @@ class AgentTests(PlayedTests):
       spent += self.player.tick - before
     self.assertLessEqual(spent, SPENT)
 
-  def test_a_place_on_another_level(self) -> None:
+  def test_a_place_up_in_the_air(self) -> None:
     with self.assertRaises(TesttimeError) as raised:
       self.agent.walkTo(Vec3(0.5, 7.0, 3.5))
-    self.assertIn('3.00 blocks above the feet', str(raised.exception))
+    self.assertIn('no way to (0.50, 7.00, 3.50)', str(raised.exception))
     self.assertEqual({'player.perceive'}, set(self.player.ops))
 
   def test_a_block_position_is_its_floor_s_middle(self) -> None:
@@ -132,23 +132,47 @@ class AgentTests(PlayedTests):
     self.agent.walkTo(Vec3(0.5, 4.0, 0.5))
     self.assertNotIn('key.down', self.player.ops)
 
-  def test_a_wall_in_the_way(self) -> None:
-    for x in range(-3, 4):
-      for y in (4, 5):
-        self.player.walls[(x, y, 3)] = 'minecraft:stone'
+  def test_blocked_by_what_it_didn_t_see(self) -> None:
+    """A wall it couldn't see when it set off (raised after its look)."""
+    walls = self.player.walls
+    seen = []
+
+    def perceived(around: int) -> dict:
+      answer = original(around)
+      if not seen:
+        seen.append(True)
+        for x in range(-12, 13):
+          for y in (4, 5):
+            walls[(x, y, 3)] = 'minecraft:stone'
+      return answer
+
+    original = self.player.perceived
+    self.player.perceived = perceived
     with self.assertRaises(TesttimeError) as raised:
-      self.agent.walkTo(Vec3(0.5, 4.0, 8.5))
+      self.agent.walkTo(Vec3(0.5, 4.0, 6.5))
     message = str(raised.exception)
-    self.assertIn('walkTo', message)
     self.assertIn('blocked by minecraft:stone at (0, 4, 3)', message)
     self.assertEqual('walkTo', raised.exception.step)
     self.assertTrue(raised.exception.seen.collidedHorizontally)
     self.assertOnlyAPlayersMeans()
 
   def test_slides_past_a_corner(self) -> None:
-    """Running into a block's side and sliding on along it isn't blocked."""
-    for y in (4, 5):
-      self.player.walls[(3, y, 3)] = 'minecraft:stone'
+    """
+    Running into the side of a block it didn't see when it set off, and
+    sliding on along it, isn't blocked.
+    """
+    walls, seen = self.player.walls, []
+    original = self.player.perceived
+
+    def perceived(around: int) -> dict:
+      answer = original(around)
+      if not seen:
+        seen.append(True)
+        for y in (4, 5):
+          walls[(3, y, 3)] = 'minecraft:stone'
+      return answer
+
+    self.player.perceived = perceived
     place = Vec3(6.5, 4.0, 6.5)
     self.agent.walkTo(place)
     self.assertThere(place)

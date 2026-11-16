@@ -23,10 +23,9 @@ class SceneTests(ScenarioTestCase):
   def setUpClass(cls) -> None:
     super().setUpClass()
     cls.scene.place(Block('minecraft:lever', 5), at=(5, 0, 7))
-    chest = cls.scene.at((3, 0, 5))
-    cls.game.request('block.set', {
-      'pos': [chest.x, chest.y, chest.z],
-      'block': {'id': 'minecraft:chest', 'meta': 2}, 'tile': WITH_WOOL})
+    #  meta 3: 1.7.10 sets a chest's facing itself as it is added
+    cls.scene.place(Block('minecraft:chest', 3, True, WITH_WOOL),
+                    at=(3, 0, 5))
 
   def test_a_the_lever(self) -> None:
     lever = self.scene.thing(MCBlocks.Lever, at=(5, 0, 7))
