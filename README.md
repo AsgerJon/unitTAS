@@ -446,6 +446,68 @@ class SyncTests(MultiplayerTestCase):
   it before any client joins if that is anything else. Its operators are the run's own players, written fresh each
   run.
 
+### Scenarios: an agent that plays
+
+A scenario sets up a place in the world, then has a player do things there: not exact inputs, but "turn the lever
+off", "take the wool out of the chest". The player is the agent, a player and nothing more (SPEC.md 15). It works out
+for itself how to walk there, look and click, with the keys and the mouse's look alone. A scenario is a
+`ScenarioTestCase`: a `GameTestCase` with `self.scene` (places, from the block the run's start stands in) and
+`self.agent`. The model scenario (python/tests/probe/modelsuite.py, run in the game by test_model.py):
+
+```python
+from mcdex import MCBlocks, MCItems
+from unittas.scenario import ScenarioTestCase
+from unittas.values import Block
+
+A = (4, 0, 6)     # the lever
+B = (0, 0, 6)     # the chest the hoppers fill
+WOOL = '{Items:[{Slot:0b,id:35s,Count:1b,Damage:6s}]}'
+
+class LeverAndChestTests(ScenarioTestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    # the setup is by command, not the agent: a line of hoppers into a chest; a lever, on,
+    # locks the furthest; a chest of pink wool on it
+    cls.scene.place(Block('minecraft:chest', 3), at=B)
+    for x in (1, 2, 3):
+      cls.scene.place(Block('minecraft:hopper', 4), at=(x, 0, 6))
+    cls.scene.place(Block('minecraft:lever', 13), at=A)
+    cls.scene.place(Block('minecraft:chest', 3, True, WOOL), at=(3, 1, 6))
+
+  def test_a_the_wool_let_through(self):
+    leverA = self.scene.thing(MCBlocks.Lever, at=A)
+    chestB = self.scene.thing(MCBlocks.Chest, at=B)
+    if leverA.isOn():
+      leverA.activate()          # the agent walks over, looks at it, clicks
+    self.agent.wait(40)          # a hopper passes an item on every 8 ticks
+    self.assertIn(MCItems.PinkWool, chestB.contents())
+
+  def test_b_the_wool_taken(self):
+    chestB = self.scene.thing(MCBlocks.Chest, at=B)
+    chestB.open()
+    self.agent.take(MCItems.PinkWool)
+    self.agent.close()
+    self.assertIn(MCItems.PinkWool, self.agent.inventory())
+```
+
+- **Setup** is by command: `scene.place(block, at=(dx, dy, dz))` puts an mcdex member, or a `Block` as the game's
+  version has it, and is done when both sides show it. `scene.thing(member, at=...)` names one already there.
+- **Actions** are the agent's: a thing's `activate()`, `open()`, `breakIt()`; the agent's `walkTo`, `reach`, `lookAt`,
+  `use`, `breakBlock`, `place` (from its hotbar), `take`, `put`, `close` and `wait(ticks)`. Its way goes around what
+  is in it, up steps and slabs, jumps up a block, drops down three, opens doors, goes up and down ladders and swims;
+  never into lava.
+- **Examinations** are by command by default (`isOn()` or `bool(thing)`, `isThere()`, `contents()`, `stacks()`), or,
+  as the author chooses, the agent's own: `inventory()`; `examine()`, the pixels a block covers in its view, and
+  `identify()`, which block it is by its looks (`assertIdentifies`).
+- **The report** says under each test's line what it examined and how: `examined by command: ...`, `known to the
+  agent: ...`, `observed (pixels by the game's ray): ...`.
+- **Outcomes:** an action the agent can't complete (no way there, out of reach, the tick budget spent, slipped off a
+  ladder) raises `TesttimeError`, the test's ERROR, naming the step and what the agent saw. An examination that finds
+  the world wrong is the test's FAIL. A game that stops ticking is `NO RESULT`, as ever.
+- **Today** the agent plays 1.7.10. 26.3's probe has no `player.perceive` or `view.block` yet.
+
 ## A mod's own part
 
 What unitTAS can't know of a mod goes in a class that implements `TasHooks` and is marked `@TasPlugin` (a public

@@ -4,7 +4,8 @@ player (fakeplayer.py) whose chests open their screens as 1.7.10's do.
 open uses the block and sees its screen open; contents reads it as the
 screen shows it; take and put shift-click one stack across, as a player
 does, and see it moved; close closes it as Esc does. What can't be done
-is a TesttimeError naming what happened.
+is a TesttimeError naming what happened. The agent knows its own
+inventory, as a player does: what it holds, noted as known to it.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -16,12 +17,23 @@ from mcdex import MCItems
 
 from test_agent import PlayedTests
 from unittas.errors import TesttimeError
+from unittas.run import Run
 from unittas.values import BlockPos, Item
 
 WOOL = {'id': 'minecraft:wool', 'count': 3, 'meta': 6}
 STONE = {'id': 'minecraft:stone', 'count': 16, 'meta': 0}
 STICKS = {'id': 'minecraft:stick', 'count': 64, 'meta': 0}
 CHEST = (3, 4, 5)
+
+
+class _Noted:
+  """A run, as far as notes go."""
+
+  def __init__(self) -> None:
+    self.notes = []
+
+  def note(self, text: str) -> None:
+    self.notes.append(text)
 
 
 class ContainerTests(PlayedTests):
@@ -92,6 +104,22 @@ class ContainerTests(PlayedTests):
     self.assertEqual(Item('minecraft:wool', 2, 6),
                      self.agent.take(MCItems.PinkWool))
     self.assertEqual(dict(WOOL, count=1), self.player.chests[CHEST][0])
+
+  def test_its_own_inventory(self) -> None:
+    """What it holds, hotbar and the rest, by mcdex member; noted."""
+    noted = _Noted()
+    Run.current = noted
+    self.addCleanup(setattr, Run, 'current', None)
+    self.assertEqual(frozenset(), self.agent.inventory())
+    self.player.hotbar[4] = STONE
+    self.player.rest[10] = WOOL
+    self.assertEqual(frozenset({MCItems.Stone, MCItems.PinkWool}),
+                     self.agent.inventory())
+    self.assertEqual(
+      ['known to the agent: its inventory: nothing',
+       'known to the agent: its inventory: MCItems.PinkWool, '
+       'MCItems.Stone'], noted.notes)
+    self.assertOnlyAPlayersMeans()
 
   def test_a_block_that_isn_t_one(self) -> None:
     self.player.walls[(3, 4, 7)] = 'minecraft:stone'

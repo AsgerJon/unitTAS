@@ -1041,6 +1041,22 @@ class Agent(BaseObject):
     """What the open container holds, as its screen shows it."""
     return self._opened('contents').contents
 
+  def inventory(self) -> frozenset:
+    """
+    The mcdex members in its inventory (the hotbar and the rest), as a
+    player knows its own: noted under the test's line, known to the
+    agent (SPEC.md 15.2).
+    """
+    held = frozenset()
+    for stack in self.__game__.inventory(side='client').main:
+      if not stack.empty:
+        held |= self.__game__.membersOf(stack)
+    names = sorted('%s.%s' % (type(each).__name__, each.name)
+                   for each in held)
+    _note('known to the agent: its inventory: %s' % (
+      ', '.join(names) or 'nothing'))
+    return held
+
   def take(self, item: Any) -> Item:
     """
     Takes a stack of 'item' (an mcdex member) from the open container
