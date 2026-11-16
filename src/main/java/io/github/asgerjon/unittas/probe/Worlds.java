@@ -23,11 +23,11 @@ import java.util.Map;
 public final class Worlds {
 
 	/** The test world's folder and name, unless asked otherwise. */
-	public static final String FOLDER = "unittas";
-	public static final String NAME = "unitTAS";
+	public static final String FOLDER = WorldOps.TEST_FOLDER;
+	public static final String NAME = WorldOps.TEST_NAME;
 	/** Bedrock, two dirt, grass: the surface is y 3, a player stands at y 4. The empty last field: no structures. */
 	public static final String FLAT_LAYERS = "2;7,2x3,2;1;";
-	public static final long SEED = 20261029L;
+	public static final long SEED = WorldOps.SEED;
 
 	private Worlds() {
 	}

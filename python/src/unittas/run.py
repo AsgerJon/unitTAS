@@ -43,6 +43,8 @@ from worktoy.ezdata import EZData, EZField
 from .errors import NO_RESULT_ERRORS, LinkError, NoResult, NotReady, UnitTasError, whyNoResult
 from .gamefiles import copyExactly, removeTree
 from .reset import reset
+from .values import BlockPos, Vec3
+from .worldrun import orderTests, worldOf
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional
@@ -55,6 +57,8 @@ FOLDER = 'unittas'
 CLASS_FOLDER = 'unittas-class'
 #  world.create's own arguments a class may give for its world; the folder is the run's
 CLASS_WORLD_KEYS = ('type', 'seed', 'generator', 'game_mode', 'cheats', 'structures', 'name')
+#  The world a test's World is made in (SPEC.md 17.8): a save folder apart, one World entered at a time
+WORLD_FOLDER = 'unittas-world'
 #  Where the reset puts the player in the run's flat world: on its grass, at the spawn
 FLAT_START = (0.5, 4.0, 0.5)
 DASHES = '-' * 70
@@ -178,6 +182,11 @@ class Run:
     #  the reset puts the player in the open world
     self.classWorld = None
     self.start = FLAT_START
+    #  the World entered for the tests it decorates (unittas._world, SPEC.md 17.8), or None; whether a World's
+    #  terrain is open (made, its setUp perhaps failed); and the entered World's start and spawn, for entering it again
+    self.world = None
+    self.worldOpen = False
+    self.worldEntered = None
     self.finished = False
     #  why no more test results can be had, or None while they can
     self.stopped = None
@@ -192,6 +201,10 @@ class Run:
   def keptFolder(self) -> str:
     """The world as made, in the game's own folder, not among its saves (as the Java runner keeps it)."""
     return os.path.join(self.gameDir, 'unittas', 'world.pristine')
+
+  def setupFolder(self) -> str:
+    """A fresh World as its setUp left it, kept beside the kept world (SPEC.md 17.8)."""
+    return os.path.join(self.gameDir, 'unittas', 'world.setup')
 
   def whyNoResult(self, error: BaseException) -> str:
     """Why an error leaves no result, in words: a connection that ended after the game's crash names the crash."""
@@ -309,6 +322,104 @@ class Run:
     self.worldNote = 'world %d: fresh for %s, made as it asks (%s; made in %.1f s)' % (
       self.worldNumber, name, asked or 'the probe\'s defaults', time.monotonic() - started)
 
+  def enterWorld(self, cls: type, name: str) -> None:
+    """
+    The world of the test 'name' of 'cls' (SPEC.md 17.8), before its reset.
+    A test a World decorates: that World, made fresh for it in its own save
+    folder (WORLD_FOLDER) with its setUp, unless it's entered already; a
+    fresh one's later tests enter the copy kept after its setUp. A test no
+    World decorates, after a World's tests: the class's own world again.
+    Whatever its setUp raises is raised, the World not entered, so its next
+    test tries again. In save mode a World's test has no result.
+    """
+    world = worldOf(cls, name)
+    if self.saveMode:
+      if world is not None:
+        raise NoResult("not run: save mode runs tests in the saves, and this test's world is %s (SPEC.md 17.8)"
+                       % world.label())
+      return
+    if self.stopped is not None:
+      #  beforeTest says why, for this test and each after it
+      return
+    if world is None:
+      if self.worldOpen:
+        self.enterClass(cls.__name__, world=getattr(cls, 'world', None))
+      return
+    if world is self.world:
+      if world.fresh:
+        started = time.monotonic()
+        self._openWorld(world)
+        self.worldNumber += 1
+        self.worldNote = 'world %d: %s for %s, as its setUp left it (opened in %.1f s)' % (
+          self.worldNumber, world.label(), cls.__name__, time.monotonic() - started)
+      return
+    self._makeWorld(world, cls.__name__)
+
+  def _makeWorld(self, world: Any, name: str) -> None:
+    """A World made fresh for the class 'name', entered, its setUp run; a fresh one's copy kept after it."""
+    started = time.monotonic()
+    args = world.createArgs()
+    if self.singleplayerOpen:
+      self._closeOwnWorld()
+    folder = os.path.join(self.gameDir, 'saves', WORLD_FOLDER)
+    if os.path.lexists(folder):
+      removeTree(folder)
+    made = self._load('world.create', dict(args, folder=WORLD_FOLDER), "the world %s" % world.label())
+    self.singleplayerOpen = True
+    self.worldOpen = True
+    #  no class shares a World's terrain
+    self.classWorld = {'World': world.label()}
+    pos = self.game.request('player.get', None, 'server')['pos']
+    start = (float(pos[0]), float(pos[1]), float(pos[2]))
+    spawn = made['spawn']
+    self.worldEntered = (start, (int(spawn[0]), int(spawn[1]), int(spawn[2])))
+    self.game.request('world.prepare')
+    self.game.request('hooks.run', {'hook': 'setUpWorld'})
+    self.worldSetUp = True
+    self._enter(world)
+    try:
+      world.setUp()
+    except BaseException:
+      self._leaveWorld()
+      raise
+    if world.fresh:
+      self._closeOwnWorld()
+      if os.path.lexists(self.setupFolder()):
+        removeTree(self.setupFolder())
+      copyExactly(folder, self.setupFolder())
+      self._openWorld(world)
+    self.worldNumber += 1
+    asked = ', '.join('%s %s' % (key, value) for key, value in args.items())
+    self.worldNote = 'world %d: %s for %s, made as it says (%s; made in %.1f s)' % (
+      self.worldNumber, world.label(), name, asked, time.monotonic() - started)
+
+  def _openWorld(self, world: Any) -> None:
+    """A fresh World's copy kept after its setUp, opened and entered again (its setUp isn't run again)."""
+    self._closeOwnWorld()
+    folder = os.path.join(self.gameDir, 'saves', WORLD_FOLDER)
+    if os.path.lexists(folder):
+      removeTree(folder)
+    copyExactly(self.setupFolder(), folder)
+    self._load('world.open', {'folder': WORLD_FOLDER}, "the world %s" % world.label())
+    self.singleplayerOpen = True
+    self.worldOpen = True
+    self.game.request('hooks.run', {'hook': 'setUpWorld'})
+    self.worldSetUp = True
+    self._enter(world)
+
+  def _enter(self, world: Any) -> None:
+    """The World handed its entered state; the reset starts where the game put the player in it."""
+    start, spawn = self.worldEntered
+    world.enter(self.game, Vec3(*start), BlockPos(*spawn))
+    self.world = world
+    self.start = start
+
+  def _leaveWorld(self) -> None:
+    """The entered World, if any, left."""
+    if self.world is not None:
+      world, self.world = self.world, None
+      world.leave()
+
   def enterMultiplayer(self, name: str, names: tuple, shared: bool = False) -> dict:
     """
     A multiplayer class's games (SPEC.md 11.3, step 5): the memory checked
@@ -336,7 +447,12 @@ class Run:
     return multiplayer.games()
 
   def _closeOwnWorld(self) -> None:
-    """The run's own client's singleplayer world closed: its tearDownWorld first, if it had its setUpWorld."""
+    """
+    The run's own client's singleplayer world closed: an entered World left, its tearDownWorld first, if it had its
+    setUpWorld.
+    """
+    self._leaveWorld()
+    self.worldOpen = False
     if self.worldSetUp:
       self.game.request('hooks.run', {'hook': 'tearDownWorld'})
       self.worldSetUp = False
@@ -580,6 +696,7 @@ class Run:
             self.multiplayer.stop()
           except Exception:  # they are stopped as far as they can be; the run's own game goes on to its quit
             pass
+        self._leaveWorld()
         if self.stopped is None:
           if self.begun:
             if not self.saveMode and self.singleplayerOpen and self.worldSetUp:
@@ -598,9 +715,11 @@ class Run:
       finally:
         if self.stop is not None:
           self.stop()
-        # the kept copy is the run's own, and goes with it
+        # the kept copies are the run's own, and go with it
         if os.path.lexists(self.keptFolder()):
           removeTree(self.keptFolder())
+        if os.path.lexists(self.setupFolder()):
+          removeTree(self.setupFolder())
     return self.writeReport()
 
   # ---------------------------------------------------------------- the report
@@ -777,7 +896,8 @@ def loadSuites(names: list, start: Optional[str] = None) -> tuple:
     for error in loader.errors:
       problems.append(('unitTAS.suites', "a suite can't be loaded:\n%s" % error.strip()))
     kept = [test for test in _tests(discovered) if type(test).__name__ != '_FailedTest']
-    return unittest.TestSuite(kept), problems
+    #  a class's tests grouped by world, each World entered once (SPEC.md 17.8)
+    return unittest.TestSuite(orderTests(kept)), problems
   suites = []
   for name in names:
     suite, problem = _named(loader, name)
@@ -785,7 +905,7 @@ def loadSuites(names: list, start: Optional[str] = None) -> tuple:
       problems.append(('unitTAS.suites', problem))
     else:
       suites.append(suite)
-  return unittest.TestSuite(suites), problems
+  return unittest.TestSuite(orderTests(_tests(unittest.TestSuite(suites)))), problems
 
 
 def reportNames(suite: unittest.TestSuite) -> list:

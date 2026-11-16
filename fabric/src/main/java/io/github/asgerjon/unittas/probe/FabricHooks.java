@@ -6,6 +6,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -33,8 +34,11 @@ public final class FabricHooks {
 	private FabricHooks() {
 	}
 
-	/** Minecraft is made: the client's own operations get their bodies (declared by FabricPort). */
+	/** Minecraft is made: the client's own operations get their bodies (declared by FabricPort), the worlds' too. */
 	static void register(Probe probe) {
+		WorldOps.bind(probe);
+		FabricThings.bind(probe);
+		FabricReset.bind(probe);
 		probe.op("screen.get").does(call -> {
 			Screen screen = Minecraft.getInstance().gui.screen();
 			if (screen == null) {
@@ -84,8 +88,10 @@ public final class FabricHooks {
 		}
 		snapshot.serverStopped = stopped;
 		snapshot.serverRunning = !stopped && sides.tickedAt(Side.SERVER) > 0;
-		snapshot.inWorld = mc.level != null;
 		Screen screen = mc.gui.screen();
+		snapshot.inWorld = inWorld(mc, server, screen);
+		snapshot.worldFolder = stopped ? null : FabricWorlds.folder(server);
+		snapshot.dimension = mc.level == null ? null : mc.level.dimension().identifier().toString();
 		snapshot.menu = screen instanceof TitleScreen;
 		snapshot.screen = screen == null ? null : screen.getClass().getName();
 		snapshot.paused = mc.isPaused();
@@ -110,6 +116,15 @@ public final class FabricHooks {
 			return;
 		}
 		sides.ticked(Side.CLIENT);
+	}
+
+	/**
+	 * The player is in the world on both sides, past the loading screen: the client's player and level, and the
+	 * integrated server's player (read from the client thread as a guess, as 1.7.10's Worlds.inWorld does).
+	 */
+	private static boolean inWorld(Minecraft mc, IntegratedServer server, Screen screen) {
+		return mc.player != null && mc.level != null && server != null
+			&& !server.getPlayerList().getPlayers().isEmpty() && !(screen instanceof LevelLoadingScreen);
 	}
 
 	/** The client's screen changes (Gui.setScreen): a screen event when asked for (PROTOCOL.md 7). */

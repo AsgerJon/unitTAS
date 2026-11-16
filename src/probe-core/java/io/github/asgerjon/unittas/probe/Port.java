@@ -41,6 +41,12 @@ public interface Port {
 	List<String> trace();
 
 	/**
+	 * The game's own calls behind the world operations (PROTOCOL.md 8.3), whose bodies are the core's WorldOps: asked
+	 * for by WorldOps.bind, from the port's client hooks, and by the world's closing after a Java run.
+	 */
+	GameWorlds worlds();
+
+	/**
 	 * The game's operations, declared as the probe starts so the hello lists them all (their bodies come at the
 	 * port's preInit or its like). The probe's own (status, quit, ticks.wait and the rest) the core declares itself.
 	 */

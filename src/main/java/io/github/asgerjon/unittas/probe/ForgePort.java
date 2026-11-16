@@ -75,6 +75,12 @@ public final class ForgePort implements Port {
 	}
 
 	@Override
+	public GameWorlds worlds() {
+		// made when asked for, on a client only: it names client classes, which a dedicated server hasn't
+		return new ForgeWorlds();
+	}
+
+	@Override
 	public void declare(Probe probe) {
 		// the server drops its next connections as 1.7.10's login race does: the opening guard's tests on a client (its
 		// integrated server's), the join guard's on a dedicated server (MixinNetworkSystemDrop)

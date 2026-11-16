@@ -80,6 +80,40 @@ class GameTestCaseTests(FakeRun, unittest.TestCase):
     self.assertTrue(any(line.startswith('world 3: fresh for AfterTerrainTests (the kept world put back')
                         for line in lines), lines)
 
+  def test_tests_run_in_the_worlds_that_decorate_them(self) -> None:
+    """Each test in its world; in name order, a world left is made again."""
+    self.run.begin()
+    del gamecases.WORLD_SETUPS[:]
+    result = self.runClasses(gamecases.WorldCases)
+    self.assertTrue(result.wasSuccessful(), result.failures + result.errors)
+    self.assertEqual(['plains', 'arena', 'plains'], gamecases.WORLD_SETUPS)
+    lines = self.report()
+    worlds = [line for line in lines if line.startswith('world ')]
+    #  the class's own world, opened for its setUpClass, carries no line:
+    #  its first test entered plains before any line was written
+    self.assertEqual(4, len(worlds), lines)
+    self.assertIn('WorldCases.plains for WorldCases, made as it says',
+                  worlds[0])
+    self.assertIn('the kept world put back', worlds[1])
+    self.assertIn('WorldCases.arena', worlds[2])
+    self.assertIn('WorldCases.plains', worlds[3])
+
+  def test_the_run_groups_a_class_s_tests_by_world(self) -> None:
+    """Loaded by the run, each world is entered once."""
+    from unittas.run import runSuites
+    self.run.begin()
+    del gamecases.WORLD_SETUPS[:]
+    result = runSuites(self.run, ['gamecases.WorldCases'],
+                       stream=io.StringIO())
+    self.assertTrue(result.wasSuccessful(), result.failures + result.errors)
+    self.assertEqual(['plains', 'arena'], gamecases.WORLD_SETUPS)
+    names = [line.split(' ... ')[0] for line in self.report()
+             if line.startswith('WorldCases.')]
+    self.assertEqual(['WorldCases.test_b_in_the_class_world',
+                      'WorldCases.test_a_in_plains',
+                      'WorldCases.test_d_in_plains_again',
+                      'WorldCases.test_c_in_the_arena'], names)
+
   def test_a_multiplayer_class_can_t_ask_for_a_world_yet(self) -> None:
     self.run.begin()
     self.run.multiplayerAllowed = True

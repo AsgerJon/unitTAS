@@ -198,7 +198,7 @@ final class GameOps {
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : player.rotationPitch;
 		int to = player.dimension;
 		if (call.has("dimension")) {
-			Integer named = WorldOps.dimensionNumber(call.args.get("dimension"));
+			Integer named = ServerWorld.dimensionNumber(call.args.get("dimension"));
 			if (named == null || MinecraftServer.getServer().worldServerForDimension(named) == null) {
 				throw new ProbeException("NotFound", "no dimension " + call.args.get("dimension"),
 					Json.object("what", call.args.get("dimension")));

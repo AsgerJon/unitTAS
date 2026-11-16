@@ -1,48 +1,58 @@
 package io.github.asgerjon.unittas.probe;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import io.github.asgerjon.unittas.TasTrace;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.Minecraft;
-import net.minecraft.world.EnumDifficulty;
-import net.minecraft.world.WorldSettings;
-import net.minecraft.world.WorldType;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.regex.Pattern;
 
 /**
- * The world operations' bodies (PROTOCOL.md 8.3), given at preInit. Making, opening and closing a world are the probe's
- * own: the client thread is busy for a while in each (it waits for the integrated server to start or stop), so they
- * don't go by the stall rule; they watch from the probe's thread until the player is in (or out) and settled, or until
- * their own max_seconds, and say once a second how far they are. The rest run on the server thread.
+ * The world operations' bodies (PROTOCOL.md 8.3), version-free (SPEC.md 12, D5): the game's own calls are the port's
+ * {@link GameWorlds}, and a port's client hooks bind these. Making, opening and closing a world are the probe's own:
+ * the client thread is busy for a while in each (it waits for the integrated server to start or stop), so they don't
+ * go by the stall rule; they watch from the probe's thread until the player is in (or out) and settled, or until their
+ * own max_seconds, and say once a second how far they are. The rest run on the server thread.
  */
 final class WorldOps {
 
 	/** A save's folder: a plain name in the game's saves. */
 	static final Pattern FOLDER = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");
+	/** The test world's folder, name and seed, unless asked otherwise. */
+	static final String TEST_FOLDER = "unittas";
+	static final String TEST_NAME = "unitTAS";
+	static final long SEED = 20261029L;
+	/** The protocol's names: the world types, the game modes, the difficulties. */
+	static final List<String> TYPES = Arrays.asList("default", "flat", "large_biomes", "amplified");
+	static final List<String> GAME_MODES = Arrays.asList("survival", "creative", "adventure");
+	static final List<String> DIFFICULTIES = Arrays.asList("peaceful", "easy", "normal", "hard");
 
 	private WorldOps() {
 	}
 
+	/** The world operations' bodies, from the port's client hooks: its worlds are the port's. */
 	static void bind(Probe probe) {
-		probe.op("world.create").does(WorldOps::create);
-		probe.op("world.open").does(WorldOps::open);
+		GameWorlds worlds = probe.port.worlds();
+		probe.op("world.create").does(call -> create(call, worlds));
+		probe.op("world.open").does(call -> open(call, worlds));
 		probe.op("world.close").does(WorldOps::close);
-		probe.op("world.get").does(call -> Worlds.describe());
-		probe.op("world.rules.set").does(WorldOps::rules);
-		probe.op("world.time.set").does(WorldOps::time);
-		probe.op("world.weather.set").does(WorldOps::weather);
-		probe.op("world.difficulty.set").does(WorldOps::difficulty);
+		probe.op("world.get").does(call -> worlds.describe());
+		probe.op("world.rules.set").does(call -> rules(call, worlds));
+		probe.op("world.time.set").does(call -> time(call, worlds));
+		probe.op("world.weather.set").does(call -> weather(call, worlds));
+		probe.op("world.difficulty.set").does(call -> difficulty(call, worlds));
 		probe.op("world.prepare").does(call -> {
-			Worlds.prepare();
+			worlds.prepare();
 			return new JsonObject();
 		});
 	}
@@ -69,32 +79,25 @@ final class WorldOps {
 		}
 	}
 
-	private static JsonElement create(Call call) throws ProbeException, InterruptedException {
+	/** A name the protocol lists, or BadRequest naming them. */
+	private static String oneOf(Call call, String key, String otherwise, List<String> names) throws ProbeException {
+		String given = call.string(key, otherwise);
+		if (given == null || !names.contains(given)) {
+			throw ProbeException.badRequest(key, key + " is " + String.join(", ", names.subList(0, names.size() - 1))
+				+ " or " + names.get(names.size() - 1) + ", not " + given);
+		}
+		return given;
+	}
+
+	private static JsonElement create(Call call, GameWorlds worlds) throws ProbeException, InterruptedException {
 		Probe probe = call.probe;
-		String folder = folder(call, Worlds.FOLDER);
-		String name = call.string("name", Worlds.NAME);
-		long seed = call.number("seed", Worlds.SEED, Long.MIN_VALUE, Long.MAX_VALUE);
-		String typeName = call.string("type", "flat");
-		WorldType type = Worlds.type(typeName);
-		if (type == null) {
-			throw ProbeException.badRequest("type", "type is default, flat, large_biomes or amplified, not " + typeName);
-		}
-		String generator = call.string("generator", type == WorldType.FLAT ? Worlds.FLAT_LAYERS : "");
-		String modeName = call.string("game_mode", "creative");
-		WorldSettings.GameType mode;
-		switch (modeName) {
-			case "survival":
-				mode = WorldSettings.GameType.SURVIVAL;
-				break;
-			case "creative":
-				mode = WorldSettings.GameType.CREATIVE;
-				break;
-			case "adventure":
-				mode = WorldSettings.GameType.ADVENTURE;
-				break;
-			default:
-				throw ProbeException.badRequest("game_mode", "game_mode is survival, creative or adventure, not " + modeName);
-		}
+		String folder = folder(call, TEST_FOLDER);
+		String name = call.string("name", TEST_NAME);
+		long seed = call.number("seed", SEED, Long.MIN_VALUE, Long.MAX_VALUE);
+		String type = oneOf(call, "type", "flat", TYPES);
+		String generator = call.string("generator", "flat".equals(type) ? worlds.testLayers() : "");
+		worlds.checkGenerator(type, generator);
+		String mode = oneOf(call, "game_mode", "creative", GAME_MODES);
 		boolean cheats = call.flag("cheats", true);
 		boolean structures = call.flag("structures", true);
 		long settle = call.number("settle_ticks", 40, 0, 72000);
@@ -107,16 +110,16 @@ final class WorldOps {
 		}
 		long started = System.currentTimeMillis();
 		FutureTask<Void> launch = Sides.get().post(Side.CLIENT, () -> {
-			TasTrace.start();
-			Worlds.create(Minecraft.getMinecraft(), folder, name, seed, type, generator, mode, cheats, structures);
+			worlds.traceStart();
+			worlds.create(folder, name, seed, type, generator, mode, cheats, structures);
 			return null;
 		});
-		watchIn(call, folder, launch, settle, maxSeconds, started, pictures);
-		JsonElement spawn = onServer(() -> Worlds.describe().get("spawn"));
+		watchIn(call, worlds, folder, launch, settle, maxSeconds, started, pictures);
+		JsonElement spawn = onServer(() -> worlds.describe().get("spawn"));
 		return Json.object("folder", folder, "load_ms", System.currentTimeMillis() - started, "spawn", spawn);
 	}
 
-	private static JsonElement open(Call call) throws ProbeException, InterruptedException {
+	private static JsonElement open(Call call, GameWorlds worlds) throws ProbeException, InterruptedException {
 		Probe probe = call.probe;
 		String folder = folder(call, null);
 		long settle = call.number("settle_ticks", 40, 0, 72000);
@@ -129,12 +132,12 @@ final class WorldOps {
 		}
 		long started = System.currentTimeMillis();
 		FutureTask<Void> launch = Sides.get().post(Side.CLIENT, () -> {
-			TasTrace.start();
-			Worlds.open(Minecraft.getMinecraft(), folder);
+			worlds.traceStart();
+			worlds.open(folder);
 			return null;
 		});
-		watchIn(call, folder, launch, settle, maxSeconds, started, pictures);
-		JsonElement name = onServer(() -> Worlds.describe().get("name"));
+		watchIn(call, worlds, folder, launch, settle, maxSeconds, started, pictures);
+		JsonElement name = onServer(() -> worlds.describe().get("name"));
 		return Json.object("folder", folder, "name", name, "load_ms", System.currentTimeMillis() - started);
 	}
 
@@ -145,8 +148,8 @@ final class WorldOps {
 	 * dropped login, pictured (into the request's `pictures` folder), left and opened again once; dropped again, it is
 	 * Disconnected.
 	 */
-	private static void watchIn(Call call, String folder, FutureTask<Void> launch, long settle, long maxSeconds,
-		long started, String pictures) throws ProbeException, InterruptedException {
+	private static void watchIn(Call call, GameWorlds worlds, String folder, FutureTask<Void> launch, long settle,
+		long maxSeconds, long started, String pictures) throws ProbeException, InterruptedException {
 		Probe probe = call.probe;
 		Snapshot snapshot = probe.snapshot;
 		Sides sides = Sides.get();
@@ -163,7 +166,7 @@ final class WorldOps {
 					sides.ticks(Side.CLIENT), sides.ticks(Side.SERVER)) ? Opening.DROPPED : null;
 				if (hung != null) {
 					dropped++;
-					String picture = dropPicture(pictures, folder, dropped);
+					String picture = dropPicture(worlds, pictures, folder, dropped);
 					probe.event("world", Json.object("state", "dropped", "folder", folder, "ms", now - started, "screen",
 						snapshot.screen, "picture", picture));
 					if (dropped > Opening.RETRIES) {
@@ -175,8 +178,8 @@ final class WorldOps {
 					// left as Save and Quit leaves a world (its server stopped), then the folder opened again: world.create's
 					// world was made by its first try
 					launch = Sides.get().post(Side.CLIENT, () -> {
-						Worlds.close(Minecraft.getMinecraft());
-						Worlds.open(Minecraft.getMinecraft(), folder);
+						worlds.close();
+						worlds.open(folder);
 						return null;
 					});
 					opening.reset();
@@ -195,7 +198,7 @@ final class WorldOps {
 				}
 				if (now - started > maxSeconds * 1000L) {
 					throw new ProbeException("TimedOut", folder + " didn't open within " + maxSeconds + " s", Json.object(
-						"seconds", maxSeconds, "screen", snapshot.screen, "trace", TasTrace.lines()));
+						"seconds", maxSeconds, "screen", snapshot.screen, "trace", probe.port.trace()));
 				}
 				if (now >= nextEvent) {
 					probe.event("world", Json.object("state", "loading", "folder", folder, "ms", now - started,
@@ -209,7 +212,7 @@ final class WorldOps {
 		} finally {
 			snapshot.changing = false;
 		}
-		TasTrace.stop();
+		worlds.traceStop();
 		probe.event("world", Json.object("state", "open", "folder", folder, "ms", System.currentTimeMillis() - started));
 	}
 
@@ -223,14 +226,14 @@ final class WorldOps {
 	}
 
 	/** The dropped opening's picture, into the `pictures` folder; its path, or null (none asked for, or it failed). */
-	private static String dropPicture(String pictures, String folder, int dropped) {
+	private static String dropPicture(GameWorlds worlds, String pictures, String folder, int dropped) {
 		if (pictures == null) {
 			return null;
 		}
 		File file = new File(pictures, folder + "-dropped-" + dropped + ".png");
 		try {
 			Sides.get().run(Side.CLIENT, () -> {
-				Pictures.saveAs(Minecraft.getMinecraft(), file);
+				worlds.picture(file);
 				return null;
 			}, Sides.STALL_SECONDS, queued -> { });
 			return file.getAbsolutePath();
@@ -256,6 +259,7 @@ final class WorldOps {
 	 * stopped (its writes on disk) and the title shows: world.close's work, and java.run's after the Java run. Its ms.
 	 */
 	static long closeOpen(Probe probe, long maxSeconds) throws ProbeException, InterruptedException {
+		GameWorlds worlds = probe.port.worlds();
 		Snapshot snapshot = probe.snapshot;
 		String folder = snapshot.worldFolder;
 		long started = System.currentTimeMillis();
@@ -263,7 +267,7 @@ final class WorldOps {
 		try {
 			probe.event("world", Json.object("state", "closing", "folder", folder, "ms", 0));
 			FutureTask<Void> leave = Sides.get().post(Side.CLIENT, () -> {
-				Worlds.close(Minecraft.getMinecraft());
+				worlds.close();
 				return null;
 			});
 			// out once the server has stopped (its saves on disk: it flushes its writes as it stops) and the title shows
@@ -285,7 +289,10 @@ final class WorldOps {
 		return ms;
 	}
 
-	/** A world step that threw: the game's failure (a mod's world load, say), as GameError with its trace. */
+	/**
+	 * A world step that threw: the game's failure (a mod's world load, say), as GameError with its trace; a
+	 * ProbeException the port threw is the answer as it is (a request the game refused, say).
+	 */
 	private static void failed(FutureTask<Void> step, String what) throws ProbeException {
 		if (!step.isDone()) {
 			return;
@@ -294,6 +301,9 @@ final class WorldOps {
 			step.get();
 		} catch (ExecutionException e) {
 			Throwable cause = e.getCause();
+			if (cause instanceof ProbeException) {
+				throw (ProbeException) cause;
+			}
 			throw new ProbeException("GameError", "the game failed to " + what + ": " + cause, Json.object(
 				"exception", cause == null ? null : cause.getClass().getName(), "trace", Probe.trace(cause == null ? e : cause)));
 		} catch (CancellationException | InterruptedException e) {
@@ -301,7 +311,7 @@ final class WorldOps {
 		}
 	}
 
-	private static JsonElement onServer(java.util.concurrent.Callable<JsonElement> read) throws ProbeException, InterruptedException {
+	private static JsonElement onServer(Callable<JsonElement> read) throws ProbeException, InterruptedException {
 		try {
 			return Sides.get().run(Side.SERVER, read, Sides.STALL_SECONDS, null);
 		} catch (InterruptedException | RuntimeException e) {
@@ -313,10 +323,11 @@ final class WorldOps {
 
 	// ---------------------------------------------------------------- the server thread
 
-	private static JsonElement rules(Call call) throws ProbeException {
+	private static JsonElement rules(Call call, GameWorlds worlds) throws ProbeException {
 		JsonObject given = call.object("rules");
 		if (given == null || given.entrySet().isEmpty()) {
-			throw ProbeException.badRequest("rules", "rules names the game rules to set: {\"doDaylightCycle\": false}");
+			throw ProbeException.badRequest("rules", "rules names the game rules to set, by this game's own names, each"
+				+ " with its value: {\"<rule>\": false}");
 		}
 		Map<String, String> values = new LinkedHashMap<>();
 		for (Map.Entry<String, JsonElement> rule : given.entrySet()) {
@@ -328,58 +339,29 @@ final class WorldOps {
 				? Long.toString(value.getAsLong()) : value.getAsString();
 			values.put(rule.getKey(), text);
 		}
-		List<String> unknown = Worlds.unknownRules(values.keySet());
+		List<String> unknown = worlds.unknownRules(values.keySet());
 		if (!unknown.isEmpty()) {
 			throw new ProbeException("NotFound", "this game has no rule " + String.join(", ", unknown)
-				+ " (1.7.10 would make one silently; the probe doesn't)", Json.object("what", unknown));
+				+ " (the probe never makes one)", Json.object("what", unknown));
 		}
-		Worlds.setRules(values);
+		worlds.setRules(values);
 		return new JsonObject();
 	}
 
-	private static JsonElement time(Call call) throws ProbeException {
+	private static JsonElement time(Call call, GameWorlds worlds) throws ProbeException {
 		if (!call.has("time")) {
 			throw ProbeException.badRequest("time", "world.time.set needs the time");
 		}
 		long time = call.number("time", 0, 0, Long.MAX_VALUE);
-		Integer dimension = null;
-		if (call.has("dimension")) {
-			JsonElement given = call.args.get("dimension");
-			dimension = dimensionNumber(given);
-			if (dimension == null) {
-				throw new ProbeException("NotFound", "no dimension " + given, Json.object("what", given));
-			}
+		JsonElement dimension = call.has("dimension") ? call.args.get("dimension") : JsonNull.INSTANCE;
+		if (!dimension.isJsonNull() && !worlds.knowsDimension(dimension)) {
+			throw new ProbeException("NotFound", "no dimension " + dimension, Json.object("what", dimension));
 		}
-		Worlds.setTime(time, dimension);
+		worlds.setTime(time, dimension);
 		return new JsonObject();
 	}
 
-	/** A dimension by its protocol name or (in 1.7.10) its number; null for none. */
-	static Integer dimensionNumber(JsonElement given) {
-		if (given.isJsonPrimitive() && given.getAsJsonPrimitive().isNumber()) {
-			return given.getAsInt();
-		}
-		String name = given.isJsonPrimitive() ? given.getAsString() : "";
-		switch (name) {
-			case "minecraft:overworld":
-				return 0;
-			case "minecraft:the_nether":
-				return -1;
-			case "minecraft:the_end":
-				return 1;
-			default:
-				if (name.startsWith("dim:")) {
-					try {
-						return Integer.parseInt(name.substring(4));
-					} catch (NumberFormatException e) {
-						return null;
-					}
-				}
-				return null;
-		}
-	}
-
-	private static JsonElement weather(Call call) throws ProbeException {
+	private static JsonElement weather(Call call, GameWorlds worlds) throws ProbeException {
 		String weather = call.string("weather", null);
 		boolean hold = call.flag("hold", true);
 		if (weather == null) {
@@ -387,13 +369,13 @@ final class WorldOps {
 		}
 		switch (weather) {
 			case "clear":
-				Worlds.setWeather(false, false, hold);
+				worlds.setWeather(false, false, hold);
 				break;
 			case "rain":
-				Worlds.setWeather(true, false, hold);
+				worlds.setWeather(true, false, hold);
 				break;
 			case "thunder":
-				Worlds.setWeather(true, true, hold);
+				worlds.setWeather(true, true, hold);
 				break;
 			default:
 				throw ProbeException.badRequest("weather", "the weather is clear, rain or thunder, not " + weather);
@@ -401,22 +383,16 @@ final class WorldOps {
 		return new JsonObject();
 	}
 
-	private static JsonElement difficulty(Call call) throws ProbeException {
+	private static JsonElement difficulty(Call call, GameWorlds worlds) throws ProbeException {
 		String name = call.string("difficulty", null);
-		EnumDifficulty difficulty = null;
-		for (EnumDifficulty each : EnumDifficulty.values()) {
-			if (each.name().equalsIgnoreCase(name == null ? "" : name)) {
-				difficulty = each;
-			}
-		}
-		if (difficulty == null) {
+		String difficulty = name == null ? "" : name.toLowerCase(Locale.ROOT);
+		if (!DIFFICULTIES.contains(difficulty)) {
 			throw ProbeException.badRequest("difficulty", "difficulty is peaceful, easy, normal or hard, not " + name);
 		}
-		Worlds.setDifficulty(difficulty);
-		EnumDifficulty chosen = difficulty;
+		worlds.setDifficulty(difficulty);
 		// the client's own option, as the game's difficulty button sets both
 		Sides.get().post(Side.CLIENT, () -> {
-			Minecraft.getMinecraft().gameSettings.difficulty = chosen;
+			worlds.clientDifficulty(difficulty);
 			return null;
 		});
 		return new JsonObject();

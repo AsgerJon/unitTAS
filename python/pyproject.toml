@@ -9,11 +9,11 @@ name = "unittas"
 version = "0.1.0.dev0"
 description = "Tests that play the real Minecraft: the orchestrator, and the protocol it speaks with the probe in the game"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 license = "Apache-2.0"
 authors = [{ name = "Asger Jon Vistisen" }]
 # the one list of what the package needs: the root's environment.yml installs the package, so it installs these too
-dependencies = ["worktoy>=1.0,<2"]
+dependencies = ["worktoy>=1.2.2", "mcdex>=0.2.0"]
 
 [project.scripts]
 # the command (unittas.cli); 'python -m unittas' is the same without it

@@ -1,6 +1,8 @@
 """
-GameTestCases for test_testcase.py to run: not a test module (unittest's discovery doesn't load it), so these classes
-run only on the fake game a test gives them. test_testcase reaches them through this module, never by importing the
+GameTestCases for test_testcase.py to run: not a test module (unittest's
+discovery doesn't load it), so these classes
+run only on the fake game a test gives them. test_testcase reaches them
+through this module, never by importing the
 classes, which unittest's loader would then take for tests of its own.
 """
 #  Apache-2.0 license
@@ -10,8 +12,12 @@ from __future__ import annotations
 import time
 import unittest
 
+from worktoy.desc import FixBox
+
+from unittas._test_world import World
 from unittas.run import Run
 from unittas.testcase import GameTestCase, MultiplayerTestCase
+from unittas.values import Vec3
 
 
 class ATests(GameTestCase):
@@ -42,11 +48,13 @@ class CTests(GameTestCase):
 
 
 class TerrainTests(GameTestCase):
-  """A class that needs real terrain: a world of its own (a map, say), made for it."""
+  """A class that needs real terrain: a world of its own (a map, say),
+  made for it."""
   world = {'type': 'default', 'seed': 1234}
 
   def test_in_its_own_world(self) -> None:
-    self.assertIn('fresh for TerrainTests, made as it asks', Run.current.worldNote)
+    self.assertIn('fresh for TerrainTests, made as it asks',
+                  Run.current.worldNote)
 
 
 class AfterTerrainTests(GameTestCase):
@@ -63,7 +71,8 @@ class ChatTests(GameTestCase):
 
 
 class StallTests(GameTestCase):
-  """Its first test meets a game that stopped ticking; the second must not run."""
+  """Its first test meets a game that stopped ticking; the second must not
+  run."""
 
   def test_a_meets_a_stall(self) -> None:
     self.command('/stall')
@@ -73,7 +82,8 @@ class StallTests(GameTestCase):
 
 
 class SlowTests(GameTestCase):
-  """Its first test runs past its time limit (1 s here): no result; the second runs as ever."""
+  """Its first test runs past its time limit (1 s here): no result; the
+  second runs as ever."""
   timeout_seconds = 1
 
   def test_a_loops(self) -> None:
@@ -96,12 +106,15 @@ class CrashTests(GameTestCase):
 
 
 class SaveCaseTests(GameTestCase):
-  """For save mode: each test notes the save it found open (by the run: a class's state outlives a run)."""
+  """For save mode: each test notes the save it found open (by the run: a
+  class's state outlives a run)."""
   seen = {}
 
   def test_a_sees_its_save(self) -> None:
     save = self.save()
-    SaveCaseTests.seen.setdefault(Run.current, []).append((save.folder, save.load, save.loadErrors))
+    SaveCaseTests.seen.setdefault(Run.current, []).append((save.folder,
+                                                           save.load,
+                                                           save.loadErrors))
 
   def test_b_passes(self) -> None:
     pass
@@ -118,7 +131,8 @@ class ModErrorTests(GameTestCase):
 
 
 class MpTerrainTests(MultiplayerTestCase):
-  """A multiplayer class can't ask for a world of its own yet: its server's world is the run's flat one."""
+  """A multiplayer class can't ask for a world of its own yet: its
+  server's world is the run's flat one."""
   world = {'type': 'default'}
 
   def test_never_runs(self) -> None:
@@ -126,11 +140,59 @@ class MpTerrainTests(MultiplayerTestCase):
 
 
 class MpCaseTests(MultiplayerTestCase):
-  """A multiplayer class: its test notes the games it was given (by the run: a class's state outlives a run)."""
+  """A multiplayer class: its test notes the games it was given (by the
+  run: a class's state outlives a run)."""
   clients = ('alice', 'bob')
   seen = {}
 
   def test_a_three_games(self) -> None:
     self.assertIsNotNone(self.server)
-    MpCaseTests.seen[Run.current] = {'server': self.server, 'alice': self.alice, 'bob': self.bob,
-                                     'bobName': self.bob.playerName()}
+    MpCaseTests.seen[Run.current] = {
+        'server' : self.server,
+        'alice'  : self.alice,
+        'bob'    : self.bob,
+        'bobName': self.bob.playerName()}
+
+
+#  WorldCases's worlds, as each one's setUp ran
+WORLD_SETUPS = []
+
+
+class CasePlains(World):
+  """A seeded world, made once for the tests it decorates."""
+  seed = FixBox[int](8675309)
+
+  def setUp(self) -> None:
+    WORLD_SETUPS.append('plains')
+
+
+class CaseArena(World):
+  """A world each of its tests enters as its setUp left it."""
+  fresh = FixBox[bool](True)
+
+  def setUp(self) -> None:
+    WORLD_SETUPS.append('arena')
+
+
+class WorldCases(GameTestCase):
+  """Tests in worlds of their own, and one in the class's world."""
+  plains = CasePlains()
+  arena = CaseArena()
+
+  @plains
+  def test_a_in_plains(self) -> None:
+    self.assertIsInstance(self.plains.start, Vec3)
+    with self.assertRaises(RuntimeError):
+      _ = self.arena.start
+
+  def test_b_in_the_class_world(self) -> None:
+    with self.assertRaises(RuntimeError):
+      _ = self.plains.start
+
+  @arena
+  def test_c_in_the_arena(self) -> None:
+    self.assertIsInstance(self.arena.start, Vec3)
+
+  @plains
+  def test_d_in_plains_again(self) -> None:
+    self.assertEqual(8675309, self.plains.seed)

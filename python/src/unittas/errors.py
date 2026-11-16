@@ -7,6 +7,8 @@ connection itself, and one for each error type an answer can carry
 - LinkError, LinkClosed, LinkTimeout: the connection, not an answer.
 - RequestError and its subclasses: an answer that says the operation
   failed, with the error's fields as they came.
+- NoResult: no test result could be obtained.
+- UnknownVersion: a game whose version mcdex has no release for.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -143,6 +145,26 @@ class NoResult(UnitTasError):
   def __init__(self, why: str) -> None:
     UnitTasError.__init__(self, self.PREFIX + why)
     self.why = why
+
+
+class UnknownVersion(NoResult):
+  """
+  The game's version is no release mcdex knows: a snapshot, a version
+  never released, or none at all. No mcdex thing has an id there, so a
+  test naming one can't reach a verdict on that game (SPEC.md 14.8, M3).
+
+  Attributes
+  ----------
+  minecraft : str
+    The version as the game's hello named it.
+  """
+
+  def __init__(self, minecraft: str) -> None:
+    import mcdex  # here, not at the top: importing it takes about 0.7 s
+    infoSpec = ("mcdex %s knows no release %r, the version this game's "
+                "hello names, so no mcdex thing has an id there")
+    NoResult.__init__(self, infoSpec % (mcdex.__version__, minecraft))
+    self.minecraft = minecraft
 
 
 #  What ends a test with no result rather than a verdict: the game stuck, gone, or past a wall-clock guard. A mod's

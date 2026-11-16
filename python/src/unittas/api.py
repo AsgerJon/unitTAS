@@ -22,14 +22,17 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 
+from worktoy.desc import Field
 from worktoy.ezdata import EZData, EZField
 
 from .codec import fromJson, toJson
-from .errors import Cancelled, NoResult
+from .errors import Cancelled, NoResult, UnknownVersion
 from .values import Block, BlockPos, ChatLine, Entity, Inventory, Item, LogLine, Look, Player, Screen, Sound, Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional, Union
+
+  from mcdex import Version
 
   from .link import Connection
   from .mappings import Mappings
@@ -124,6 +127,35 @@ class Game:
     self.stopping = None
 
   # ---------------------------------------------------------------- the session
+
+  #  read-only: a Field with no setter refuses a write (ReadOnlyError)
+  version = Field()
+
+  @version.GET
+  def _getVersion(self) -> Version:
+    """
+    The game's version as mcdex's own member, from the version the
+    game's hello names: 'Version.V1_7_10' for '1.7.10'.
+
+    Returns
+    -------
+    Version
+      mcdex's member for the game's version.
+
+    Raises
+    ------
+    UnknownVersion
+      mcdex has no release by that name (a snapshot, a version never
+      released, or none): no mcdex thing has an id there.
+    """
+    #  here, not at the top: importing mcdex takes about 0.7 s
+    from mcdex import Version
+    from worktoy.waitaminute.keenum import KeeResolveError
+    minecraft = self.connection.hello.minecraft
+    try:
+      return Version(minecraft)
+    except KeeResolveError as error:
+      raise UnknownVersion(minecraft) from error
 
   def status(self) -> dict:
     return self.request('status')

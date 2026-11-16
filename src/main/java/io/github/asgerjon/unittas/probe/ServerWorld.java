@@ -1,5 +1,6 @@
 package io.github.asgerjon.unittas.probe;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -36,6 +37,31 @@ public final class ServerWorld {
 				return "minecraft:the_end";
 			default:
 				return "dim:" + number;
+		}
+	}
+
+	/** A dimension by its protocol name or (in 1.7.10) its number; null for none. */
+	public static Integer dimensionNumber(JsonElement given) {
+		if (given.isJsonPrimitive() && given.getAsJsonPrimitive().isNumber()) {
+			return given.getAsInt();
+		}
+		String name = given.isJsonPrimitive() ? given.getAsString() : "";
+		switch (name) {
+			case "minecraft:overworld":
+				return 0;
+			case "minecraft:the_nether":
+				return -1;
+			case "minecraft:the_end":
+				return 1;
+			default:
+				if (name.startsWith("dim:")) {
+					try {
+						return Integer.parseInt(name.substring(4));
+					} catch (NumberFormatException e) {
+						return null;
+					}
+				}
+				return null;
 		}
 	}
 

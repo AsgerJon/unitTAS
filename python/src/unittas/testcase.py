@@ -211,6 +211,9 @@ class GameTestCase(unittest.TestCase):
     run = Run.current
     try:
       run = _theRun()
+      #  the World that decorates it, or the class's own world (SPEC.md 17.8): a World's setUp that raises is the
+      #  test's own error, below
+      run.enterWorld(type(self), self._testMethodName)
       self.mark = run.beforeTest(self.reportName(), type(self).timeout_seconds)
     except NoResult as error:
       return self._noResult(result, run, error.why, started, error.__cause__)

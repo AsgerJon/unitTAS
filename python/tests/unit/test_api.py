@@ -14,13 +14,17 @@ import tempfile
 import time
 import unittest
 
+import mcdex
+from mcdex import Version
+
 from fakeprobe import FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
-from unittas.errors import NotFound
+from unittas.errors import NoResult, NotFound, UnknownVersion
 from unittas.link import Listener
 from unittas.mappings import Mappings
 from unittas.values import Block, BlockPos, ChatLine, Entity, Inventory, Item, Look, Player, Screen, Sound, Vec3
 from unittas.wire import Role
+from worktoy.waitaminute.desc import ReadOnlyError
 from test_values import PIG, PLAYER
 
 WOOL = {'id': 'minecraft:wool', 'count': 3, 'meta': 14}
@@ -37,9 +41,11 @@ class GameTests(unittest.TestCase):
     self.listener = Listener()
     self.addCleanup(self.listener.close)
 
-  def game(self, handlers: dict, names: str = 'mcp') -> Game:
+  def game(self, handlers: dict, names: str = 'mcp',
+           minecraft: str = '1.7.10') -> Game:
     expected = self.listener.prepare(self.folder, 'alice', Role.CLIENT)
-    fake = FakeProbe(expected.startFile, extra={'names': names})
+    extra = {'names': names, 'minecraft': minecraft}
+    fake = FakeProbe(expected.startFile, extra=extra)
     thread, box = inThread(fake.connect)
     connection = self.listener.accept(timeout=10)
     thread.join(10)
@@ -52,6 +58,35 @@ class GameTests(unittest.TestCase):
   def sent(self) -> list:
     """The requests the fake was sent: (op, side, args)."""
     return [(request['op'], request.get('side'), request.get('args') or {}) for request in self.asked]
+
+  def test_version_is_mcdexs(self) -> None:
+    """The version the hello names, as mcdex's own Version member."""
+    for text, member in (('1.7.10', Version.V1_7_10),
+                         ('26.3', Version.V26_3),
+                         ('1.8', Version.V1_8)):
+      with self.subTest(minecraft=text):
+        self.assertIs(member, self.game({}, minecraft=text).version)
+
+  def test_a_version_mcdex_lacks_is_refused(self) -> None:
+    """A snapshot, a version never released, or none: UnknownVersion."""
+    for text in ('26.4-snapshot-7', '1.2', ''):
+      with self.subTest(minecraft=text):
+        game = self.game({}, minecraft=text)
+        with self.assertRaises(UnknownVersion) as raised:
+          _ = game.version
+        #  a NoResult, so a test naming an mcdex thing there is NO RESULT
+        self.assertIsInstance(raised.exception, NoResult)
+        self.assertEqual(text, raised.exception.minecraft)
+        self.assertIn(repr(text), str(raised.exception))
+        self.assertIn('mcdex %s' % mcdex.__version__,
+                      str(raised.exception))
+
+  def test_version_is_read_only(self) -> None:
+    """The version is the hello's, a worktoy Field no test can write."""
+    game = self.game({})
+    with self.assertRaises(ReadOnlyError):
+      game.version = Version.V26_3
+    self.assertIs(Version.V1_7_10, game.version)
 
   def test_command(self) -> None:
     game = self.game({'command.run': lambda args, side: {'result': 1, 'lines': ['Given [Red Wool] * 1'], 'errors': []}})
