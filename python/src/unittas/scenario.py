@@ -56,6 +56,15 @@ class ScenarioTestCase(GameTestCase):
     (SPEC.md 15.4), among 'among' or every full cube: a FAIL naming what it
     is by its looks otherwise. What can't be told is the agent's
     TesttimeError, an ERROR.
+
+    Naming a few candidates in 'among' gives a significant advantage:
+    among every full cube, red terracotta, red wool and a block of
+    redstone can be difficult to tell apart in dim light, from a steep
+    angle or from far off (Agent.identify). Name the block the test
+    expects and what it may have become instead:
+
+      self.assertIdentifies(pos, MCBlocks.RedWool, among=[
+        MCBlocks.RedTerracotta, MCBlocks.RedWool, MCBlocks.RedstoneBlock])
     """
     found = self.agent.identify(pos, among)
     if found is not member:

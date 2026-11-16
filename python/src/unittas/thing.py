@@ -145,7 +145,13 @@ class Thing(BaseObject):
     return self.__scene__.agent.examine(self.__pos__, side)
 
   def identify(self, among: Optional[Any] = None) -> Any:
-    """What it is by its looks alone, as the agent tells (SPEC.md 15.4)."""
+    """
+    What it is by its looks alone, as the agent tells (SPEC.md 15.4).
+    Naming a few candidates in 'among' gives a significant advantage:
+    among every full cube, red terracotta, red wool and a block of
+    redstone can be difficult to tell apart in dim light, from a steep
+    angle or from far off (Agent.identify).
+    """
     return self.__scene__.agent.identify(self.__pos__, among)
 
   # ------------------------------------------- examinations, by command

@@ -803,6 +803,17 @@ class Agent(BaseObject):
     next by MARGIN. Air, which shows nothing, is known by touch: the agent
     walks into its place. The one mcdex member it is.
 
+    Naming a few candidates gives a test a significant advantage. Among
+    every full cube, some blocks look much alike, and in dim light, from
+    a steep angle or from far off (few pixels), even telling red
+    terracotta, red wool and a block of redstone apart can be difficult.
+    Among the few the test expects (the block it placed and what it may
+    have become instead), the best look beats the next by far more:
+
+      found = agent.identify(pos, among=[MCBlocks.RedTerracotta,
+                                         MCBlocks.RedWool,
+                                         MCBlocks.RedstoneBlock])
+
     Raises
     ------
     TesttimeError
