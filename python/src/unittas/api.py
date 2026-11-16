@@ -298,6 +298,14 @@ class Game:
       args['tile'] = True
     return fromJson(Block, self.request('block.get', args, side))
 
+  def ground(self, x: int, z: int) -> BlockPos:
+    """
+    The ground at x, z: the top block that stops movement or is a liquid, as the game's own height maps have it, so
+    a test places things on it rather than at a fixed height (SPEC.md 14.5 step 7). NotFound where the column has
+    none.
+    """
+    return BlockPos(*self.request('block.ground', {'x': x, 'z': z}, 'server')['pos'])
+
   def setBlock(self, pos: Any, block: Any) -> None:
     """
     The block at pos set to 'block': a Block, an id, or an MCBlocks member

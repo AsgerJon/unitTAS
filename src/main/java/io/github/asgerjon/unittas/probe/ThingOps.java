@@ -37,6 +37,7 @@ final class ThingOps {
 		probe.op("player.look").does(ThingOps::look).settles(ThingOps::ticks1);
 		probe.op("inventory.set").does(ThingOps::inventorySet);
 		probe.op("block.get").does(ThingOps::blockGet);
+		probe.op("block.ground").does(ThingOps::blockGround);
 		probe.op("block.set").does(ThingOps::blockSet);
 		probe.op("entity.spawn").does(ThingOps::spawn);
 		probe.op("entity.get").does(call -> {
@@ -195,6 +196,35 @@ final class ThingOps {
 			}
 		}
 		return value;
+	}
+
+	/**
+	 * block.ground (8.6): the top block at x, z that stops movement or is a liquid, as modern versions' height maps
+	 * (MOTION_BLOCKING) have it, so a test places things on the ground rather than at a fixed height (SPEC.md 14.5
+	 * step 7). Tall grass and flowers don't count; leaves and water do. NotFound where nothing in the column does.
+	 */
+	private static JsonElement blockGround(Call call) throws ProbeException {
+		if (!call.has("x") || !call.has("z")) {
+			throw ProbeException.badRequest("x", "x and z are the column's whole numbers");
+		}
+		int x = (int) call.number("x", 0, -30000000, 30000000);
+		int z = (int) call.number("z", 0, -30000000, 30000000);
+		World world = world(call);
+		net.minecraft.world.chunk.Chunk chunk = world.getChunkFromBlockCoords(x, z);
+		for (int y = chunk.getTopFilledSegment() + 15; y >= 0; y--) {
+			Block block = world.getBlock(x, y, z);
+			net.minecraft.block.material.Material material = block.getMaterial();
+			if (material.blocksMovement() || material.isLiquid()) {
+				JsonArray pos = new JsonArray();
+				pos.add(Json.of(x));
+				pos.add(Json.of(y));
+				pos.add(Json.of(z));
+				return Json.object("pos", pos, "block", Json.object("id",
+					String.valueOf(Block.blockRegistry.getNameForObject(block)), "meta", world.getBlockMetadata(x, y, z)));
+			}
+		}
+		throw new ProbeException("NotFound", "nothing at x " + x + ", z " + z + " stops movement or is a liquid",
+			Json.object("what", "the ground at x " + x + ", z " + z));
 	}
 
 	private static JsonElement blockSet(Call call) throws ProbeException {

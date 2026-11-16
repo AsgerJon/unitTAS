@@ -35,6 +35,9 @@ def fakeHandlers(gameDir: str) -> dict:
     'hooks.run': lambda args, side: {'plugins': []},
     'world.create': create,
     'world.prepare': lambda args, side: {},
+    #  the ground as a flat world has it: grass at y 3
+    'block.ground': lambda args, side: {'pos': [args['x'], 3, args['z']],
+                                        'block': {'id': 'minecraft:grass', 'meta': 0}},
     'world.close': lambda args, side: {'close_ms': 5},
     'world.open': lambda args, side: {'folder': 'unittas', 'name': 'unitTAS', 'load_ms': 5},
     'client.reset': lambda args, side: {},

@@ -243,5 +243,28 @@ class RecordedAnswersTests(unittest.TestCase):
           self.assertEqual(wire, toJson(fromJson(kinds[kindName], wire)))
 
 
+class PlaceTests(unittest.TestCase):
+  """Places relative to another (SPEC.md 14.5 step 7): no fixed heights."""
+
+  def test_a_position_moved(self) -> None:
+    start = Vec3(0.5, 4.0, 0.5)
+    self.assertEqual(Vec3(8.5, 7.0, 8.5), start.offset(8, 3, 8))
+    self.assertEqual(Vec3(0.5, 44.0, 0.5), start.above(40))
+    self.assertEqual(Vec3(0.5, 5.0, 0.5), start.above())
+    self.assertEqual(Vec3(0.5, 3.0, 0.5), start.below())
+
+  def test_the_block_a_position_is_in(self) -> None:
+    self.assertEqual(BlockPos(0, 4, 0), Vec3(0.5, 4.0, 0.5).block())
+    self.assertEqual(BlockPos(-1, -60, -2), Vec3(-0.5, -59.75, -1.5).block())
+
+  def test_a_block_position_moved(self) -> None:
+    ground = BlockPos(0, 3, 0)
+    self.assertEqual(BlockPos(2, 3, -1), ground.offset(2, 0, -1))
+    self.assertEqual(BlockPos(0, 4, 0), ground.above())
+    self.assertEqual(BlockPos(0, 1, 0), ground.below(2))
+    #  where an entity put in that block stands: its floor's middle
+    self.assertEqual(Vec3(0.5, 3.0, 0.5), ground.center())
+
+
 if __name__ == '__main__':
   unittest.main()

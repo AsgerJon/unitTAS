@@ -59,7 +59,9 @@ CLASS_FOLDER = 'unittas-class'
 CLASS_WORLD_KEYS = ('type', 'seed', 'generator', 'game_mode', 'cheats', 'structures', 'name')
 #  The world a test's World is made in (SPEC.md 17.8): a save folder apart, one World entered at a time
 WORLD_FOLDER = 'unittas-world'
-#  Where the reset puts the player in the run's flat world: on its grass, at the spawn
+#  Where the reset puts the player in the run's flat world until it is made: 1.7.10's. begin() then stands it on the
+#  ground at x 0, z 0, as the game answers it (26.3's flat world stands the player at y -60; SPEC.md 14.5 step 7).
+#  Not the world's spawn: 1.7.10 puts that far from the origin, where tests expect the player
 FLAT_START = (0.5, 4.0, 0.5)
 DASHES = '-' * 70
 #  The report's outcome words, in the order its counts line gives them.
@@ -182,6 +184,8 @@ class Run:
     #  the reset puts the player in the open world
     self.classWorld = None
     self.start = FLAT_START
+    #  where the reset puts the player in the run's own world: on its ground at the origin, once begin() has made it
+    self.flatStart = FLAT_START
     #  the World entered for the tests it decorates (unittas._world, SPEC.md 17.8), or None; whether a World's
     #  terrain is open (made, its setUp perhaps failed); and the entered World's start and spawn, for entering it again
     self.world = None
@@ -242,6 +246,9 @@ class Run:
       removeTree(self.worldFolder())
     self.game.request('hooks.run', {'hook': 'beforeRun'})
     self._load('world.create', {'folder': FOLDER})
+    ground = self.game.ground(0, 0)
+    self.flatStart = (0.5, float(ground.y + 1), 0.5)
+    self.start = self.flatStart
     self.game.request('world.prepare')
     self.game.request('world.close', timeout=240)
     copyExactly(self.worldFolder(), self.keptFolder())
@@ -287,7 +294,7 @@ class Run:
       self._load('world.open', {'folder': FOLDER})
       self.singleplayerOpen = True
       self.classWorld = None
-      self.start = FLAT_START
+      self.start = self.flatStart
       self.game.request('hooks.run', {'hook': 'setUpWorld'})
       self.worldSetUp = True
       self.worldNumber += 1

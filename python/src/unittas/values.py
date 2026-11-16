@@ -22,6 +22,8 @@ Item.EMPTY, as modern Minecraft's ItemStack.EMPTY is.
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
+import math
+
 from worktoy.ezdata import EZData, EZField
 
 from . import snbt
@@ -37,12 +39,44 @@ class Vec3(EZData, frozen=True):
   y = EZField[float](0.0)
   z = EZField[float](0.0)
 
+  def offset(self, dx: float, dy: float, dz: float) -> Vec3:
+    """This position moved by dx, dy, dz: places relative to another (SPEC.md 14.5 step 7)."""
+    return Vec3(self.x + dx, self.y + dy, self.z + dz)
+
+  def above(self, n: float = 1.0) -> Vec3:
+    """This position n blocks up."""
+    return self.offset(0.0, n, 0.0)
+
+  def below(self, n: float = 1.0) -> Vec3:
+    """This position n blocks down."""
+    return self.offset(0.0, -n, 0.0)
+
+  def block(self) -> BlockPos:
+    """The block this position is in."""
+    return BlockPos(math.floor(self.x), math.floor(self.y), math.floor(self.z))
+
 
 class BlockPos(EZData, frozen=True):
   """A block's position."""
   x = EZField[int](0)
   y = EZField[int](0)
   z = EZField[int](0)
+
+  def offset(self, dx: int, dy: int, dz: int) -> BlockPos:
+    """This block position moved by dx, dy, dz (SPEC.md 14.5 step 7)."""
+    return BlockPos(self.x + dx, self.y + dy, self.z + dz)
+
+  def above(self, n: int = 1) -> BlockPos:
+    """The block n up."""
+    return self.offset(0, n, 0)
+
+  def below(self, n: int = 1) -> BlockPos:
+    """The block n down."""
+    return self.offset(0, -n, 0)
+
+  def center(self) -> Vec3:
+    """Where an entity put in this block stands: its floor's middle."""
+    return Vec3(self.x + 0.5, float(self.y), self.z + 0.5)
 
 
 class Look(EZData, frozen=True):

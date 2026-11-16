@@ -179,6 +179,19 @@ class GameTests(unittest.TestCase):
       game.spawn(MCEntities.WitherSkeleton, (0, 4, 0), nbt='{Health:1f}')
     self.assertEqual([], self.sent())
 
+  def test_the_ground_at_a_column(self) -> None:
+    """The game's own answer, the top block that stops movement (14.5 step 7)."""
+    def ground(args, side):
+      if (args['x'], args['z']) == (9, 9):
+        raise FakeError('NotFound', 'nothing stops movement at x 9, z 9')
+      return {'pos': [args['x'], -61, args['z']],
+              'block': {'id': 'minecraft:grass_block', 'meta': 0}}
+    game = self.game({'block.ground': ground}, minecraft='26.3')
+    self.assertEqual(BlockPos(3, -61, -4), game.ground(3, -4))
+    self.assertEqual({'x': 3, 'z': -4}, self.args('block.ground')[0])
+    with self.assertRaises(NotFound):
+      game.ground(9, 9)
+
   def declaring(self, plugins: list) -> Game:
     """A 1.7.10 game whose mods declare things (hooks.things)."""
     return self.game({'inventory.set': lambda args, side: {},

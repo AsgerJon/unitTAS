@@ -40,8 +40,11 @@ import traceback
 import unittest
 from typing import TYPE_CHECKING
 
+from worktoy.desc import Field
+
 from .errors import NO_RESULT_ERRORS, NoResult
 from .run import NO_RESULT, Run
+from .values import Vec3
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional
@@ -165,6 +168,9 @@ class GameTestCase(unittest.TestCase):
 
   shared_world = False
   world: Optional[dict] = None
+  #  where the reset put the player for this test: the run's own world's spawn, a class world's or a World's start
+  #  (SPEC.md 14.5 step 7), so tests place things relative to it, never at a fixed height
+  start = Field()
   #  How long one test may take, by the clock, before it is stopped with no result (a watched run asks first): a guard
   #  for a test that never ends, as Java's timeoutSeconds(). Its verdict is never the clock's.
   timeout_seconds = 60
@@ -196,6 +202,10 @@ class GameTestCase(unittest.TestCase):
     for name in unittest.TestLoader().getTestCaseNames(cls):
       run.noResult('%s.%s%s' % (cls.__name__, name, run.suffix), why)
     raise NoResult(why)
+
+  @start.GET
+  def _getStart(self) -> Vec3:
+    return Vec3(*_theRun().start)
 
   # (MultiplayerTestCase is below, after the helpers it shares)
 

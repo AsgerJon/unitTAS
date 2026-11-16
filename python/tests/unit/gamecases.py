@@ -182,12 +182,15 @@ class WorldCases(GameTestCase):
   @plains
   def test_a_in_plains(self) -> None:
     self.assertIsInstance(self.plains.start, Vec3)
+    #  the test's own start is where the reset put the player: its world's
+    self.assertEqual(self.plains.start, self.start)
     with self.assertRaises(RuntimeError):
       _ = self.arena.start
 
   def test_b_in_the_class_world(self) -> None:
     with self.assertRaises(RuntimeError):
       _ = self.plains.start
+    self.assertEqual(Vec3(0.5, 4.0, 0.5), self.start)
 
   @arena
   def test_c_in_the_arena(self) -> None:

@@ -59,6 +59,9 @@ class FakeRun:
       'hooks.run': lambda args, side: {'plugins': []},
       'world.create': create,
       'world.prepare': lambda args, side: {},
+      #  the ground as a flat world has it: grass at y 3
+      'block.ground': lambda args, side: {'pos': [args['x'], 3, args['z']],
+                                          'block': {'id': 'minecraft:grass', 'meta': 0}},
       'world.close': lambda args, side: {'close_ms': 5},
       'world.open': lambda args, side: {'folder': 'unittas', 'name': 'unitTAS', 'load_ms': 5},
       'client.reset': lambda args, side: {},
@@ -149,6 +152,25 @@ class RunTests(FakeRun, unittest.TestCase):
     self.assertEqual('FAILED (failures=1, skipped=1, expected failures=1)', tail[1])
     shot = [request for request in self.asked if request['op'] == 'screenshot'][0]
     self.assertEqual(os.path.join(self.results, 'screenshots', 'ATests.test_2.png'), shot['args']['file'])
+
+  def test_the_start_stands_on_the_ground_at_the_origin(self) -> None:
+    """
+    Not a fixed height: the middle of the block above the run's own
+    world's ground at x 0, z 0, as the game answers it (26.3's flat world
+    stands the player at y -60, 1.7.10's at 4; SPEC.md 14.5 step 7). Not
+    the world's spawn, which 1.7.10 puts far from the origin.
+    """
+    self.handlers['block.ground'] = lambda args, side: {
+      'pos': [args['x'], -61, args['z']],
+      'block': {'id': 'minecraft:grass_block', 'meta': 0}}
+    self.run.begin()
+    asked = [each['args'] for each in self.asked if each['op'] == 'block.ground']
+    self.assertEqual([{'x': 0, 'z': 0}], asked)
+    self.assertEqual((0.5, -60.0, 0.5), self.run.start)
+    self.run.enterClass('ATests')
+    self.run.enterClass('BTests')
+    self.assertEqual((0.5, -60.0, 0.5), self.run.start,
+                     "the kept world put back starts there again")
 
   def test_an_old_test_world_goes_first_and_the_kept_copy_last(self) -> None:
     os.makedirs(os.path.join(self.world, 'region'))
