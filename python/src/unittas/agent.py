@@ -160,6 +160,11 @@ class Agent(BaseObject):
     if not isinstance(place, Vec3):
       raise TypeError('walkTo goes to a Vec3 or a BlockPos, not %r' % (
         place,))
+    return self._walkTo('walkTo', place, within, ticks)
+
+  def _walkTo(self, step: str, place: Vec3, within: float,
+              ticks: Optional[int]) -> Perception:
+    """walkTo, as the step named."""
     if within < self.LEAST:
       infoSpec = """walkTo's margin is %r: a player's least step, one
       sneaking tap, is about 0.065 blocks, so the least it can be sure of
@@ -172,12 +177,12 @@ class Agent(BaseObject):
       nothing yet (terrain is SPEC.md 15.6 step 7's)"""
       where = 'above' if rise > 0 else 'below'
       info = infoSpec % (_place(place), abs(rise), where, _place(seen.pos))
-      raise TesttimeError('walkTo', seen, ' '.join(info.split()))
+      raise TesttimeError(step, seen, ' '.join(info.split()))
 
     def arrived(x: float, z: float) -> bool:
       return math.hypot(place.x - x, place.z - z) <= within
 
-    return self._walk('walkTo', place, arrived, ticks, seen)
+    return self._walk(step, place, arrived, ticks, seen)
 
   def reach(self, pos: BlockPos, ticks: Optional[int] = None) -> Perception:
     """
@@ -192,6 +197,11 @@ class Agent(BaseObject):
     """
     if not isinstance(pos, BlockPos):
       raise TypeError('reach takes a BlockPos, not %r' % (pos,))
+    return self._reach('reach', pos, ticks)
+
+  def _reach(self, step: str, pos: BlockPos,
+             ticks: Optional[int]) -> Perception:
+    """reach, as the step named."""
     seen = self.perceive()
     centre = pos.center().above(0.5)
     limit = seen.blockReach - self.REACH_MARGIN
@@ -201,14 +211,14 @@ class Agent(BaseObject):
       reach from this level"""
       where = 'above' if centre.y > eyeY else 'below'
       info = infoSpec % (_place(pos), abs(centre.y - eyeY), where)
-      raise TesttimeError('reach', seen, ' '.join(info.split()))
+      raise TesttimeError(step, seen, ' '.join(info.split()))
 
     def arrived(x: float, z: float) -> bool:
       far = math.dist((x, eyeY, z), (centre.x, centre.y, centre.z))
       return far <= limit
 
     goal = Vec3(centre.x, seen.pos.y, centre.z)
-    return self._walk('reach', goal, arrived, ticks, seen)
+    return self._walk(step, goal, arrived, ticks, seen)
 
   def lookAt(self, pos: BlockPos) -> Perception:
     """
@@ -224,6 +234,10 @@ class Agent(BaseObject):
     """
     if not isinstance(pos, BlockPos):
       raise TypeError('lookAt takes a BlockPos, not %r' % (pos,))
+    return self._lookAt('lookAt', pos)
+
+  def _lookAt(self, step: str, pos: BlockPos) -> Perception:
+    """lookAt, as the step named."""
     seen = self.perceive()
     eye = seen.eye
     centre = pos.center().above(0.5)
@@ -232,21 +246,210 @@ class Agent(BaseObject):
       infoSpec = """the block at %s is out of reach: %.2f blocks from the
       eye at %s, and the reach is %.1f"""
       info = infoSpec % (_place(pos), far, _place(eye), seen.blockReach)
-      raise TesttimeError('lookAt', seen, ' '.join(info.split()))
+      raise TesttimeError(step, seen, ' '.join(info.split()))
     met = []
     for point in [centre] + self._faces(pos, eye):
-      across = math.hypot(point.x - eye.x, point.z - eye.z)
-      yaw = math.degrees(math.atan2(-(point.x - eye.x), point.z - eye.z))
-      pitch = math.degrees(math.atan2(-(point.y - eye.y), across))
-      self.__game__.look(yaw, pitch)
-      seen = self.perceive()
+      seen = self._aim(point, eye)
       if seen.target.kind == 'block' and seen.target.pos == pos:
         return seen
       if _met(seen.target) not in met:
         met.append(_met(seen.target))
     info = 'the block at %s isn\'t targeted from %s: the crosshair meets %s'
-    raise TesttimeError('lookAt', seen, info % (_place(pos), _place(eye),
-                                                ', '.join(met)))
+    raise TesttimeError(step, seen, info % (_place(pos), _place(eye),
+                                            ', '.join(met)))
+
+  # ------------------------------------------------------------------ verbs
+
+  def use(self, pos: BlockPos, ticks: Optional[int] = None) -> Perception:
+    """
+    Uses the block at 'pos' (a right click: a lever flips, a door opens,
+    a chest's screen opens), as a player does: into reach, looking at it,
+    one click of the use key. What it perceives after.
+
+    Raises
+    ------
+    TesttimeError
+      As reach and lookAt do: no way into reach, the block not targeted.
+    """
+    self._ready('use', pos, ticks)
+    self.__game__.tap('key.use')
+    return self.perceive()
+
+  def breakBlock(self, pos: BlockPos,
+                 ticks: Optional[int] = None) -> Perception:
+    """
+    Breaks the block at 'pos', as a player does: into reach, looking at
+    it, the attack key held until the crosshair no longer meets that
+    block, and let go at once (creative breaks the next block 5 ticks
+    on). 'ticks' is the mining's budget: 600, left out. What it
+    perceives after.
+
+    Raises
+    ------
+    TesttimeError
+      As reach and lookAt do, or the block is still there when the
+      budget is spent.
+    """
+    budget = 600 if ticks is None else ticks
+    if budget <= 0:
+      raise ValueError('a tick budget is above 0, not %r' % budget)
+    seen = self._ready('breakBlock', pos, None)
+    block = seen.target.id
+    first = seen.tick
+    try:
+      self._hold('key.attack', True)
+      while True:
+        seen = self.perceive()
+        aim = seen.target
+        if not (aim.kind == 'block' and aim.pos == pos and aim.id == block):
+          return seen
+        if seen.tick - first > budget:
+          infoSpec = """%s at %s is still there after %d ticks of mining
+          (the budget)"""
+          info = infoSpec % (block, _place(pos), seen.tick - first)
+          raise TesttimeError('breakBlock', seen, ' '.join(info.split()))
+    finally:
+      self.letGo()
+
+  def place(self, pos: BlockPos, item: Any,
+            ticks: Optional[int] = None) -> Perception:
+    """
+    Places 'item' (an MCItems member, in the hotbar) at 'pos', as a player
+    does: its slot selected by its hotbar key, a step aside if the agent
+    stands there, into reach, and a click on a face of a block beside the
+    place, the one below first. What it perceives after: the crosshair on
+    the new block.
+
+    Raises
+    ------
+    TesttimeError
+      The item isn't in the hotbar; something is at the place already; no
+      block beside it shows the agent a face to click; the click placed
+      nothing.
+    """
+    if not isinstance(pos, BlockPos):
+      raise TypeError('place takes a BlockPos, not %r' % (pos,))
+    self._select('place', item)
+    seen = self.perceive()
+    if self._standsIn(seen, pos):
+      self._stepAside('place', seen, pos)
+    seen = self._reach('place', pos, ticks)
+    eye = seen.eye
+    there = self._aim(pos.center().above(0.5), eye)
+    if there.target.kind == 'block' and there.target.pos == pos:
+      info = '%s is there already, at %s' % (there.target.id, _place(pos))
+      raise TesttimeError('place', there, info)
+    for support, face in self._supports(pos):
+      if not self._shows(support, face, eye):
+        continue
+      looked = self._aim(self._faceMiddle(support, face), eye)
+      aim = looked.target
+      if not (aim.kind == 'block' and aim.pos == support and
+              aim.face == face):
+        continue
+      self.__game__.tap('key.use')
+      after = self.perceive()
+      if after.target.kind == 'block' and after.target.pos == pos:
+        return after
+      infoSpec = """clicking the %s face of %s at %s placed nothing at %s;
+      the crosshair meets %s"""
+      info = infoSpec % (face, aim.id, _place(support), _place(pos),
+                         _met(after.target))
+      raise TesttimeError('place', after, ' '.join(info.split()))
+    infoSpec = """nothing to place it against at %s: no block beside it
+    shows a face to click from %s"""
+    info = infoSpec % (_place(pos), _place(eye))
+    raise TesttimeError('place', there, ' '.join(info.split()))
+
+  # ------------------------------------------------------ the verbs' parts
+
+  def _ready(self, step: str, pos: BlockPos,
+             ticks: Optional[int]) -> Perception:
+    """Into reach of the block at 'pos', looking at it."""
+    if not isinstance(pos, BlockPos):
+      raise TypeError('%s takes a BlockPos, not %r' % (step, pos))
+    self._reach(step, pos, ticks)
+    return self._lookAt(step, pos)
+
+  def _aim(self, point: Vec3, eye: Vec3) -> Perception:
+    """Looks from 'eye' at 'point'; what it perceives then."""
+    across = math.hypot(point.x - eye.x, point.z - eye.z)
+    yaw = math.degrees(math.atan2(-(point.x - eye.x), point.z - eye.z))
+    pitch = math.degrees(math.atan2(-(point.y - eye.y), across))
+    self.__game__.look(yaw, pitch)
+    return self.perceive()
+
+  def _select(self, step: str, item: Any) -> int:
+    """
+    The hotbar slot holding 'item', selected by its key, as a player
+    knows its own inventory.
+    """
+    inventory = self.__game__.inventory(side='client')
+    held = []
+    for slot in range(9):
+      stack = inventory.main[slot]
+      if stack.empty:
+        continue
+      held.append('%s in %d' % (stack.id, slot + 1))
+      if item not in self.__game__.membersOf(stack):
+        continue
+      if inventory.selected != slot:
+        self.__game__.tap('key.hotbar.%d' % (slot + 1))
+        selected = self.__game__.inventory(side='client').selected
+        if selected != slot:
+          info = 'the hotbar key %d selected slot %d' % (slot + 1,
+                                                         selected + 1)
+          raise TesttimeError(step, self.perceive(), info)
+      return slot
+    info = 'no %s.%s in the hotbar (%s)' % (
+      type(item).__name__, item.name, ', '.join(held) or 'it is empty')
+    raise TesttimeError(step, self.perceive(), info)
+
+  @staticmethod
+  def _standsIn(seen: Perception, pos: BlockPos) -> bool:
+    """Whether the player's box takes up some of the block at 'pos'."""
+    box = seen.box
+    return (pos.x < box.maxX and box.minX < pos.x + 1 and
+            pos.y < box.maxY and box.minY < pos.y + 1 and
+            pos.z < box.maxZ and box.minZ < pos.z + 1)
+
+  def _stepAside(self, step: str, seen: Perception, pos: BlockPos) -> None:
+    """Two blocks away from 'pos', on the side the agent stands."""
+    middle = pos.center()
+    dx, dz = seen.pos.x - middle.x, seen.pos.z - middle.z
+    length = math.hypot(dx, dz)
+    if length < 1e-3:
+      dx, dz, length = 0.0, 1.0, 1.0
+    aside = Vec3(middle.x + 2 * dx / length, seen.pos.y,
+                 middle.z + 2 * dz / length)
+    self._walkTo(step, aside, 0.25, None)
+
+  @staticmethod
+  def _supports(pos: BlockPos) -> list:
+    """The blocks beside 'pos', each with its face towards it."""
+    x, y, z = pos.x, pos.y, pos.z
+    return [(BlockPos(x, y - 1, z), 'up'),
+            (BlockPos(x, y, z - 1), 'south'),
+            (BlockPos(x, y, z + 1), 'north'),
+            (BlockPos(x - 1, y, z), 'east'),
+            (BlockPos(x + 1, y, z), 'west'),
+            (BlockPos(x, y + 1, z), 'down')]
+
+  @staticmethod
+  def _shows(block: BlockPos, face: str, eye: Vec3) -> bool:
+    """Whether the eye is on the face's outer side."""
+    return {'up': eye.y > block.y + 1, 'down': eye.y < block.y,
+            'south': eye.z > block.z + 1, 'north': eye.z < block.z,
+            'east': eye.x > block.x + 1, 'west': eye.x < block.x}[face]
+
+  @staticmethod
+  def _faceMiddle(block: BlockPos, face: str) -> Vec3:
+    """The middle of the block's face, just inside it."""
+    dx, dy, dz = {'up': (0, 1, 0), 'down': (0, -1, 0), 'south': (0, 0, 1),
+                  'north': (0, 0, -1), 'east': (1, 0, 0),
+                  'west': (-1, 0, 0)}[face]
+    return Vec3(block.x + 0.5 + 0.45 * dx, block.y + 0.5 + 0.45 * dy,
+                block.z + 0.5 + 0.45 * dz)
 
   # ---------------------------------------------------------------- the loop
 

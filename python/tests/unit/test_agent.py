@@ -26,15 +26,16 @@ from unittas.link import Listener
 from unittas.values import BlockPos, Vec3
 from unittas.wire import Role
 
-#  what a player has: the keys, the look, and its senses
+#  what a player has: the keys, the look, its senses and its own inventory
 PLAYERS_MEANS = {'player.perceive', 'player.look', 'key.down', 'key.up',
-                 'ticks.wait'}
+                 'key.tap', 'ticks.wait', 'inventory.get'}
 #  test_walks_efficiently's forty walks, in ticks: what they took when
 #  written (1168), and a tenth more
 SPENT = 1285
 
 
-class AgentTests(unittest.TestCase):
+class PlayedTests(unittest.TestCase):
+  """An agent playing a fake player (fakeplayer.py): its tests' base."""
 
   def setUp(self) -> None:
     folder = tempfile.mkdtemp(prefix='unittas-agent-')
@@ -61,6 +62,9 @@ class AgentTests(unittest.TestCase):
   def assertOnlyAPlayersMeans(self) -> None:
     self.assertEqual(set(), set(self.player.ops) - PLAYERS_MEANS)
     self.assertEqual(set(), self.player.keys, 'every key let go')
+
+
+class AgentTests(PlayedTests):
 
   def test_walks_to_a_place_ahead(self) -> None:
     place = Vec3(0.5, 4.0, 8.5)
