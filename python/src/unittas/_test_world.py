@@ -177,7 +177,12 @@ class World(BaseObject):
         raise TypeError('%s: %s.%s is told apart by its block entity data '
                         'there, which a layer has none of'
                         % (self.label(), type(member).__name__, member.name))
-      layers.append({'id': block.id, 'meta': block.meta, 'count': count})
+      layer = {'id': block.id}
+      #  none from 1.13 on (D4)
+      if block.meta >= 0:
+        layer['meta'] = block.meta
+      layer['count'] = count
+      layers.append(layer)
     args['layers'] = layers
     args['biome'] = resolve(self.flatBiome, version, declared).text()
     return args

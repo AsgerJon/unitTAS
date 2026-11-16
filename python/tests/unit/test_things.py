@@ -88,14 +88,15 @@ class ProbeValueTests(unittest.TestCase):
   def test_an_item(self) -> None:
     self.assertEqual(Item('minecraft:wool', 1, 6),
                      itemOf(MCItems.PinkWool, Version.V1_7_10))
-    self.assertEqual(Item('minecraft:pink_wool', 5, 0),
+    #  from 1.13 on, an item has no meta (-1)
+    self.assertEqual(Item('minecraft:pink_wool', 5, -1),
                      itemOf(MCItems.PinkWool, Version.V26_3, 5))
 
   def test_a_block(self) -> None:
     """A block and its block entity's data, '' for none."""
     self.assertEqual((Block('minecraft:wool', 14), ''),
                      blockOf(MCBlocks.RedWool, Version.V1_7_10))
-    self.assertEqual((Block('minecraft:red_wool', 0), ''),
+    self.assertEqual((Block('minecraft:red_wool', -1), ''),
                      blockOf(MCBlocks.RedWool, Version.V26_3))
     self.assertEqual((Block('minecraft:skull', 1), '{SkullType:1b}'),
                      blockOf(MCBlocks.WitherSkeletonSkull, Version.V1_7_10))
@@ -239,6 +240,17 @@ class ReadBackTests(unittest.TestCase):
     self.assertEqual({MCEffects.Poison},
                      membersOf(Effect(effect='minecraft:poison'),
                                Version.V26_3))
+
+  def test_26_3_s_values(self) -> None:
+    """No meta, a state, components: read back as the members they are."""
+    v = Version.V26_3
+    self.assertEqual({MCBlocks.RedWool},
+                     membersOf(Block('minecraft:red_wool', -1), v))
+    log = Block('minecraft:oak_log', -1, state=(('axis', 'x'),))
+    self.assertEqual({MCBlocks.OakLog}, membersOf(log, v))
+    named = Item('minecraft:pink_wool', 3, -1, '',
+                 '{"minecraft:custom_name":"Pink"}')
+    self.assertEqual({MCItems.PinkWool}, membersOf(named, v))
 
   def test_an_id_mcdex_has_no_member_for_is_an_empty_set(self) -> None:
     """1.7.10's lit furnace (M6): the assertion says what that means."""

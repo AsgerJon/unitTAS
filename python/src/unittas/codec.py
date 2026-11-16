@@ -101,29 +101,47 @@ def _item(data: Any) -> Item:
   if not isinstance(data, dict):
     raise ValueError('an item is a JSON object, or null for an empty slot; not %r' % (data,))
   what = 'an item'
-  return Item(_need(data, 'id', str, what), _maybe(data, 'count', int, what, 1), _maybe(data, 'meta', int, what, 0),
-              _maybe(data, 'nbt', str, what, ''))
+  #  no meta is none (-1): a version from 1.13 on has none (D4)
+  return Item(_need(data, 'id', str, what), _maybe(data, 'count', int, what, 1), _maybe(data, 'meta', int, what, -1),
+              _maybe(data, 'nbt', str, what, ''), _maybe(data, 'components', str, what, ''))
 
 
 def _itemJson(item: Item) -> Any:
   if item.empty:
     return None
-  out = {'id': item.id, 'count': item.count, 'meta': item.meta}
+  out = {'id': item.id, 'count': item.count}
+  if item.meta >= 0:
+    out['meta'] = item.meta
   if item.snbt:
     out['nbt'] = item.snbt
+  if item.components:
+    out['components'] = item.components
   return out
+
+
+def _state(body: dict, what: str) -> tuple:
+  """A block state's properties as (name, value) pairs in name order; () for none."""
+  state = _maybe(body, 'state', dict, what, {})
+  for name, value in state.items():
+    if not isinstance(value, str):
+      raise ValueError('%s\'s "state" names each value by its name (a string), not %r for %r' % (what, value, name))
+  return tuple(sorted(state.items()))
 
 
 def _block(data: Any) -> Block:
   body = _object(data, Block)
   what = 'a block'
   asked = 'tile' in body
-  return Block(_need(body, 'id', str, what), _maybe(body, 'meta', int, what, 0), asked,
-               _maybe(body, 'tile', str, what, ''))
+  return Block(_need(body, 'id', str, what), _maybe(body, 'meta', int, what, -1), asked,
+               _maybe(body, 'tile', str, what, ''), _state(body, what))
 
 
 def _blockJson(block: Block) -> dict:
-  out = {'id': block.id, 'meta': block.meta}
+  out = {'id': block.id}
+  if block.meta >= 0:
+    out['meta'] = block.meta
+  if block.state:
+    out['state'] = dict(block.state)
   if block.tileAsked:
     out['tile'] = block.tileSnbt or None
   return out
@@ -136,14 +154,18 @@ def _inventory(data: Any) -> Inventory:
   armor = _need(body, 'armor', dict, what)
   return Inventory(_need(body, 'selected', int, what), tuple(_item(slot) for slot in main),
                    _item(armor.get('feet')), _item(armor.get('legs')), _item(armor.get('chest')),
-                   _item(armor.get('head')), _item(body.get('cursor')))
+                   _item(armor.get('head')), _item(body.get('cursor')), _item(body.get('offhand')),
+                   'offhand' in body)
 
 
 def _inventoryJson(inventory: Inventory) -> dict:
-  return {'selected': inventory.selected, 'main': [_itemJson(slot) for slot in inventory.main],
-          'armor': {'feet': _itemJson(inventory.feet), 'legs': _itemJson(inventory.legs),
-                    'chest': _itemJson(inventory.chest), 'head': _itemJson(inventory.head)},
-          'cursor': _itemJson(inventory.cursor)}
+  out = {'selected': inventory.selected, 'main': [_itemJson(slot) for slot in inventory.main],
+         'armor': {'feet': _itemJson(inventory.feet), 'legs': _itemJson(inventory.legs),
+                   'chest': _itemJson(inventory.chest), 'head': _itemJson(inventory.head)}}
+  if inventory.hasOffhand:
+    out['offhand'] = _itemJson(inventory.offhand)
+  out['cursor'] = _itemJson(inventory.cursor)
+  return out
 
 
 def _ridingId(body: dict, what: str) -> int:

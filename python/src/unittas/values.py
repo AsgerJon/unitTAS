@@ -87,14 +87,17 @@ class Look(EZData, frozen=True):
 
 class Item(EZData, frozen=True):
   """
-  An item stack: its registry name, count and meta, and its NBT as SNBT
-  ('snbt', empty for none; 'nbt' is its typed tree, or None). An empty
-  slot is Item.EMPTY.
+  An item stack: its registry name, count and meta (-1 where the version
+  has none: 1.13 on), its NBT as SNBT ('snbt', empty for none; 'nbt' is
+  its typed tree, or None; before 1.20.5), and its data components as
+  SNBT ('components', empty for none; 1.20.5 on). An empty slot is
+  Item.EMPTY. SPEC.md 12.6, D4.
   """
   id = EZField[str]('minecraft:air')
   count = EZField[int](1)
   meta = EZField[int](0)
   snbt = EZField[str]('')
+  components = EZField[str]('')
 
   @property
   def empty(self) -> bool:
@@ -109,23 +112,35 @@ class Item(EZData, frozen=True):
 
 class Block(EZData, frozen=True):
   """
-  A block: its registry name and meta, and its block entity's data when
-  it was asked for ('tileAsked'; 'tileSnbt' empty for none; 'tile' is its
-  typed tree, or None).
+  A block: its registry name and meta (-1 where the version has none:
+  1.13 on), its block entity's data when it was asked for ('tileAsked';
+  'tileSnbt' empty for none; 'tile' is its typed tree, or None), and its
+  state's properties ('state', (name, value) pairs in name order, each
+  value's name; empty before 1.13, and for a block without any). SPEC.md
+  12.6, D4.
   """
   id = EZField[str]('minecraft:air')
   meta = EZField[int](0)
   tileAsked = EZField[bool](False)
   tileSnbt = EZField[str]('')
+  state = EZField[tuple]()
 
   @property
   def tile(self):
     """The block entity's data as a typed tree, or None."""
     return _parsed(self.tileSnbt)
 
+  @property
+  def properties(self) -> dict:
+    """Its state's properties by name: {'axis': 'x'}."""
+    return dict(self.state)
+
 
 class Inventory(EZData, frozen=True):
-  """A player's inventory: the selected hotbar slot, the 36 main slots, the armour, the cursor's stack."""
+  """
+  A player's inventory: the selected hotbar slot, the 36 main slots, the armour, the cursor's stack, and the off
+  hand's ('hasOffhand' False and 'offhand' Item.EMPTY where the version has none: before 1.9).
+  """
   selected = EZField[int](0)
   main = EZField[tuple]()
   feet = EZField[Item]()
@@ -133,6 +148,8 @@ class Inventory(EZData, frozen=True):
   chest = EZField[Item]()
   head = EZField[Item]()
   cursor = EZField[Item]()
+  offhand = EZField[Item]()
+  hasOffhand = EZField[bool](False)
 
   @property
   def held(self) -> Item:

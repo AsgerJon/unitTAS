@@ -83,7 +83,7 @@ class DescribedTests(unittest.TestCase):
       layers = FixBox[tuple](((MCBlocks.RedWool, 2),))
     self.assertEqual([{'id': 'minecraft:wool', 'meta': 14, 'count': 2}],
                      Woolly().createArgs(Version.V1_7_10, {})['layers'])
-    self.assertEqual([{'id': 'minecraft:red_wool', 'meta': 0, 'count': 2}],
+    self.assertEqual([{'id': 'minecraft:red_wool', 'count': 2}],
                      Woolly().createArgs(Version.V26_3, {})['layers'])
 
   def test_a_world_s_defaults(self) -> None:

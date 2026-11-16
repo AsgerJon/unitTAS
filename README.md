@@ -363,6 +363,24 @@ class GiveTests(GameTestCase):
 - The game crashing is `NO RESULT` too: the test's line names the crash and its crash report, and the tests after it
   aren't run.
 
+**Values across versions.** One class per value, in `unittas.values`, the same for every version. A field a version
+hasn't holds its empty value, never None:
+
+| value | field | 1.7.10 | 26.3 |
+|---|---|---|---|
+| `Item` | `meta` | its damage or kind (wool's colour) | `-1`, none: a colour is in the id, damage a component |
+| `Item` | `snbt` (`nbt`, its tree) | its NBT as SNBT, `''` for none | `''` |
+| `Item` | `components` | `''` | its data components as SNBT, `''` for none |
+| `Block` | `meta` | its meta | `-1`, none |
+| `Block` | `state` (`properties`, a dict) | `()` | its state's properties as `(name, value)` pairs |
+| `Inventory` | `offhand`, `hasOffhand` | `Item.EMPTY`, `False` | the off hand's stack, `True` |
+| `Effect` | `id` | its number | `-1`: its name is its id |
+| `Entity` | `type` | 1.7.10's name (`Pig`) | its id (`minecraft:pig`) |
+
+A thing named by its mcdex member (`MCBlocks.RedWool`) becomes each version's own value: wool of meta 14 in 1.7.10,
+`minecraft:red_wool` in 26.3. A block given by its id alone (`'minecraft:stone'`) goes without meta, so the game puts
+its own. 1.20.1 and 1.21.1 come next (SPEC.md §19), the first with items' NBT, the second with components.
+
 **Running:**
 
 ```
@@ -670,6 +688,12 @@ a run (a daemon left inside the sandbox could hold the cache's locks).
 The 26.3 Fabric probe is a Gradle build of its own in `fabric/`, with its own wrapper: `cd fabric && ./gradlew build`
 on Java 25 (Gradle 9.8.2, Fabric Loom, Mojang's names) makes `fabric/build/libs/unittas-probe-26.3-fabric.jar`. Its
 version is the root's `mod_version`. The probe's version-free core, `src/probe-core/java`, is compiled into both.
+
+The probe's own game tests (`python/tests/probe`) run with `python -m unittas.selftest [filter] [on PORT]` from the
+root (through the watcher: `probe [filter] [on PORT]`). The port is a version and its loader: `1.7.10-forge` (the
+development client, the default) or `26.3-fabric` (a real client from unitTAS's own launcher, `fabric/`'s jar in its
+`mods/`). A test written for every port names things by mcdex member and places from the port's start; one its port
+can't do yet skips, saying which step brings it (`ports.py`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the

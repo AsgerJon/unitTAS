@@ -1,8 +1,9 @@
 """
-The probe's own tests in the game: 'python -m unittas.selftest [filter]'
-from the repository's root, as the watcher's 'probe' request runs it.
-The tests are python/tests/probe; each class starts the development
-client it needs (unittas.dev). The report is unittest's own, each test
+The probe's own tests in the game: 'python -m unittas.selftest [filter]
+[on PORT]' from the repository's root, as the watcher's 'probe' request
+runs it. The tests are python/tests/probe; each class starts the game it
+needs, of the run's port (1.7.10 Forge's development client unless the
+run names another: SPEC.md 19.7), which UNITTAS_PROBE_PORT tells them. The report is unittest's own, each test
 numbered as the Java runner's progress has it (test 3/144 Class.method
 ... ok), written to
 'unittas-results/<time>/report.txt' as it runs and ending in OK or FAILED,
@@ -19,6 +20,30 @@ import unittest
 
 ROOT_MARKER = 'settings.gradle'
 TESTS = os.path.join('python', 'tests', 'probe')
+#  The ports the probe's tests run against: a version and its loader
+PORTS = ('1.7.10-forge', '26.3-fabric')
+
+
+def parseArgs(argv: list) -> tuple:
+  """
+  The run's filter and port from its arguments, '[filter] [on PORT]', as
+  words or as one line (the watcher passes its request's rest as one):
+  (filter, port), '' for no filter, 1.7.10 Forge for no port. ValueError
+  for a port that isn't one, an 'on' naming none, or two filters.
+  """
+  words = ' '.join(argv).split()
+  port = PORTS[0]
+  if 'on' in words:
+    at = words.index('on')
+    if at + 1 >= len(words):
+      raise ValueError("'on' names a port: on %s" % ' | '.join(PORTS))
+    port = words[at + 1]
+    del words[at:at + 2]
+  if port not in PORTS:
+    raise ValueError('no port %r: the ports are %s' % (port, ', '.join(PORTS)))
+  if len(words) > 1:
+    raise ValueError('one filter at most, not %s' % ' '.join(words))
+  return (words[0] if words else ''), port
 
 
 class NumberedResult(unittest.TextTestResult):
@@ -69,6 +94,11 @@ def main(argv: list) -> int:
   if not os.path.isfile(os.path.join(root, ROOT_MARKER)) or not os.path.isdir(os.path.join(root, TESTS)):
     print('unittas.selftest: run from unitTAS\'s root (no %s or %s here)' % (ROOT_MARKER, TESTS), file=sys.stderr)
     return 2
+  try:
+    wanted, port = parseArgs(argv)
+  except ValueError as error:
+    print('unittas.selftest: %s' % error, file=sys.stderr)
+    return 2
   stamp = os.environ.get('UNITTAS_STAMP') or time.strftime('%Y-%m-%d_%H-%M-%S')
   results = os.path.join(root, 'unittas-results', stamp)
   os.makedirs(results, exist_ok=True)
@@ -78,15 +108,15 @@ def main(argv: list) -> int:
       os.remove(latest)
     os.symlink(stamp, latest)
   os.environ['UNITTAS_RESULTS_ROOT'] = results
-  wanted = argv[0] if argv else ''
+  os.environ['UNITTAS_PROBE_PORT'] = port
   loader = unittest.TestLoader()
   if wanted:
     loader.testNamePatterns = ['*%s*' % wanted]
   suite = loader.discover(os.path.join(root, TESTS), top_level_dir=os.path.join(root, TESTS))
   with open(os.path.join(results, 'report.txt'), 'w', encoding='utf-8') as report:
     stream = _Both(report, sys.stdout)
-    stream.write('unitTAS probe tests, %s%s\n\n' % (time.strftime('%Y-%m-%d %H:%M:%S'),
-                                                    ', only tests matching %r' % wanted if wanted else ''))
+    stream.write('unitTAS probe tests, %s%s, on %s\n\n' % (time.strftime('%Y-%m-%d %H:%M:%S'),
+                                                           ', only tests matching %r' % wanted if wanted else '', port))
     result = runNumbered(suite, stream)
   if result.testsRun == 0:
     print('unittas.selftest: no test matched', file=sys.stderr)

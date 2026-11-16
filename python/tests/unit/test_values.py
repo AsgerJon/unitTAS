@@ -72,7 +72,22 @@ class ItemTests(unittest.TestCase):
     self.assertIsNone(toJson(Item.EMPTY), 'an empty slot goes back as null')
 
   def test_input_defaults(self) -> None:
-    self.assertEqual(Item('minecraft:stone', 1, 0), fromJson(Item, {'id': 'minecraft:stone'}))
+    """No meta given is none (-1), as a version from 1.13 on has none; nothing given has no data."""
+    self.assertEqual(Item('minecraft:stone', 1, -1), fromJson(Item, {'id': 'minecraft:stone'}))
+    self.assertEqual({'id': 'minecraft:stone', 'count': 1}, toJson(Item('minecraft:stone', 1, -1)))
+
+  def test_26_3_s_components(self) -> None:
+    """26.3's item: no meta, no NBT, its data components as SNBT; back as it came (SPEC.md 12.6, D4)."""
+    wire = {'id': 'minecraft:red_wool', 'count': 3, 'components': '{"minecraft:custom_name":"Red"}'}
+    item = fromJson(Item, wire)
+    self.assertEqual(Item('minecraft:red_wool', 3, -1, '', '{"minecraft:custom_name":"Red"}'), item)
+    self.assertEqual('', item.snbt)
+    self.assertEqual(wire, toJson(item))
+    self.assertEqual({'id': 'minecraft:stone', 'count': 2}, toJson(fromJson(Item, {'id': 'minecraft:stone',
+                                                                                    'count': 2})))
+    with self.assertRaises(ValueError) as refused:
+      fromJson(Item, {'id': 'a:b', 'components': {}})
+    self.assertIn('components', str(refused.exception))
 
   def test_nbt_as_a_typed_tree(self) -> None:
     item = fromJson(Item, {'id': 'minecraft:wool', 'count': 1, 'meta': 14, 'nbt': '{display:{Name:"Red"},x:1b}'})
@@ -94,7 +109,7 @@ class ItemTests(unittest.TestCase):
       self.assertIn(named, str(refused.exception), wire)
 
   def test_unknown_fields_ignored(self) -> None:
-    self.assertEqual(Item('a:b', 1, 0), fromJson(Item, {'id': 'a:b', 'components': {}, 'later': 1}))
+    self.assertEqual(Item('a:b', 1, -1), fromJson(Item, {'id': 'a:b', 'later': 1}))
 
 
 class PlaceTests(unittest.TestCase):
@@ -123,6 +138,29 @@ class BlockTests(unittest.TestCase):
     self.assertEqual({'id': 'minecraft:chest', 'meta': 2, 'tile': '{id:"Chest",x:40}'}, toJson(chest))
     self.assertEqual({'id': 'minecraft:wool', 'meta': 14}, toJson(Block('minecraft:wool', 14)))
 
+  def test_26_3_s_state(self) -> None:
+    """26.3's block: no meta, its state's properties by name, each value's name; back as it came (D4)."""
+    wire = {'id': 'minecraft:grass_block', 'state': {'snowy': 'false'}}
+    grass = fromJson(Block, wire)
+    self.assertEqual(Block('minecraft:grass_block', -1, state=(('snowy', 'false'),)), grass)
+    self.assertEqual({'snowy': 'false'}, grass.properties)
+    self.assertEqual(wire, toJson(grass))
+    log = {'id': 'minecraft:oak_log', 'state': {'axis': 'x'}}
+    self.assertEqual(log, toJson(fromJson(Block, log)))
+    wool = fromJson(Block, {'id': 'minecraft:red_wool'})
+    self.assertEqual(((), -1), (wool.state, wool.meta))
+    self.assertEqual({'id': 'minecraft:red_wool'}, toJson(wool))
+    chest = {'id': 'minecraft:chest', 'state': {'facing': 'north', 'type': 'single', 'waterlogged': 'false'},
+             'tile': '{Items:[]}'}
+    self.assertEqual(chest, toJson(fromJson(Block, chest)))
+    #  the properties' order is the value's, not the wire's
+    self.assertEqual(fromJson(Block, {'id': 'a:b', 'state': {'x': '1', 'a': '2'}}),
+                     fromJson(Block, {'id': 'a:b', 'state': {'a': '2', 'x': '1'}}))
+    for wrong in ({'id': 'a:b', 'state': {'x': 1}}, {'id': 'a:b', 'state': ['x']}):
+      with self.assertRaises(ValueError) as refused:
+        fromJson(Block, wrong)
+      self.assertIn('state', str(refused.exception))
+
 
 class InventoryTests(unittest.TestCase):
 
@@ -137,7 +175,21 @@ class InventoryTests(unittest.TestCase):
     self.assertEqual(Item('minecraft:leather_boots', 1, 0), inventory.feet)
     self.assertIs(Item.EMPTY, inventory.head)
     self.assertIs(Item.EMPTY, inventory.cursor)
+    self.assertIs(Item.EMPTY, inventory.offhand, '1.7.10 has no off hand')
+    self.assertFalse(inventory.hasOffhand)
     self.assertEqual(wire, toJson(inventory))
+
+  def test_26_3_s_off_hand(self) -> None:
+    """26.3's inventory has an off hand, empty or not; it goes back as it came."""
+    torch = {'id': 'minecraft:torch', 'count': 4}
+    wire = {'selected': 0, 'main': [None] * 36, 'armor': {'feet': None, 'legs': None, 'chest': None, 'head': None},
+            'offhand': torch, 'cursor': None}
+    inventory = fromJson(Inventory, wire)
+    self.assertTrue(inventory.hasOffhand)
+    self.assertEqual(Item('minecraft:torch', 4, -1), inventory.offhand)
+    self.assertEqual(wire, toJson(inventory))
+    empty = dict(wire, offhand=None)
+    self.assertEqual(empty, toJson(fromJson(Inventory, empty)))
 
 
 class EntityTests(unittest.TestCase):
@@ -229,18 +281,28 @@ class EventValueTests(unittest.TestCase):
 
 
 class RecordedAnswersTests(unittest.TestCase):
-  """Every answer the probe really sent (tests/probe/test_values.py records them) reads, and goes back unchanged."""
+  """
+  Every answer the probe really sent (tests/probe/test_values.py records them, on each port) reads, and goes back
+  unchanged: 1.7.10's in answers.json, every kind; 26.3's in answers-26.3.json, the kinds its probe answers so far.
+  """
 
-  def test_each_recorded_answer(self) -> None:
-    with open(FIXTURES, encoding='utf-8') as file:
+  KINDS = {'Item': Item, 'Block': Block, 'Inventory': Inventory, 'Entity': Entity, 'Player': Player,
+           'ChatLine': ChatLine, 'Sound': Sound, 'LogLine': LogLine, 'Screen': Screen}
+
+  def check(self, name: str, needed: set) -> None:
+    with open(os.path.join(os.path.dirname(FIXTURES), name), encoding='utf-8') as file:
       recorded = json.load(file)
-    kinds = {'Item': Item, 'Block': Block, 'Inventory': Inventory, 'Entity': Entity, 'Player': Player,
-             'ChatLine': ChatLine, 'Sound': Sound, 'LogLine': LogLine, 'Screen': Screen}
-    self.assertTrue(set(kinds) <= set(recorded), sorted(recorded))
+    self.assertTrue(needed <= set(recorded), (name, sorted(recorded)))
     for kindName, answers in recorded.items():
       for wire in answers:
-        with self.subTest(kind=kindName, wire=wire):
-          self.assertEqual(wire, toJson(fromJson(kinds[kindName], wire)))
+        with self.subTest(file=name, kind=kindName, wire=wire):
+          self.assertEqual(wire, toJson(fromJson(self.KINDS[kindName], wire)))
+
+  def test_each_recorded_answer_of_1_7_10(self) -> None:
+    self.check('answers.json', set(self.KINDS))
+
+  def test_each_recorded_answer_of_26_3(self) -> None:
+    self.check('answers-26.3.json', {'Item', 'Block', 'Inventory', 'Entity', 'Player', 'Screen'})
 
 
 class PlaceTests(unittest.TestCase):

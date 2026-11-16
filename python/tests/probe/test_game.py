@@ -1,10 +1,11 @@
 """
-Step 6 of phase 2 (SPEC.md section 8.3): the game's things. player.look, inventory.set, block.get and .set,
-entity.spawn, .get and .remove, the keys, typing into a screen, chat.send and chat.read (ChatTests' twin), camera.set,
-sound.play (MixinTests' twin, with the sound events), screenshot, and the screen events. One launch, in a world of its
-own; each test starts from a reset, as every test does.
+Step 6 of phase 2 (SPEC.md section 8.3), on the run's port (19.7): the game's things. inventory.set, block.get and
+.set, entity.spawn, .get and .remove, and the screen events, by mcdex member and from the port's start, on every port;
+player.look, the keys, typing into a screen, chat.send and chat.read (ChatTests' twin), camera.set, sound.play
+(MixinTests' twin, with the sound events) and screenshot on 1.7.10, until 19.7 step 2 brings them to 26.3. One
+launch, in a world of its own; each test starts from a reset, as every test does.
 
-  python -m unittas.selftest game      (through the watcher: "probe game")
+  python -m unittas.selftest game      (through the watcher: "probe game", "probe game on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -15,29 +16,40 @@ import shutil
 import struct
 import unittest
 
-from probegame import READY_SECONDS, ROOT, results
-from unittas.dev import DevGame
+from mcdex import MCBlocks, MCEntities, MCItems
+
+from ports import FORGE_1_7_10, onlyOn, probeGame, start
+from probegame import READY_SECONDS, results
+from unittas.api import Game
+from unittas.codec import toJson
 from unittas.errors import BadRequest, NotFound, NotReady
 from unittas.reset import reset
+from unittas.things import entityOf, itemOf
+from unittas.values import Item, Vec3
+
+#  what 26.3 hasn't yet, and when it comes
+STEP_2 = "26.3's input, chat, camera, sounds and screenshot come with SPEC.md 19.7 step 2"
 
 
 class GameTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.game = DevGame(ROOT, results(), 'game')
-    shutil.rmtree(os.path.join(cls.game.gameDir, 'saves', 'unittas'), ignore_errors=True)
-    cls.connection = cls.game.start()
+    cls.launched = probeGame('game')
+    shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'), ignore_errors=True)
+    cls.connection = cls.launched.start(READY_SECONDS)
     cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.connection.request('world.create', {}, timeout=240)
-    cls.connection.request('world.rules.set', {'rules': {'doDaylightCycle': False, 'doMobSpawning': False}})
+    cls.connection.request('world.prepare')
+    cls.game = Game(cls.connection)
+    cls.here = Vec3(*start())
 
   @classmethod
   def tearDownClass(cls) -> None:
-    cls.game.stop()
+    cls.launched.stop()
 
   def setUp(self) -> None:
-    reset(self.connection)
+    reset(self.connection, at=start())
     self.mark = self.connection.events.mark()
 
   def request(self, op, args=None, side=None, timeout=60.0):
@@ -51,6 +63,7 @@ class GameTests(unittest.TestCase):
   def events(self, kind):
     return [event for event in self.connection.events.since(self.mark) if event.get('event') == kind]
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_01_look(self) -> None:
     self.request('player.look', {'yaw': 90.0, 'pitch': 30.0})
     self.assertEqual({'yaw': 90.0, 'pitch': 30.0}, self.request('player.get', side='client')['look'])
@@ -59,49 +72,57 @@ class GameTests(unittest.TestCase):
     self.assertTrue(found['held'], 'the server learns the look from the client, as from a mouse')
 
   def test_02_inventory_set(self) -> None:
-    self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:diamond', 'count': 2}})
-    self.assertEqual({'id': 'minecraft:diamond', 'count': 2, 'meta': 0}, self.request('inventory.get', {'slot': 'held'}))
-    self.clientHolds('inventory.get', {'slot': 'held'}, {'path': ['id'], 'eq': 'minecraft:diamond'})
-    self.request('inventory.set', {'items': {'main.3': {'id': 'minecraft:wool', 'meta': 14},
-                                             'armor.feet': {'id': 'minecraft:leather_boots'}}})
-    inventory = self.request('inventory.get')
-    self.assertEqual({'id': 'minecraft:wool', 'count': 1, 'meta': 14}, inventory['main'][3])
-    self.assertEqual('minecraft:leather_boots', inventory['armor']['feet']['id'])
-    self.clientHolds('inventory.get', {}, {'path': ['armor', 'feet', 'id'], 'eq': 'minecraft:leather_boots'})
+    diamonds = itemOf(MCItems.Diamond, self.game.version, 2)
+    self.request('inventory.set', {'slot': 'held', 'item': toJson(diamonds)})
+    self.assertEqual(diamonds, self.game.inventory().held)
+    self.clientHolds('inventory.get', {'slot': 'held'}, {'path': ['id'], 'eq': diamonds.id})
+    wool = itemOf(MCItems.RedWool, self.game.version)
+    boots = itemOf(MCItems.LeatherBoots, self.game.version)
+    self.request('inventory.set', {'items': {'main.3': toJson(wool), 'armor.feet': toJson(boots)}})
+    inventory = self.game.inventory()
+    self.assertEqual(wool, inventory.main[3])
+    self.assertEqual(boots, inventory.feet)
+    self.clientHolds('inventory.get', {}, {'path': ['armor', 'feet', 'id'], 'eq': boots.id})
     self.request('inventory.set', {'slot': 'held', 'item': None})
-    self.assertIsNone(self.request('inventory.get', {'slot': 'held'}))
+    self.assertIs(Item.EMPTY, self.game.inventory().held)
     with self.assertRaises(NotFound):
       self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:wobble'}})
     with self.assertRaises(BadRequest):
-      self.request('inventory.set', {'slot': 'main.99', 'item': {'id': 'minecraft:stone'}})
+      self.request('inventory.set', {'slot': 'main.99', 'item': toJson(wool)})
 
   def test_03_blocks(self) -> None:
-    self.assertEqual({'id': 'minecraft:grass', 'meta': 0}, self.request('block.get', {'pos': [0, 3, 0]}))
-    self.assertEqual({'id': 'minecraft:air', 'meta': 0}, self.request('block.get', {'pos': [3, 4, 3]}))
-    self.request('block.set', {'pos': [3, 4, 3], 'block': {'id': 'minecraft:wool', 'meta': 14}})
-    self.assertEqual({'id': 'minecraft:wool', 'meta': 14}, self.request('block.get', {'pos': [3, 4, 3]}))
-    self.clientHolds('block.get', {'pos': [3, 4, 3]}, {'path': ['id'], 'eq': 'minecraft:wool'})
-    self.request('block.set', {'pos': [3, 4, 3], 'block': {'id': 'minecraft:air'}})
+    ground = self.here.block().below()
+    self.assertIn(MCBlocks.GrassBlock, self.game.membersOf(self.game.block(ground)))
+    there = self.here.block().offset(3, 0, 3)
+    self.assertEqual('minecraft:air', self.game.block(there).id)
+    #  set, and verified on both sides (Game.setBlock)
+    self.game.setBlock(there, MCBlocks.RedWool)
+    self.assertEqual({MCBlocks.RedWool}, self.game.membersOf(self.game.block(there)))
+    self.assertIn(MCBlocks.RedWool, self.game.membersOf(self.game.block(there, side='client')))
+    self.game.setBlock(there, 'minecraft:air')
     with self.assertRaises(NotFound):
-      self.request('block.set', {'pos': [3, 4, 3], 'block': {'id': 'minecraft:wobble'}})
+      self.request('block.set', {'pos': toJson(there), 'block': {'id': 'minecraft:wobble'}})
     with self.assertRaises(BadRequest):
       self.request('block.get', {'pos': [3, 4]})
 
   def test_04_entities(self) -> None:
-    zombie = self.request('entity.spawn', {'type': 'Zombie', 'pos': [4.5, 4.0, 4.5]})
-    self.assertEqual('Zombie', zombie['type'])
-    self.assertEqual([4.5, 4.0, 4.5], zombie['pos'])
-    self.assertEqual(zombie['entity'], self.request('entity.get', {'entity': zombie['entity']})['entity'])
-    self.clientHolds('entity.list', {'type': 'Zombie'}, {'len': {'eq': 1}})
-    self.request('entity.remove', {'entity': zombie['entity']})
+    kind, _ = entityOf(MCEntities.Zombie, self.game.version)
+    at = self.here.offset(4.0, 0, 4.0)
+    zombie = self.game.spawn(MCEntities.Zombie, at)
+    self.assertIn(MCEntities.Zombie, self.game.membersOf(zombie))
+    self.assertEqual(at, zombie.pos)
+    self.assertEqual(zombie.entity, self.game.entity(zombie.entity).entity)
+    self.clientHolds('entity.list', {'type': kind}, {'len': {'eq': 1}})
+    self.game.remove(zombie)
     with self.assertRaises(NotFound):
-      self.request('entity.get', {'entity': zombie['entity']})
+      self.game.entity(zombie.entity)
     with self.assertRaises(NotFound):
-      self.request('entity.spawn', {'type': 'Wobble', 'pos': [4.5, 4.0, 4.5]})
+      self.request('entity.spawn', {'type': 'wobble', 'pos': toJson(at)})
     with self.assertRaises(NotReady) as caught:
-      self.request('entity.spawn', {'type': 'Pig', 'pos': [100000.5, 4.0, 100000.5]})
+      self.game.spawn(MCEntities.Pig, Vec3(100000.5, at.y, 100000.5))
     self.assertIn('loaded', caught.exception.message)
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_05_keys(self) -> None:
     start = self.request('player.get', side='client')['pos']
     self.request('key.down', {'key': 'key.forward'})
@@ -116,12 +137,14 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(BadRequest):
       self.request('key.down', {'key': 'key.wobble'})
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_06_typing_into_the_chat(self) -> None:
     self.request('screen.open', {'screen': 'chat'})
     self.request('screen.type', {'text': '/time se'})
     self.assertEqual('/time se', self.request('chat.read')['text'])
     self.request('screen.close')
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_07_tab_completes_from_the_server(self) -> None:
     self.request('screen.open', {'screen': 'chat'})
     self.request('screen.type', {'text': '/tim'})
@@ -132,6 +155,7 @@ class GameTests(unittest.TestCase):
     self.assertEqual([], read['usage'], "1.7.10's own chat shows no usage")
     self.request('screen.close')
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_08_enter_runs_it(self) -> None:
     self.request('screen.open', {'screen': 'chat', 'text': '/time set 6000'})
     self.request('screen.key', {'key': 'enter'})
@@ -141,11 +165,13 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(NotReady):
       self.request('chat.read')
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_09_chat_send(self) -> None:
     said = self.request('chat.send', {'text': '/time set 7000'})
     self.assertTrue(any('7000' in line for line in said['lines']), said)
     self.assertEqual(7000, self.request('world.get')['day_time'])
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_10_camera(self) -> None:
     self.request('camera.set', {'view': 1})
     self.assertEqual(1, self.request('player.get', side='client')['camera'])
@@ -153,6 +179,7 @@ class GameTests(unittest.TestCase):
     with self.assertRaises(BadRequest):
       self.request('camera.set', {'view': 3})
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_11_sounds(self) -> None:
     self.request('sound.play', {'id': 'minecraft:gui.button.press'})
     heard = self.connection.events.waitFor(lambda event: event.get('event') == 'sound', 10, since=self.mark)
@@ -167,9 +194,11 @@ class GameTests(unittest.TestCase):
     self.request('screen.open', {'screen': 'inventory'})
     self.request('screen.close')
     changes = [(event['from'], event['to']) for event in self.events('screen')]
-    self.assertTrue(any(to is not None and to.endswith('GuiContainerCreative') for _, to in changes), changes)
+    #  the creative inventory: GuiContainerCreative in 1.7.10, CreativeModeInventoryScreen in 26.3
+    self.assertTrue(any(to is not None and 'Creative' in to for _, to in changes), changes)
     self.assertEqual(None, changes[-1][1], changes)
 
+  @onlyOn(FORGE_1_7_10, why=STEP_2)
   def test_13_screenshot(self) -> None:
     file = os.path.join(results(), 'game', 'screenshots', 'probe-picture.png')
     taken = self.request('screenshot', {'file': file})
@@ -181,7 +210,7 @@ class GameTests(unittest.TestCase):
 
   def test_14_quit(self) -> None:
     self.assertEqual({}, self.request('quit', {'reason': 'test_14'}))
-    self.assertTrue(self.game.ended(120))
+    self.assertTrue(self.launched.ended(120))
 
 
 if __name__ == '__main__':

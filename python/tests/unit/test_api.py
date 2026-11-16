@@ -119,6 +119,18 @@ class GameTests(unittest.TestCase):
                      self.args('block.set'))
     self.assertEqual(['server', 'client'], [side for side, *_ in self.verified()])
 
+  def test_26_3_s_blocks_verified_by_id_and_state(self) -> None:
+    """A version without meta: a block set by its id and state, and verified by them; an id alone by its id."""
+    game = self.things('26.3')
+    game.setBlock((1, 4, 1), Block('minecraft:oak_log', -1, state=(('axis', 'x'),)))
+    game.setBlock((2, 4, 1), 'minecraft:stone')
+    log, stone = self.args('block.set')
+    self.assertEqual({'id': 'minecraft:oak_log', 'state': {'axis': 'x'}}, log['block'])
+    self.assertEqual({'id': 'minecraft:stone'}, stone['block'])
+    tests = [test for side, op, args, test in self.verified() if side == 'server']
+    self.assertEqual([{'all': [{'path': ['id'], 'eq': 'minecraft:oak_log'}, {'path': ['state', 'axis'], 'eq': 'x'}]},
+                      {'all': [{'path': ['id'], 'eq': 'minecraft:stone'}]}], tests)
+
   def test_to_another_dimension(self) -> None:
     """The game places a traveller (on ground it finds): the probe's own answer waits for the arrival."""
     game = self.things('1.7.10')
@@ -209,9 +221,10 @@ class GameTests(unittest.TestCase):
     game.setBlock((1, 4, 1), MCBlocks.RedWool)
     game.spawn(MCEntities.WitherSkeleton, (0, 4, 0))
     game.teleport((0, 64, 0), dimension=MCDimensions.TheNether)
-    self.assertEqual(toJson(Item('minecraft:pink_wool', 1, 0)),
+    #  no meta: 26.3's probe refuses one
+    self.assertEqual({'id': 'minecraft:pink_wool', 'count': 1},
                      self.args('inventory.set')[0]['item'])
-    self.assertEqual(toJson(Block('minecraft:red_wool', 0)),
+    self.assertEqual({'id': 'minecraft:red_wool'},
                      self.args('block.set')[0]['block'])
     spawned = self.args('entity.spawn')[0]
     self.assertEqual('minecraft:wither_skeleton', spawned['type'])
@@ -478,7 +491,8 @@ class GameTests(unittest.TestCase):
     game.remove(pig)
     self.assertEqual([
       ('block.get', None, {'pos': [3, 4, 3]}),
-      ('block.set', None, {'pos': [3, 4, 3], 'block': {'id': 'minecraft:gold_block', 'meta': 0}}),
+      #  an id alone goes without meta: the game's own (1.7.10's probe takes none as 0)
+      ('block.set', None, {'pos': [3, 4, 3], 'block': {'id': 'minecraft:gold_block'}}),
       ('block.set', None, {'pos': [3, 5, 3], 'block': {'id': 'minecraft:wool', 'meta': 14}}),
       ('entity.spawn', None, {'type': 'Pig', 'pos': [4.5, 4.0, 4.5]}),
       ('entity.get', None, {'entity': 412}),

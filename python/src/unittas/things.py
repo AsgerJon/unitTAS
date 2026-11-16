@@ -25,7 +25,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from mcdex import (MCBlocks, MCDimensions, MCEffects, MCEntities, MCItems,
-                   NotInVersion)
+                   NotInVersion, Version)
 from worktoy.ezdata import EZData, EZField
 
 from .errors import Missing, NoMcdexData
@@ -34,8 +34,6 @@ from .values import Block, Effect, Entity, Item
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Optional, Union
-
-  from mcdex import Version
 
 #  A mod's declaration names a member as '<catalogue>/<unique name>'
 #  (TasHooks.things), in mcdex's own words
@@ -163,7 +161,12 @@ def itemOf(member: Any, version: Version, count: int = 1,
   _need(member, MCItems, 'an item')
   thing = resolve(member, version, declared)
   _plain(thing, member, 'an item', 'isNumber', 'state')
-  return Item(thing.name, count, thing.meta, thing.nbt)
+  if thing.nbt and version >= Version.V1_20_5:
+    raise NotImplementedError(
+      "%s.%s is %r there: an item's data is its components from 1.20.5 "
+      "on, and no mcdex id carries them yet"
+      % (type(member).__name__, member.name, thing.text()))
+  return Item(thing.name, count, _meta(thing, version), thing.nbt)
 
 
 def blockOf(member: Any, version: Version,
@@ -175,7 +178,14 @@ def blockOf(member: Any, version: Version,
   _need(member, MCBlocks, 'a block')
   thing = resolve(member, version, declared)
   _plain(thing, member, 'a block', 'isNumber', 'state')
-  return Block(thing.name, thing.meta), thing.nbt
+  return Block(thing.name, _meta(thing, version)), thing.nbt
+
+
+def _meta(thing: ThingId, version: Version) -> int:
+  """Its meta: none (-1) from 1.13 on, unless mcdex's id gives one."""
+  if thing.hasMeta or version < Version.V1_13:
+    return thing.meta
+  return -1
 
 
 def entityOf(member: Any, version: Version,

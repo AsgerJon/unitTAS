@@ -1,10 +1,13 @@
 """
-Step 1 of phase 3 (SPEC.md section 9.3): the protocol's values against the probe's real answers. Every value an
-answer or an event carries reads (unittas.codec.fromJson) and writes back as the JSON it came as; values written by
-the codec are taken by the operations; and the answers seen are saved as <results>/values/answers.json, the unit
-tests' fixtures (python/tests/unit/fixtures/answers.json, copied from a run). One launch, in a world of its own.
+Step 1 of phase 3 (SPEC.md section 9.3), on the run's port (19.7): the protocol's values against the probe's real
+answers. Every value an answer or an event carries reads (unittas.codec.fromJson) and writes back as the JSON it came
+as; values written by the codec are taken by the operations; and the answers seen are saved as
+<results>/values/answers.json, the unit tests' fixtures (python/tests/unit/fixtures/answers.json for 1.7.10,
+answers-26.3.json for 26.3, copied from a run). Things by mcdex member, places from the port's start; an item's name
+in its NBT before 1.20.5 and in a component from it. One launch, in a world of its own.
 
-  python -m unittas.selftest test_values.      (through the watcher: "probe test_values.")
+  python -m unittas.selftest test_values      (through the watcher: "probe test_values",
+                                               "probe test_values on 26.3-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -15,13 +18,15 @@ import os
 import shutil
 import unittest
 
-from probegame import READY_SECONDS, ROOT, results
-from unittas.codec import fromJson, toJson
-from unittas.dev import DevGame
-from unittas.reset import reset
-from unittas.values import Block, BlockPos, ChatLine, Entity, Inventory, Item, LogLine, Player, Screen, Sound, Vec3
+from mcdex import MCBlocks, MCEntities, MCItems, Version
 
-NAMED_WOOL = Item('minecraft:wool', 3, 14, '{display:{Name:"Red"}}')
+from ports import FORGE_1_7_10, command, onlyOn, probeGame, start
+from probegame import READY_SECONDS
+from unittas.api import Game
+from unittas.codec import fromJson, toJson
+from unittas.reset import reset
+from unittas.things import blockOf, entityOf, itemOf
+from unittas.values import Block, ChatLine, Entity, Inventory, Item, LogLine, Player, Screen, Sound, Vec3
 
 
 class ValuesTests(unittest.TestCase):
@@ -29,23 +34,26 @@ class ValuesTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.game = DevGame(ROOT, results(), 'values')
-    shutil.rmtree(os.path.join(cls.game.gameDir, 'saves', 'unittas'), ignore_errors=True)
-    cls.connection = cls.game.start()
+    cls.launched = probeGame('values')
+    shutil.rmtree(os.path.join(cls.launched.gameDir, 'saves', 'unittas'), ignore_errors=True)
+    cls.connection = cls.launched.start(READY_SECONDS)
     cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
     cls.connection.request('world.create', {}, timeout=240)
-    reset(cls.connection)
+    cls.connection.request('world.prepare')
+    reset(cls.connection, at=start())
+    cls.game = Game(cls.connection)
+    cls.here = Vec3(*start())
     cls.recorded = {}
 
   @classmethod
   def tearDownClass(cls) -> None:
     try:
-      folder = os.path.join(cls.game.results, 'values')
+      folder = os.path.join(cls.launched.results, 'values')
       os.makedirs(folder, exist_ok=True)
       with open(os.path.join(folder, 'answers.json'), 'w', encoding='utf-8') as file:
         json.dump(cls.recorded, file, indent=1, sort_keys=True)
     finally:
-      cls.game.stop()
+      cls.launched.stop()
 
   def request(self, op, args=None, side=None, timeout=60.0):
     return self.connection.request(op, args, side=side, timeout=timeout)
@@ -62,35 +70,52 @@ class ValuesTests(unittest.TestCase):
     found = self.connection.events.waitFor(lambda event: event.get('event') == kind and test(event), 10, since=mark)
     return {key: value for key, value in found.items() if key not in ('event', 'at')}
 
+  def named(self) -> Item:
+    """Three red wool named 'Red': the name in its NBT before 1.20.5, a component from 1.20.5 on."""
+    wool = itemOf(MCItems.RedWool, self.game.version, 3)
+    if self.game.version >= Version.V1_20_5:
+      return Item(wool.id, wool.count, wool.meta, '', '{"minecraft:custom_name":"Red"}')
+    return Item(wool.id, wool.count, wool.meta, '{display:{Name:"Red"}}')
+
   def test_01_items(self) -> None:
-    self.request('inventory.set', {'slot': 'held', 'item': toJson(NAMED_WOOL)})
+    named = self.named()
+    self.request('inventory.set', {'slot': 'held', 'item': toJson(named)})
     held = self.seen(Item, self.request('inventory.get', {'slot': 'held'}))
-    self.assertEqual(NAMED_WOOL, held)
-    self.assertEqual('Red', held.nbt['display']['Name'])
+    self.assertEqual((named.id, named.count, named.meta), (held.id, held.count, held.meta))
+    #  the name as the game keeps it, in its own words
+    self.assertIn('Red', held.snbt or held.components)
+    self.assertIn(MCItems.RedWool, self.game.membersOf(held))
     self.assertIs(Item.EMPTY, self.seen(Item, self.request('inventory.get', {'slot': 'main.20'})))
-    self.request('inventory.set', {'slot': 'armor.feet', 'item': toJson(Item('minecraft:leather_boots', 1, 0))})
+    boots = itemOf(MCItems.LeatherBoots, self.game.version)
+    self.request('inventory.set', {'slot': 'armor.feet', 'item': toJson(boots)})
     inventory = self.seen(Inventory, self.request('inventory.get'))
-    self.assertEqual(NAMED_WOOL, inventory.held)
-    self.assertEqual(Item('minecraft:leather_boots', 1, 0), inventory.feet)
+    self.assertEqual(held, inventory.held)
+    self.assertEqual(boots, inventory.feet)
     self.seen(Inventory, self.request('inventory.get', side='client'))
 
   def test_02_blocks(self) -> None:
-    wool = BlockPos(3, 4, 3)
-    self.request('block.set', {'pos': toJson(wool), 'block': toJson(Block('minecraft:wool', 14))})
-    self.assertEqual(Block('minecraft:wool', 14), self.seen(Block, self.request('block.get', {'pos': toJson(wool)})))
+    wool = self.here.block().offset(3, 0, 3)
+    block, _ = blockOf(MCBlocks.RedWool, self.game.version)
+    self.request('block.set', {'pos': toJson(wool), 'block': toJson(block)})
+    self.assertEqual(block, self.seen(Block, self.request('block.get', {'pos': toJson(wool)})))
     self.assertIsNone(self.seen(Block, self.request('block.get', {'pos': toJson(wool), 'tile': True})).tile)
-    chest = BlockPos(5, 4, 3)
+    chest = self.here.block().offset(5, 0, 3)
     self.request('block.set', {'pos': toJson(chest), 'block': {'id': 'minecraft:chest'}})
     found = self.seen(Block, self.request('block.get', {'pos': toJson(chest), 'tile': True}))
-    self.assertEqual('Chest', found.tile['id'])
+    self.assertIsNotNone(found.tile, 'a chest has its block entity')
+    self.assertEqual({MCBlocks.Chest}, self.game.membersOf(found))
 
   def test_03_entities(self) -> None:
-    pig = self.seen(Entity, self.request('entity.spawn', {'type': 'Pig', 'pos': toJson(Vec3(4.5, 4.0, 4.5))}))
-    self.assertEqual('Pig', pig.type)
+    pigType, _ = entityOf(MCEntities.Pig, self.game.version)
+    pig = self.seen(Entity, self.request('entity.spawn', {'type': pigType,
+                                                          'pos': toJson(self.here.offset(4.0, 0, 4.0))}))
+    self.assertIn(MCEntities.Pig, self.game.membersOf(pig))
     self.assertTrue(pig.living)
     self.assertGreater(pig.health, 0.0)
     self.seen(Entity, self.request('entity.get', {'entity': pig.entity}))
-    arrow = self.seen(Entity, self.request('entity.spawn', {'type': 'Arrow', 'pos': [6.5, 6.0, 6.5]}))
+    arrowType, _ = entityOf(MCEntities.Arrow, self.game.version)
+    arrow = self.seen(Entity, self.request('entity.spawn', {'type': arrowType,
+                                                            'pos': toJson(self.here.offset(6.0, 2.0, 6.0))}))
     self.assertFalse(arrow.living, 'an arrow is not living')
     self.assertEqual(0.0, arrow.health)
     for each in self.request('entity.list', {'near': {'pos': 'player', 'radius': 16}}):
@@ -102,9 +127,10 @@ class ValuesTests(unittest.TestCase):
     self.assertEqual(server.entity, client.entity)
     self.assertEqual(-1, server.camera, 'the server side has no camera')
     self.assertEqual(0, client.camera)
-    self.request('command.run', {'command': '/effect @p 1 30 1'})
+    self.request('command.run', {'command': command('speed for 30 s, level 2')})
     self.assertTrue(self.seen(Player, self.request('player.get')).effects)
 
+  @onlyOn(FORGE_1_7_10, why="26.3's chat, sound and log events come with SPEC.md 19.7 step 2")
   def test_05_events(self) -> None:
     mark = self.connection.events.mark()
     self.request('command.run', {'command': '/say the values'})

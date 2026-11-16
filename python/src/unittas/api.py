@@ -350,8 +350,10 @@ class Game:
       if item.empty:
         test = {'eq': None}
       else:
-        test = {'all': [{'path': ['id'], 'eq': item.id}, {'path': ['count'], 'eq': item.count},
-                        {'path': ['meta'], 'eq': item.meta}]}
+        checks = [{'path': ['id'], 'eq': item.id}, {'path': ['count'], 'eq': item.count}]
+        if item.meta >= 0:
+          checks.append({'path': ['meta'], 'eq': item.meta})
+        test = {'all': checks}
       self._verify('inventory.set of %s' % name, 'inventory.get', {'slot': name}, test)
 
   # ---------------------------------------------------------------- blocks
@@ -388,10 +390,11 @@ class Game:
     """
     tile = ''
     if isinstance(block, str):
-      block = Block(block, 0)
+      #  an id alone, no meta: the game's own for it (1.7.10's probe takes none as 0; 1.13 on have none; D4)
+      block = Block(block, -1)
     elif isinstance(block, Block):
       #  a Block carrying its block entity's data (a chest's items) sends it beside the block
-      tile, block = block.tileSnbt, Block(block.id, block.meta)
+      tile, block = block.tileSnbt, Block(block.id, block.meta, state=block.state)
     elif not isinstance(block, Block):
       from .things import blockOf
       block, tile = blockOf(block, self.version, self.declared())
@@ -400,8 +403,11 @@ class Game:
       args['tile'] = tile
     self.request('block.set', args)
     if verify:
-      test = {'all': [{'path': ['id'], 'eq': block.id}, {'path': ['meta'], 'eq': block.meta}]}
-      self._verify('block.set at %s' % _place(args['pos']), 'block.get', {'pos': args['pos']}, test)
+      checks = [{'path': ['id'], 'eq': block.id}]
+      if block.meta >= 0:
+        checks.append({'path': ['meta'], 'eq': block.meta})
+      checks += [{'path': ['state', name], 'eq': value} for name, value in block.state]
+      self._verify('block.set at %s' % _place(args['pos']), 'block.get', {'pos': args['pos']}, {'all': checks})
 
   # ---------------------------------------------------------------- entities
 
