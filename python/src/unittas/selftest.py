@@ -21,8 +21,9 @@ import unittest
 ROOT_MARKER = 'settings.gradle'
 TESTS = os.path.join('python', 'tests', 'probe')
 #  The ports the probe's tests run against, each a version and what runs it: 1.7.10's development client with
-#  Forge; 26.3 with Fabric Loader; 26.3 as Mojang ships it, the probe a Java agent (SPEC.md 19.7 step 5)
-PORTS = ('1.7.10-forge', '26.3-fabric', '26.3', '1.21.1')
+#  Forge; 26.3 with Fabric Loader; 26.3 as Mojang ships it, the probe a Java agent (SPEC.md 19.7 step 5); 1.21.1 as
+#  Mojang ships it (obfuscated) and with Fabric Loader (intermediary's names: steps 6c and 6d)
+PORTS = ('1.7.10-forge', '26.3-fabric', '26.3', '1.21.1', '1.21.1-fabric')
 
 
 def parseArgs(argv: list) -> tuple:

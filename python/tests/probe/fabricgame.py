@@ -1,8 +1,9 @@
 """
-A real 26.3 client with Fabric Loader for the probe's game tests (SPEC.md 12, 19.7): the loader a mod under test would
-bring, and unitTAS's probe beside it as a Java agent (SPEC.md 19.7 step 5: no Fabric mod of unitTAS's, mods/ empty),
-one launch by unitTAS's own launcher in run/fabric-26.3. test_fabric's own and every test class on the 26.3-fabric
-port (ports.py) start it.
+A real client with Fabric Loader for the probe's game tests (SPEC.md 12, 19.7), of 26.3 or 1.21.1: the loader a mod
+under test would bring, and unitTAS's probe beside it as a Java agent (SPEC.md 19.7 steps 5 and 6d: no Fabric mod of
+unitTAS's, mods/ empty; for 1.21.1 the table of intermediary's names, which the launcher gives), one launch by
+unitTAS's own launcher in run/fabric-VERSION. test_fabric's own and every test class on a Fabric port (ports.py)
+start it.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -30,23 +31,26 @@ START_26 = (0.5, -60.0, 0.5)
 
 class FabricGame(LaunchedGame):
   """
-  One launch of a real 26.3 Fabric client in run/fabric-26.3, its output in '<results>/<name>/client.log': mods/
-  empty (whatever it held put aside), the probe's agent jar on the command line, the game started by unitTAS's own
-  launcher (any version with a loader on top) in the test display, the download cache filled as it needs.
+  One launch of a real Fabric client of the version in run/fabric-VERSION, its output in
+  '<results>/<name>/client.log': mods/ empty (whatever it held put aside), the probe's agent jar on the command line,
+  the game started by unitTAS's own launcher (any version with a loader on top) in the test display, the download
+  cache filled as it needs.
   """
 
-  def __init__(self, results: str, jar: str, name: str = 'fabric', cache: str = None) -> None:
+  def __init__(self, results: str, jar: str, name: str = 'fabric', cache: str = None,
+               minecraft: str = MINECRAFT) -> None:
     LaunchedGame.__init__(self, ROOT, results, name)
     self.__jar__ = jar
     self.__cache__ = cache or defaultRoot()
+    self.__minecraft__ = minecraft
 
   def gameFolder(self) -> str:
-    return os.path.join(ROOT, 'run', 'fabric-' + MINECRAFT)
+    return os.path.join(ROOT, 'run', 'fabric-' + self.__minecraft__)
 
   def command(self) -> list:
     return [os.path.join(ROOT, 'unittas-display.sh'), sys.executable, '-I', os.path.join(ROOT, 'bin', 'launch_client.py'),
-            '--game', self.gameFolder(), '--cache', self.__cache__, '--minecraft', MINECRAFT, '--loader', LOADER,
-            '--loader-version', LOADER_VERSION, '--agent', self.__jar__]
+            '--game', self.gameFolder(), '--cache', self.__cache__, '--minecraft', self.__minecraft__, '--loader',
+            LOADER, '--loader-version', LOADER_VERSION, '--agent', self.__jar__]
 
   def outputName(self) -> str:
     return 'client.log'
@@ -54,7 +58,7 @@ class FabricGame(LaunchedGame):
   def prepare(self) -> None:
     # nothing of unitTAS's in mods/: the probe is an agent (the old Fabric probe's jar, if there, put aside)
     putMods(self.gameFolder(), [], os.path.join(self.results, 'mods-before-this-run'))
-    # a returning player's options: 26.3's first launch opens on its accessibility onboarding, and a world's first
+    # a returning player's options: a first launch opens on the accessibility onboarding, and a world's first
     # minutes show the movement tutorial's hints
     with open(os.path.join(self.gameFolder(), 'options.txt'), 'w', encoding='utf-8') as file:
       file.write('onboardAccessibility:false\ntutorialStep:none\n')

@@ -35,19 +35,30 @@ import shutil
 import unittest
 
 from agentgame import HOOKED, buildAgent
-from fabricgame import COPY, LAYERS_26, LOADER, LOADER_VERSION, MINECRAFT, SEED, START_26, TERRAIN, TITLE, FabricGame
+from fabricgame import COPY, LAYERS_26, LOADER, LOADER_VERSION, SEED, START_26, TERRAIN, TITLE, FabricGame
+from ports import V1_21_1, V26_3, fabricVersion
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.errors import BadRequest, Exists, NotFound, NotReady
 from unittas.reset import reset
 
 
+#  what each version runs under beside Fabric, and on
+NAMES = {V26_3: 'mojang', V1_21_1: 'intermediary'}
+JAVAS = {V26_3: '25', V1_21_1: '21'}
+#  the version the classes of 26.3's own checks are for
+ONLY_26_3 = unittest.skipUnless(fabricVersion() == V26_3, "26.3's own world and thing checks, from before the probe's"
+                                " tests ran on every port: the port-aware modules cover them on every version")
+
+
 class FabricGameTests(unittest.TestCase):
+  """The probe beside Fabric Loader, on the Fabric port's version (26.3 on any other port; 1.21.1, SPEC.md 19.7 6d)."""
 
   @classmethod
   def setUpClass(cls) -> None:
+    cls.version = fabricVersion()
     folder = os.path.join(results(), 'fabric')
-    jar = buildAgent(os.path.join(folder, 'build.log'))
-    cls.game = FabricGame(results(), jar)
+    jar = buildAgent(os.path.join(folder, 'build.log'), cls.version)
+    cls.game = FabricGame(results(), jar, minecraft=cls.version)
     cls.connection = cls.game.start(READY_SECONDS)
     cls.ready = cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
 
@@ -57,14 +68,14 @@ class FabricGameTests(unittest.TestCase):
 
   def test_1_its_hello_says_what_runs(self) -> None:
     hello = self.connection.hello
-    self.assertEqual('26.3', hello.probePort, "the agent's port: the same beside any loader")
-    self.assertEqual(MINECRAFT, hello.minecraft)
+    self.assertEqual(self.version, hello.probePort, "the agent's port: the same beside any loader")
+    self.assertEqual(self.version, hello.minecraft)
     self.assertEqual((LOADER, LOADER_VERSION), (hello.loaderName, hello.loaderVersion))
-    self.assertEqual('mojang', hello.names, '26.x is unobfuscated: no mappings')
+    self.assertEqual(NAMES[self.version], hello.names, "26.x is unobfuscated; before it Fabric runs intermediary's")
     self.assertEqual('client', hello.role.value if hasattr(hello.role, 'value') else str(hello.role))
     self.assertFalse(hello.development, 'a real client, not a development run')
     self.assertEqual(modVersion(), hello.probeVersion, "the probe's version from its own jar")
-    self.assertTrue(hello.javaVersion.startswith('25'), hello.javaVersion)
+    self.assertTrue(hello.javaVersion.startswith(JAVAS[self.version]), hello.javaVersion)
 
   def test_2_the_probe_s_own_operations(self) -> None:
     for op in ('status', 'quit', 'ticks.wait', 'cancel', 'events.set'):
@@ -83,7 +94,8 @@ class FabricGameTests(unittest.TestCase):
     mods = {mod['id'] for mod in self.ready['mods']}
     self.assertTrue({'minecraft', 'fabricloader'} <= mods, mods)
     self.assertNotIn('unittas', mods, 'the probe is no Fabric mod')
-    self.assertEqual(HOOKED['26.3'], self.ready['mixins']['applied'], "each hooked class rewritten after Fabric's Mixin")
+    self.assertEqual(HOOKED[self.version], self.ready['mixins']['applied'],
+                     "each hooked class rewritten after Fabric's Mixin")
     self.assertEqual((854, 480), (self.ready['window']['width'], self.ready['window']['height']))
     self.assertEqual('unitTAS', self.ready['window']['title'], "the window's behaviours (PROTOCOL.md 2.5)")
     self.assertEqual([], self.ready['mixins']['missing'])
@@ -133,6 +145,7 @@ class FabricGameTests(unittest.TestCase):
     self.assertTrue(self.game.ended(GONE_SECONDS), 'the game is still running %s s after quit' % GONE_SECONDS)
 
 
+@ONLY_26_3
 class FabricWorldTests(unittest.TestCase):
   """
   Step 4 (SPEC.md 12.3): worlds in 26.3, as test_worlds has them in 1.7.10, in one launch, its tests in order. The
@@ -343,6 +356,7 @@ class FabricWorldTests(unittest.TestCase):
     self.assertTrue(self.game.ended(GONE_SECONDS))
 
 
+@ONLY_26_3
 class FabricThingTests(unittest.TestCase):
   """
   Step 5a (SPEC.md 12.3): the game's things in 26.3 and the reset, as test_reset and test_game have them in 1.7.10,

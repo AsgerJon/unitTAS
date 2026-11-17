@@ -93,6 +93,36 @@ class ModernFixture:
       {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
     ]}).encode('utf-8')
 
+  def withIntermediary(self, tiny: str, classes: dict) -> None:
+    """
+    Fabric's profile with its intermediary jar (as for a version before 26.1), and the client jar as class files of
+    those classes ({name: (superclass, interfaces)}), whose supertypes the names are composed along.
+    """
+    import io
+    import zipfile
+    from test_classheaders import classFile
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, 'w') as archive:
+      archive.writestr('mappings/mappings.tiny', tiny)
+    data = inner.getvalue()
+    maven = 'https://maven.fabricmc.net/'
+    self.served[maven + 'net/fabricmc/intermediary/26.3/intermediary-26.3.jar'] = data
+    self.profile['libraries'].append({'name': 'net.fabricmc:intermediary:26.3', 'url': maven, 'sha1': sha1(data),
+                                      'size': len(data)})
+    self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(self.profile).encode('utf-8')
+    client = io.BytesIO()
+    with zipfile.ZipFile(client, 'w') as archive:
+      for name, (superclass, interfaces) in classes.items():
+        archive.writestr(name + '.class', classFile(name, superclass, interfaces))
+    jar = client.getvalue()
+    self.vanilla['downloads']['client'].update({'sha1': sha1(jar), 'size': len(jar)})
+    self.served[self.vanilla['downloads']['client']['url']] = jar
+    versionJson = json.dumps(self.vanilla).encode('utf-8')
+    self.served['https://piston-meta.mojang.com/v1/packages/x/26.3.json'] = versionJson
+    self.served[MANIFEST] = json.dumps({'versions': [
+      {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
+    ]}).encode('utf-8')
+
   def fetch(self, url: str) -> bytes:
     self.asked.append(url)
     if url not in self.served:
@@ -191,8 +221,27 @@ class ModernLauncherTests(unittest.TestCase):
     plain = versionCommand(self.game, self.java, self.sources(), '26.3', None, None).java
     self.assertFalse([word for word in plain if word.startswith('-Dunittas.names=')], 'no agent, no names')
 
-  def test_the_agent_beside_a_loader_on_an_obfuscated_version_waits(self) -> None:
-    """Fabric runs such a version under intermediary names, which come with SPEC.md 19.7 step 6d: said, not guessed."""
+  def test_beside_fabric_an_obfuscated_version_s_intermediary_names(self) -> None:
+    """
+    Fabric runs a version before 26.1 under intermediary names (SPEC.md 19.7 step 6d): the agent's table goes from
+    Mojang's names through the obfuscated ones on to intermediary's, from the intermediary jar Fabric's profile names,
+    an override by its root's name along the client jar's classes; written once, kept apart from vanilla's.
+    """
+    from test_intermediary import SUPERTYPES, TINY
+    from test_mojangnames import LOG
+    self.fixture.withMappings(LOG.encode('utf-8'))
+    self.fixture.withIntermediary(TINY, SUPERTYPES)
+    probe = os.path.join(self.scratch, 'unittas-probe-x.jar')
+    java = versionCommand(self.game, self.java, self.sources(), '26.3', 'fabric', '0.20.1', agents=(probe,)).java
+    table = os.path.join(self.scratch, 'cache', 'names', '26.3-intermediary-1.txt')
+    self.assertIn('-Dunittas.names=' + table, java)
+    with open(table, encoding='utf-8') as file:
+      lines = file.read().splitlines()
+    self.assertEqual('unittas-names\t1\tintermediary\t26.3', lines[0])
+    self.assertIn('m\tnet/minecraft/client/Minecraft\ttick\t()V\tmethod_1574', lines)
+
+  def test_beside_fabric_without_its_intermediary_jar_is_said(self) -> None:
+    """A Fabric profile for an obfuscated version names its intermediary jar: one that doesn't is said, not guessed."""
     from test_mojangnames import LOG
     self.fixture.withMappings(LOG.encode('utf-8'))
     probe = os.path.join(self.scratch, 'unittas-probe-x.jar')

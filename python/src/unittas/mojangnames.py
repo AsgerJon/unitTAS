@@ -25,6 +25,7 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
+  from .intermediary import Intermediary
   from .launcher import Sources
 
 #  the table's format (the agent's Names reads this one), and its first line:
@@ -66,16 +67,20 @@ def _descriptor(typeName: str) -> str:
 
 class MojangNames:
   """
-  One version's names: 'classes' maps Mojang's internal name to the
-  obfuscated one; 'fields' and 'methods' map (Mojang's owner, Mojang's
-  name, the descriptor in Mojang's names) to the obfuscated name. A name
-  the game keeps is in them as itself.
+  One version's names: 'classes' maps Mojang's internal name to the one
+  the game runs under; 'fields' and 'methods' map (Mojang's owner,
+  Mojang's name, the descriptor in Mojang's names) to the running name.
+  A name the game keeps is in them as itself. 'kind' says what the names
+  run under: obfuscated (vanilla), or intermediary (beside Fabric:
+  through).
   """
 
-  def __init__(self, classes: dict, fields: dict, methods: dict) -> None:
+  def __init__(self, classes: dict, fields: dict, methods: dict,
+               kind: str = 'obfuscated') -> None:
     self.classes = classes
     self.fields = fields
     self.methods = methods
+    self.kind = kind
 
   @classmethod
   def fromText(cls, text: str) -> MojangNames:
@@ -135,6 +140,31 @@ class MojangNames:
     with open(path, encoding='utf-8') as file:
       return cls.fromText(file.read())
 
+  def through(self, intermediary: Intermediary,
+              supertypes: dict) -> MojangNames:
+    """
+    The names as Fabric runs the game (SPEC.md 19.7 step 6d): each
+    obfuscated name on to intermediary's where it has one; a method it
+    names only on the class that first declares it (an override, as
+    LocalPlayer's isShiftKeyDown is Entity's) by that class's, found up
+    'supertypes' (the obfuscated jar's: classheaders.supertypes); kept
+    where none names it (a constructor, a JDK method's override).
+    """
+    classes = {mojang: intermediary.classes.get(obfuscated, obfuscated)
+               for mojang, obfuscated in self.classes.items()}
+    fields = {}
+    for (owner, name, descriptor), obfuscated in self.fields.items():
+      key = (self.classes.get(owner, owner), obfuscated,
+             self.running(descriptor))
+      fields[(owner, name, descriptor)] = intermediary.fields.get(
+        key, obfuscated)
+    methods = {}
+    for (owner, name, descriptor), obfuscated in self.methods.items():
+      methods[(owner, name, descriptor)] = _inherited(
+        intermediary, supertypes, self.classes.get(owner, owner),
+        obfuscated, self.running(descriptor))
+    return MojangNames(classes, fields, methods, 'intermediary')
+
   def running(self, descriptor: str) -> str:
     """A descriptor in Mojang's names as the game runs it."""
     return _CLASS_IN_DESCRIPTOR.sub(
@@ -153,7 +183,7 @@ class MojangNames:
               for key, name in self.fields.items()]
     lines += ['m\t%s\t%s\t%s\t%s' % (key + (name,))
               for key, name in self.methods.items()]
-    text = '\n'.join([TABLE_HEADER % ('obfuscated', minecraft)]
+    text = '\n'.join([TABLE_HEADER % (self.kind, minecraft)]
                      + sorted(lines)) + '\n'
     folder = os.path.dirname(os.path.abspath(path))
     os.makedirs(folder, exist_ok=True)
@@ -175,3 +205,26 @@ def _put(into: dict, key: object, value: str, number: int) -> None:
     raise ValueError('line %d of the log gives %s as %s, an earlier line '
                      'as %s' % (number, key, value, known))
   into[key] = value
+
+
+def _inherited(intermediary: Intermediary, supertypes: dict, owner: str,
+               name: str, descriptor: str) -> str:
+  """
+  A method's intermediary name: its class's, else the nearest of its
+  supertypes that names it (a level at a time: the superclass and the
+  interfaces, then theirs); its obfuscated name where none does.
+  """
+  seen = set()
+  todo = [owner]
+  while todo:
+    at = todo.pop(0)
+    if at in seen or not at:
+      continue
+    seen.add(at)
+    found = intermediary.methods.get((at, name, descriptor))
+    if found is not None:
+      return found
+    superclass, interfaces = supertypes.get(at, ('', ()))
+    todo.append(superclass)
+    todo.extend(interfaces)
+  return name

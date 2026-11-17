@@ -7,7 +7,7 @@ Mojang ships it, the probe a Java agent, for '26.3' and '1.21.1'), puts
 the player where its flat test world's start is (start), says a command
 as that version reads it where the versions' texts differ (command), and
 skips what its version can't do yet, saying why (onlyOn). The tables are
-by version (V1_7_10, V1_21_1, V26_3): both 26.3 ports share 26.3's, and
+by version (V1_7_10, V1_21_1, V26_3): each version's ports share its own, and
 1.21.1 has 26.3's block states and command texts (the same from 1.13 and
 1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's).
 """
@@ -27,10 +27,13 @@ from unittas.game import LaunchedGame
 from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Vec3
 
-FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1 = PORTS
+FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1 = PORTS
 #  the versions, which the tables are by
 V1_7_10, V1_21_1, V26_3 = '1.7.10', '1.21.1', '26.3'
-VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1}
+VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
+            FABRIC_1_21_1: V1_21_1}
+#  the ports with Fabric Loader beside the probe
+FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1)
 #  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
 #  1.18 on (the world's bottom at y -64)
 STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_21_1: (0.5, -60.0, 0.5), V26_3: (0.5, -60.0, 0.5)}
@@ -123,6 +126,11 @@ def version() -> str:
   return VERSIONS[port()]
 
 
+def fabricVersion() -> str:
+  """The version test_fabric's Fabric game is: the port's on a Fabric port, 26.3 on any other."""
+  return version() if port() in FABRIC_PORTS else V26_3
+
+
 def start() -> tuple:
   """Where the reset puts the player in the port's flat test world."""
   return STARTS[version()]
@@ -175,4 +183,7 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == VANILLA_1_21_1:
     return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
                      minecraft=V1_21_1)
+  if port() == FABRIC_1_21_1:
+    return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
+                      minecraft=V1_21_1)
   return DevGame(ROOT, results(), name)

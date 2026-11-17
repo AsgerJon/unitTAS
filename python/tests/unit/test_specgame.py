@@ -148,16 +148,16 @@ class SpecGameTests(unittest.TestCase):
       game.prepare()
     self.assertIn('exit 3', str(failed.exception))
 
-  def spec26(self, extra: str = '') -> InstanceSpec:
-    """A 26.3 Fabric spec (SPEC.md 19.7 step 4)."""
+  def spec26(self, extra: str = '', minecraft: str = '26.3') -> InstanceSpec:
+    """A 26.3 Fabric spec (SPEC.md 19.7 step 4), or 1.21.1's (step 6d)."""
     path = os.path.join(self.folder, 'unittas.toml')
     with open(path, 'w', encoding='utf-8') as file:
       file.write(textwrap.dedent('''
-        minecraft = "26.3"
+        minecraft = "%s"
         loader = { fabric = "0.20.1" }
         client = "real"
         window = { display = "plain" }
-      ''') + textwrap.dedent(extra))
+      ''' % minecraft) + textwrap.dedent(extra))
     return InstanceSpec.read(path)
 
   def test_a_26_3_client_s_command(self) -> None:
@@ -193,16 +193,41 @@ class SpecGameTests(unittest.TestCase):
     with open(os.path.join(game.gameDir, 'options.txt')) as file:
       self.assertEqual(['onboardAccessibility:false', 'tutorialStep:movement'], sorted(file.read().split()))
 
+  def test_1_21_1_as_26_3(self) -> None:
+    """
+    1.21.1 (SPEC.md 19.7 step 6d) as 26.3: the version and its loader
+    said, the probe an agent, never in mods/; a returning player's
+    options, its first launch asking as 26.3's does.
+    """
+    game = RealGame(self.spec26('probe = "probe/unittas-probe.jar"\n',
+                                '1.21.1'),
+                    self.results, 'real', cache=self.cache)
+    self.assertEqual(
+      [sys.executable, '-I', '-m', 'unittas.launcher', '--game',
+       game.gameDir, '--cache', self.cache.root, '--minecraft', '1.21.1',
+       '--loader', 'fabric', '--loader-version', '0.20.1', '--agent',
+       self.probe], game.command())
+    game.prepare()
+    self.assertEqual([], os.listdir(os.path.join(game.gameDir, 'mods')))
+    with open(os.path.join(game.gameDir, 'options.txt')) as file:
+      self.assertEqual(['onboardAccessibility:false', 'tutorialStep:none'],
+                       sorted(file.read().split()))
+
   def test_the_bundled_probe_for_its_version(self) -> None:
     """With both probes bundled, each version's game gets its own."""
     bundled = os.path.join(self.folder, 'probes')
     old = touch(os.path.join(bundled, 'unittas-0.1.0.jar'), b'1.7.10')
     new = touch(os.path.join(bundled, 'unittas-probe-26.3-0.1.0.jar'), b'26.3')
+    v1_21_1 = touch(os.path.join(bundled, 'unittas-probe-1.21.1-0.1.0.jar'),
+                    b'1.21.1')
     forge = RealGame(self.spec('mods = []\nwindow = { display = "plain" }\n'), self.results, 'real', cache=self.cache,
                      bundled=bundled)
     fabric = RealGame(self.spec26(), self.results, 'real', cache=self.cache, bundled=bundled)
     self.assertEqual(old, forge.probeJar())
     self.assertEqual(new, fabric.probeJar())
+    self.assertEqual(v1_21_1, RealGame(
+      self.spec26(minecraft='1.21.1'), self.results, 'real',
+      cache=self.cache, bundled=bundled).probeJar())
 
   def test_no_probe_bundled_says_so(self) -> None:
     game = RealGame(self.spec('mods = ["build/libs/mod-*.jar"]\nwindow = { display = "plain" }\n'), self.results,

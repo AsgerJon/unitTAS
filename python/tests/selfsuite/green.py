@@ -1,6 +1,6 @@
 """
-The 'self' suite's twins (src/self/java/.../self/*.java), by the same names: every one must pass, on 1.7.10 and on
-26.3 (SPEC.md 19.7 step 4). StepTests stays Java's own: it forces a race inside the JVM's step queue, which no request
+The 'self' suite's twins (src/self/java/.../self/*.java), by the same names: every one must pass, on 1.7.10, on
+26.3 and on 1.21.1 (SPEC.md 19.7 steps 4 and 6d). StepTests stays Java's own: it forces a race inside the JVM's step queue, which no request
 over the socket can. Each waits by ticks, never by the clock (SPEC.md 9.8). Places are from the run's start (y 4 in
 1.7.10's flat world, -60 in 26.3's); things by mcdex member; what reflection reaches by each version's names (NAMES).
 """
@@ -18,7 +18,8 @@ from unittas.things import resolve
 
 SELF_PLUGIN = 'io.github.asgerjon.unittas.self.SelfPlugin'
 #  what the suite reaches by reflection, as each version names it: 1.7.10's MCP (a real client's Searge, translated
-#  from them by the run's mappings), 26.3's Mojang's own
+#  from them by the run's mappings), 26.3's Mojang's own, and 1.21.1's (26.3's, the probe translating them to the
+#  names the game runs by)
 NAMES = {
   'grab the mouse': {Version.V1_7_10: ['mouseHelper', {'call': 'grabMouseCursor'}],
                      Version.V26_3: ['mouseHandler', {'call': 'grabMouse'}]},
@@ -28,6 +29,8 @@ NAMES = {
   'five levels': {Version.V1_7_10: [{'call': 'addExperienceLevel', 'args': [5]}],
                   Version.V26_3: [{'call': 'giveExperienceLevels', 'args': [5]}]},
 }
+for _paths in NAMES.values():
+  _paths[Version.V1_21_1] = _paths[Version.V26_3]
 
 
 def named(test: GameTestCase, what: str) -> list:

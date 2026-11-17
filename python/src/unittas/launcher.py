@@ -520,44 +520,58 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
     jvm += versions.fill([version.logging['argument']], {'path': configPath})
   jvm += versions.fill(version.jvm, values)
   if agents:
-    jvm += _names(sources, vanilla, minecraft, loader)
+    jvm += _names(sources, vanilla, minecraft, loader, version, path[-1])
   jvm += ['-javaagent:%s=%s' % (agent, game) for agent in agents]
   return Launch([java] + jvm + [version.mainClass] + versions.fill(version.game, values), natives, assets,
                 version.javaMajor)
 
 
-def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str]) -> list:
+def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str], version: versions.Version,
+           client: str) -> list:
   """
   The agent's table of names, for a version the game runs under names
-  other than Mojang's (before 26.1: SPEC.md 19.7 step 6b): written once
-  into the download cache from the version's obfuscation log, and named
-  to the agent by -Dunittas.names. None for a version under Mojang's own
-  names (no client_mappings in its JSON). Beside a loader such a version
-  runs under the loader's names (Fabric's intermediary), which come with
-  step 6d: Missing until then.
+  other than Mojang's (before 26.1: SPEC.md 19.7 steps 6b and 6d):
+  written once into the download cache, and named to the agent by
+  -Dunittas.names. In vanilla such a version runs obfuscated; beside
+  Fabric under intermediary's names, from the intermediary jar its
+  profile names (Missing if it names none). None for a version under
+  Mojang's own names (no client_mappings in its JSON).
   """
   if not vanilla.get('downloads', {}).get('client_mappings'):
     return []
-  if loader is not None:
-    raise Missing('%s runs beside %s under its intermediary names, which the agent takes from SPEC.md 19.7 step 6d '
-                  'on: not yet' % (minecraft, loader))
-  return ['-Dunittas.names=' + namesTable(sources, minecraft)]
+  if loader is None:
+    return ['-Dunittas.names=' + namesTable(sources, minecraft)]
+  intermediary = next((library for library in version.libraries
+                       if library.name.startswith('net.fabricmc:intermediary:')), None)
+  if loader != 'fabric' or intermediary is None:
+    raise Missing('%s beside %s runs under names its profile doesn\'t give: Fabric\'s names its intermediary jar '
+                  '(net.fabricmc:intermediary), and no other loader is known to the agent yet' % (minecraft, loader))
+  return ['-Dunittas.names=' + namesTable(sources, minecraft, _jar(sources, intermediary), client)]
 
 
-def namesTable(sources: Sources, minecraft: str) -> str:
+def namesTable(sources: Sources, minecraft: str, intermediary: Optional[str] = None,
+               client: Optional[str] = None) -> str:
   """
-  The version's table of names, Mojang's to the obfuscated ones the game
-  runs under in vanilla (SPEC.md 19.7 step 6b): written once into the
-  download cache from its obfuscation log, which is fetched there once
-  and held to its sha1. Missing for a version with no log, or when it
-  can't be had.
+  The version's table of names (SPEC.md 19.7 steps 6b and 6d), Mojang's
+  to the ones the game runs under: the obfuscated ones in vanilla, or
+  with an intermediary jar on to intermediary's (beside Fabric), along
+  the client jar's classes for the overrides. Written once into the
+  download cache from the version's obfuscation log, which is fetched
+  there once and held to its sha1. Missing for a version with no log, or
+  when it can't be had.
   """
   from .mojangnames import TABLE_FORMAT, MojangNames
   if sources.cache is None:
     raise Missing('no %s table of names: there is no download cache to write it into' % minecraft)
-  table = sources.cache.path('names/%s-obfuscated-%s.txt' % (minecraft, TABLE_FORMAT))
+  kind = 'obfuscated' if intermediary is None else 'intermediary'
+  table = sources.cache.path('names/%s-%s-%s.txt' % (minecraft, kind, TABLE_FORMAT))
   if not os.path.isfile(table):
-    MojangNames.load(sources, minecraft).write(table, minecraft)
+    names = MojangNames.load(sources, minecraft)
+    if intermediary is not None:
+      from .classheaders import supertypes
+      from .intermediary import Intermediary
+      names = names.through(Intermediary.fromJar(intermediary), supertypes(client))
+    names.write(table, minecraft)
   return table
 
 
