@@ -1,10 +1,11 @@
 """
-The first test on two versions at once (SPEC.md 12.3 step 9, 19.7 step 4): one class with two games, 1.7.10 Forge's
-development client and a real vanilla 26.3 client (the probe a Java agent), both up together, and one scene on both:
-red wool placed by its mcdex member, a step from each world's start, and read back. The reads differ as the versions do (1.7.10's
-minecraft:wool with meta 14, 26.3's minecraft:red_wool with no meta); compared through a small helper, by the mcdex
-members each version reads its block as, they are the same thing. The model for record and compare (SPEC.md 16).
-Two games at once: asked for before it is run.
+The first test across two versions (SPEC.md 12.3 step 9, 19.7 step 4): one scene played on 1.7.10 Forge's development
+client and on a real vanilla 26.3 client (the probe a Java agent), one game after the other, never two at once. On
+each, red wool and then blue wool placed by their mcdex members a step from the world's start and read back, each read
+recorded with the members its version reads it as; the game stopped before the next starts. The reads differ as the
+versions do (1.7.10's minecraft:wool with meta 14, 26.3's minecraft:red_wool with no meta); compared through a small
+helper, by their recorded members, red wool is the same thing on both, and red and blue wool are not. The model for
+record and compare (SPEC.md 16).
 
   python -m unittas.selftest test_crossversion.      (through the watcher: "probe test_crossversion.")
 """
@@ -27,70 +28,68 @@ from unittas.dev import DevGame
 from unittas.reset import reset
 from unittas.values import Vec3
 
+#  what the scene places, by its name in the record
+PLACED = {'red wool': MCBlocks.RedWool, 'blue wool': MCBlocks.BlueWool}
+
 
 def sameThing(first: tuple, second: tuple) -> frozenset:
   """
-  What two versions' reads have in common: each read is (game, value), the value as its game reported it; the mcdex
-  members both read it as. Empty when the two are different things, however alike their values look.
+  What two versions' recorded reads have in common: each read is (the value as its game reported it, the mcdex
+  members its version reads it as); the members both are. Empty when they are different things, however alike their
+  values look.
   """
-  (firstGame, firstValue), (secondGame, secondValue) = first, second
-  return firstGame.membersOf(firstValue) & secondGame.membersOf(secondValue)
+  return frozenset(first[1]) & frozenset(second[1])
+
+
+def played(version: str, launched: Any) -> dict:
+  """
+  The scene on one version's game, the game stopped after: its version as its hello said it, and each placed block's
+  read (its value, its members), recorded.
+  """
+  record = {}
+  shutil.rmtree(os.path.join(launched.gameDir, 'saves', 'unittas'), ignore_errors=True)
+  connection = launched.start(READY_SECONDS)
+  try:
+    connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
+    connection.request('world.create', {}, timeout=240)
+    connection.request('world.prepare')
+    reset(connection, at=STARTS[version])
+    game = Game(connection)
+    record['minecraft'] = connection.hello.minecraft
+    pos = Vec3(*STARTS[version]).block().offset(2, 0, 2)
+    for name, member in PLACED.items():
+      game.setBlock(pos, member)
+      value = game.block(pos)
+      record[name] = (value, game.membersOf(value))
+      game.setBlock(pos, MCBlocks.Air)
+  finally:
+    launched.stop()
+  return record
 
 
 class CrossVersionTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.launched = {}
-    cls.games = {}
-    for port, launched in ((V1_7_10, lambda: DevGame(ROOT, results(), 'cross-1.7.10')),
-                           (V26_3, lambda: AgentGame(results(), buildAgent(
-                             os.path.join(results(), 'agent-build', 'build.log')), 'cross-26.3'))):
-      game = launched()
-      cls.launched[port] = game
-      shutil.rmtree(os.path.join(game.gameDir, 'saves', 'unittas'), ignore_errors=True)
-      connection = game.start(READY_SECONDS)
-      connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
-      connection.request('world.create', {}, timeout=240)
-      connection.request('world.prepare')
-      cls.games[port] = Game(connection)
+    cls.records = {
+      V1_7_10: played(V1_7_10, DevGame(ROOT, results(), 'cross-1.7.10')),
+      V26_3: played(V26_3, AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log')),
+                                     'cross-26.3')),
+    }
 
-  @classmethod
-  def tearDownClass(cls) -> None:
-    for launched in cls.launched.values():
-      launched.stop()
-
-  def setUp(self) -> None:
-    for port, game in self.games.items():
-      reset(game.connection, at=STARTS[port])
-
-  def placed(self, port: str, member: Any) -> Any:
-    """The member placed two blocks east and south of the port's start, and its block read back there."""
-    game = self.games[port]
-    pos = Vec3(*STARTS[port]).block().offset(2, 0, 2)
-    game.setBlock(pos, member)
-    try:
-      return game.block(pos)
-    finally:
-      game.setBlock(pos, MCBlocks.Air)
-
-  def test_both_games_are_up(self) -> None:
-    self.assertEqual(('1.7.10', '26.3'), (self.games[V1_7_10].connection.hello.minecraft,
-                                          self.games[V26_3].connection.hello.minecraft))
+  def test_both_versions_played(self) -> None:
+    self.assertEqual(('1.7.10', '26.3'), (self.records[V1_7_10]['minecraft'], self.records[V26_3]['minecraft']))
 
   def test_red_wool_on_both(self) -> None:
-    old = self.placed(V1_7_10, MCBlocks.RedWool)
-    new = self.placed(V26_3, MCBlocks.RedWool)
+    old, new = self.records[V1_7_10]['red wool'], self.records[V26_3]['red wool']
     # read as each version keeps it: not alike as values
-    self.assertEqual(('minecraft:wool', 14), (old.id, old.meta))
-    self.assertEqual(('minecraft:red_wool', -1), (new.id, new.meta))
+    self.assertEqual(('minecraft:wool', 14), (old[0].id, old[0].meta))
+    self.assertEqual(('minecraft:red_wool', -1), (new[0].id, new[0].meta))
     # the same thing all the same
-    self.assertEqual({MCBlocks.RedWool}, sameThing((self.games[V1_7_10], old), (self.games[V26_3], new)))
+    self.assertEqual({MCBlocks.RedWool}, sameThing(old, new))
 
   def test_different_things_are_told_apart(self) -> None:
-    old = self.placed(V1_7_10, MCBlocks.RedWool)
-    new = self.placed(V26_3, MCBlocks.BlueWool)
-    self.assertEqual(frozenset(), sameThing((self.games[V1_7_10], old), (self.games[V26_3], new)))
+    self.assertEqual(frozenset(), sameThing(self.records[V1_7_10]['red wool'], self.records[V26_3]['blue wool']))
 
 
 if __name__ == '__main__':
