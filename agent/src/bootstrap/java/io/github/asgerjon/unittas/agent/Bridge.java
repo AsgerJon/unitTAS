@@ -23,14 +23,19 @@ import java.util.function.Function;
  * game's folder and loaded by a class loader of its own whose parent is the game's own (the hooked class's: vanilla's
  * application loader, or Knot), so it sees exactly the game's classes. It too is given JDK types only (its start: the
  * game's folder, the pass mark, the hooked classes and those rewritten so far) and answers with its own BiFunction,
- * which every hook then goes to. A probe that can't be loaded is said on the error stream, once, and every hook then
- * passes: the game runs on, and the orchestrator, never greeted, says so.
+ * which every hook then goes to. A probe that can't be loaded ends the game (Asger, 2026-11-17: "if unittas opens a
+ * game, unittas closes it", "it must never hang"): unitTAS opened it for a run, and a game no probe drives is no test,
+ * so the agent says why on the error stream and halts the JVM by its own exit code (NO_PROBE), at once, rather than
+ * leave the orchestrator waiting for a hello that never comes.
  */
 final class Bridge implements BiFunction<String, Object[], Object> {
 
 	/** The system properties the hooks find the bridge and the pass mark by. */
 	static final String HOOKS = "unittas.probe.hooks";
 	static final String PASS = "unittas.probe.pass";
+
+	/** The game's exit code when its probe can't be loaded. */
+	static final int NO_PROBE = 70;
 
 	private static final String INNER = "/unittas-probe-inner.jar";
 	private static final Set<String> REWRITTEN = ConcurrentHashMap.newKeySet();
@@ -88,18 +93,34 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 		if (found != null || broken) {
 			return found;
 		}
+		Throwable failed = null;
 		synchronized (this) {
 			if (probe == null && !broken) {
 				try {
 					probe = load(owner.getClassLoader());
 				} catch (Throwable e) {
 					broken = true;
-					System.err.println("[unitTAS] the probe couldn't be loaded: " + e);
-					e.printStackTrace();
+					failed = e;
 				}
 			}
-			return probe;
+			found = probe;
 		}
+		if (failed != null) {
+			// outside the lock: nothing the game does as it goes may wait on it
+			endTheGame(failed);
+		}
+		return found;
+	}
+
+	/**
+	 * The game ended, its probe not loaded: why, on the error stream, and the JVM halted (no shutdown hook of the
+	 * game's runs: there is nothing of a run's to keep, and one could wait on what this hook holds).
+	 */
+	private static void endTheGame(Throwable cause) {
+		System.err.println("[unitTAS] the probe couldn't be loaded, so the game ends: " + cause);
+		cause.printStackTrace();
+		System.err.flush();
+		Runtime.getRuntime().halt(NO_PROBE);
 	}
 
 	/**

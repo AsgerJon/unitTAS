@@ -69,6 +69,7 @@ root = sys.argv[sys.argv.index('--install-client') + 1]
 if not os.path.isfile(os.path.join(root, 'launcher_profiles.json')):
   print('There is no minecraft launcher profile in ' + root)
   sys.exit(1)
+print('Installing NeoForge client', flush=True)
 if os.path.exists(os.path.join(here, 'fail')):
   print('Processor failed, invalid outputs')
   sys.exit(1)
@@ -286,6 +287,14 @@ class NeoForgeLauncherTests(unittest.TestCase):
     os.remove(os.path.join(self.bin, 'fail'))
     self.launch()
     self.assertEqual(2, len(self.calls()), 'not taken as installed')
+
+  def test_its_installer_s_lines_said_as_they_come(self) -> None:
+    """Its sign of life while it installs: each of its lines said."""
+    said = []
+    self.cache.said = said.append
+    self.launch()
+    self.assertIn('NeoForge %s installer: Installing NeoForge client'
+                  % NEOFORGE, said)
 
   def test_its_installer_held_to_its_sha1(self) -> None:
     self.fixture.served[INSTALLER] = installerJar('not:the:installer')

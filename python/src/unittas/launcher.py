@@ -493,12 +493,19 @@ def _neoForgeProfile(sources: Sources, minecraft: str, loaderVersion: str, java:
         file.write('{"profiles": {}}\n')
     log = sources.cache.path('versions/%s/install.log' % name)
     os.makedirs(os.path.dirname(log), exist_ok=True)
+    # its output kept, and each line said as it comes (the launch's sign of life while it installs)
     with open(log, 'w', encoding='utf-8') as output:
-      done = subprocess.run([java, '-jar', installer, '--install-client', root], stdin=subprocess.DEVNULL,
-                            stdout=output, stderr=subprocess.STDOUT, cwd=os.path.dirname(installer))
-    if done.returncode != 0 or not (os.path.isfile(profilePath) and os.path.isfile(patched)):
+      installing = subprocess.Popen([java, '-jar', installer, '--install-client', root], stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=os.path.dirname(installer),
+                                    text=True, errors='replace')
+      for line in installing.stdout:
+        output.write(line)
+        if sources.cache.said is not None:
+          sources.cache.said('NeoForge %s installer: %s' % (loaderVersion, line.rstrip('\n')))
+      returncode = installing.wait()
+    if returncode != 0 or not (os.path.isfile(profilePath) and os.path.isfile(patched)):
       raise Missing("NeoForge %s's installer didn't install it (exit %d): its output is in %s" % (
-        loaderVersion, done.returncode, log))
+        loaderVersion, returncode, log))
   with open(profilePath, encoding='utf-8') as file:
     profile = json.load(file)
   if profile.get('inheritsFrom') != minecraft:
@@ -741,6 +748,11 @@ def java8() -> str:
   return os.environ.get('UNITTAS_JAVA8') or JAVA8_CANDIDATES[0]
 
 
+def _said(line: str) -> None:
+  """What the launcher does as it goes (each fetch, the installer's lines): the launch's sign of life, said at once."""
+  print('unitTAS launcher: ' + line, flush=True)
+
+
 def main(*args: str, gradleHome: Optional[str] = None) -> int:
   """
   bin/launch_client.py's command line:
@@ -786,7 +798,7 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
     return 2
   game = os.path.abspath(args[1])
   sources = Sources(gradleHome=None if noGradle else os.environ.get('UNITTAS_GRADLE_HOME') or gradleHome,
-                    cache=Cache(cacheRoot) if cacheRoot else None)
+                    cache=Cache(cacheRoot, said=_said) if cacheRoot else None)
   try:
     if '--minecraft' in taken:
       if ('--loader' in taken) != ('--loader-version' in taken):

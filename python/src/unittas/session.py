@@ -49,8 +49,8 @@ SPEC_NAME = 'unittas.toml'
 READY_SECONDS = float(os.environ.get('UNITTAS_READY_SECONDS', '600'))
 #  Meanwhile its log is watched (SPEC.md, after 9.8): a game loading its mods writes to it all along. Nothing new in
 #  it for the first, the terminal says so; for the second, the game is given up as hung while it loaded.
-LOG_QUIET_SAY_SECONDS = 120.0
-LOG_QUIET_SECONDS = float(os.environ.get('UNITTAS_LOG_QUIET_SECONDS', '300'))
+LOG_QUIET_SAY_SECONDS = 60.0
+LOG_QUIET_SECONDS = float(os.environ.get('UNITTAS_LOG_QUIET_SECONDS', '120'))
 READY_POLL_SECONDS = 1.0
 NO_RUN = ('no unitTAS run: start the tests with "unittas run", or give plain unittest an instance spec to start one '
           'from: UNITTAS_INSTANCE, or %s in the current folder (%s)')

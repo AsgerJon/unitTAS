@@ -64,11 +64,17 @@ def fileSha1(path: str) -> str:
 
 
 class Cache:
-  """The cache's folder ('root') and the fetcher it uses ('fetch', a URL to its bytes)."""
+  """
+  The cache's folder ('root'), the fetcher it uses ('fetch', a URL to its bytes), and what hears of each file it
+  fetches as it comes ('said', a line each; None: none): a launch's sign of life while it fetches, so a launcher that
+  says nothing for long is stuck.
+  """
 
-  def __init__(self, root: Optional[str] = None, fetch: Optional[Callable[[str], bytes]] = None) -> None:
+  def __init__(self, root: Optional[str] = None, fetch: Optional[Callable[[str], bytes]] = None,
+               said: Optional[Callable[[str], None]] = None) -> None:
     self.root = os.path.abspath(root or defaultRoot())
     self.fetch = fetch or httpsFetch
+    self.said = said
 
   def path(self, relative: str) -> str:
     return os.path.join(self.root, *relative.split('/'))
@@ -109,6 +115,8 @@ class Cache:
     finally:
       if os.path.exists(part):
         os.remove(part)
+    if self.said is not None:
+      self.said('fetched %s (%d bytes)' % (name, len(data)))
     return target
 
   def store(self, relative: str, source: str, sha1: Optional[str] = None) -> str:

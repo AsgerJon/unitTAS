@@ -24,6 +24,7 @@ from worktoy.mcls import BaseObject
 
 from .errors import LinkClosed, LinkTimeout, UnitTasError
 from .gamefiles import GameFiles
+from .gameoutput import GameOutput
 from .link import Listener
 from .wire import Role
 
@@ -32,8 +33,14 @@ if TYPE_CHECKING:  # pragma: no cover
 
   from .link import Connection, Expected
 
-#  How long a launch may take from its start to the probe's hello (a cold build included).
-HELLO_SECONDS = float(os.environ.get('UNITTAS_HELLO_SECONDS', '600'))
+#  How long a launch may go without a sign of life (nothing new in its output) before the probe's hello: a launcher
+#  fetching or installing, or a build, says what it does as it goes, so one quiet this long is stuck (Asger,
+#  2026-11-17: "if you open a game, it must never hang")
+HELLO_SECONDS = float(os.environ.get('UNITTAS_HELLO_SECONDS', '120'))
+#  What the agent says as it wakes in the game (its premain, as the JVM starts); its probe dials seconds after (2 s in
+#  26.3 beside NeoForge), so a hello not come this long after it never will
+WOKE = '[unitTAS] the probe wakes'
+HELLO_AFTER_WAKE = 30.0
 #  What FML logs once every mod has loaded; the probe has said hello long before (it dials as Minecraft starts).
 LOADED = 'Forge Mod Loader has successfully loaded'
 LOADED_GRACE = 10.0
@@ -157,25 +164,40 @@ class LaunchedGame(BaseObject):
 
   def accept(self, seconds: float = HELLO_SECONDS) -> Connection:
     """
-    The game's connection, once its hello is welcomed. LinkClosed if the
-    game ends first; LinkTimeout after 'seconds', at once when its hello
-    was refused, or once the game has loaded every mod (FML says so in its
-    log) and no hello came within LOADED_GRACE seconds: a probe that
-    never woke.
+    The game's connection, once its hello is welcomed. It never waits on a
+    game that shows no sign of life: LinkClosed if the game ends first;
+    LinkTimeout at once when its hello was refused; once 'seconds' pass
+    with nothing new in the game's output (a launcher fetching or
+    installing, or a build, says what it does as it goes); once the agent
+    has woken in the game (WOKE in its output) and no hello came within
+    HELLO_AFTER_WAKE; or once FML has loaded every mod (its log says so)
+    and none came within LOADED_GRACE: a probe that never woke.
     """
-    deadline = time.monotonic() + seconds
-    loadedAt = None
+    seen = GameOutput(os.path.join(self.results, self.outputName()), (WOKE, LOADED))
+    #  the command's own output, where it is a file of its own (a launch script's lines): a sign of life too
+    launching = None if self.launchName() == self.outputName() else GameOutput(
+      os.path.join(self.results, self.launchName()), ())
+    quietSince = time.monotonic()
+    wokeAt = loadedAt = None
     while True:
-      left = deadline - time.monotonic()
-      if left <= 0:
-        raise LinkTimeout('%s: no hello within %s s (its output: %s)' % (self.name, seconds, self.results))
-      if loadedAt is None and self._loaded():
-        loadedAt = time.monotonic()
-      if loadedAt is not None and time.monotonic() - loadedAt > LOADED_GRACE:
+      now = time.monotonic()
+      if seen.grew() | (launching is not None and launching.grew()):
+        quietSince = now
+      if now - quietSince > seconds:
+        raise LinkTimeout('%s: no hello, and nothing new in its output for %s s (its output: %s)' % (
+          self.name, seconds, self.results))
+      if wokeAt is None and seen.said(WOKE):
+        wokeAt = now
+      if wokeAt is not None and now - wokeAt > HELLO_AFTER_WAKE:
+        raise LinkTimeout('%s: its agent woke, but its probe never said hello in %s s (its output: %s)' % (
+          self.name, HELLO_AFTER_WAKE, self.results))
+      if loadedAt is None and seen.said(LOADED):
+        loadedAt = now
+      if loadedAt is not None and now - loadedAt > LOADED_GRACE:
         raise LinkTimeout('%s: the game has loaded every mod, but its probe never said hello (its output: %s)' % (
           self.name, self.results))
       try:
-        self.__connection__ = self.__listener__.accept(timeout=min(5.0, left))
+        self.__connection__ = self.__listener__.accept(timeout=1.0)
         return self.__connection__
       except LinkTimeout as timeout:
         #  a refused game quits: no point waiting for it
@@ -184,14 +206,6 @@ class LaunchedGame(BaseObject):
         if self.__process__.poll() is not None:
           raise LinkClosed('%s ended before it connected (exit %s; its output: %s)' % (
             self.name, self.__process__.returncode, self.results))
-
-  def _loaded(self) -> bool:
-    """Whether FML has said, in the game's output, that it loaded every mod."""
-    try:
-      with open(os.path.join(self.results, self.outputName()), encoding='utf-8', errors='replace') as log:
-        return any(LOADED in line for line in log)
-    except OSError:
-      return False
 
   def start(self, seconds: float = HELLO_SECONDS) -> Connection:
     """Launches the game and waits for its hello; on any failure it is stopped again."""

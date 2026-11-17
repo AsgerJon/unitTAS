@@ -1,0 +1,104 @@
+"""
+A launched game's wait for its hello never hangs (Asger, 2026-11-17: "if
+you open a game, it must never hang"; unittas.game.LaunchedGame.accept),
+with commands that are no game, each acting one way a game can:
+- one whose agent woke (its line in the output) but whose probe never
+  dials fails once HELLO_AFTER_WAKE has passed, not at the run's limit;
+- one that says nothing at all fails once its quiet limit has passed;
+- one that keeps saying what it does (a launcher fetching, an installer
+  installing) is waited for as long as it does, past the quiet limit;
+  when it then ends, that is said (LinkClosed), not taken for a timeout;
+- a game that ends before its hello is said at once, its exit code named.
+"""
+#  Apache-2.0 license
+#  Copyright (c) 2026 Asger Jon Vistisen
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+from unittas import game
+from unittas.errors import LinkClosed, LinkTimeout
+from unittas.game import LaunchedGame
+
+#  each 'game', a Python script: what it prints, how it waits
+WOKE_AND_SILENT = (
+  "import sys, time\n"
+  "print('[unitTAS] the probe wakes: 19 hooks', file=sys.stderr, "
+  "flush=True)\n"
+  "time.sleep(60)\n")
+SILENT = "import time\ntime.sleep(60)\n"
+BUSY = (
+  "import time\n"
+  "for each in range(8):\n"
+  "  print('unitTAS launcher: fetched asset %d' % each, flush=True)\n"
+  "  time.sleep(0.5)\n")
+ENDS = "import sys\nsys.exit(70)\n"
+
+
+class ScriptGame(LaunchedGame):
+  """A 'game' that is a Python script, its output in output.log."""
+
+  def __init__(self, root: str, results: str, script: str) -> None:
+    LaunchedGame.__init__(self, root, results, 'script')
+    self.script = script
+
+  def gameFolder(self) -> str:
+    return os.path.join(self.root(), 'game')
+
+  def command(self) -> list:
+    return [sys.executable, '-c', self.script]
+
+  def outputName(self) -> str:
+    return 'output.log'
+
+
+class HelloWaitTests(unittest.TestCase):
+
+  def setUp(self) -> None:
+    self.folder = tempfile.mkdtemp(prefix='unittas-hellowait-')
+    self.addCleanup(shutil.rmtree, self.folder, True)
+
+  def started(self, script: str, seconds: float) -> tuple:
+    """The game started, and what its start raised, and how long it took."""
+    launched = ScriptGame(self.folder, os.path.join(self.folder, 'results'),
+                          script)
+    began = time.monotonic()
+    with self.assertRaises((LinkTimeout, LinkClosed)) as raised:
+      launched.start(seconds)
+    return raised.exception, time.monotonic() - began, launched
+
+  def test_woke_but_never_dialled(self) -> None:
+    with mock.patch.object(game, 'HELLO_AFTER_WAKE', 2.0):
+      raised, took, launched = self.started(WOKE_AND_SILENT, 60)
+    self.assertIsInstance(raised, LinkTimeout)
+    self.assertIn('woke', str(raised))
+    self.assertLess(took, 10, 'within HELLO_AFTER_WAKE, not the 60 s')
+    self.assertIsNotNone(launched.process().poll(), 'and stopped')
+
+  def test_silent(self) -> None:
+    raised, took, launched = self.started(SILENT, 2)
+    self.assertIsInstance(raised, LinkTimeout)
+    self.assertIn('nothing new', str(raised))
+    self.assertLess(took, 10)
+    self.assertIsNotNone(launched.process().poll(), 'and stopped')
+
+  def test_busy_is_waited_for(self) -> None:
+    raised, took, _ = self.started(BUSY, 2)
+    self.assertIsInstance(raised, LinkClosed, 'it ended, not timed out')
+    self.assertGreater(took, 3, 'waited past the quiet limit as it worked')
+
+  def test_an_end_before_the_hello_is_said_at_once(self) -> None:
+    raised, took, _ = self.started(ENDS, 60)
+    self.assertIsInstance(raised, LinkClosed)
+    self.assertIn('exit 70', str(raised))
+    self.assertLess(took, 10)
+
+
+if __name__ == '__main__':
+  unittest.main()

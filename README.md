@@ -76,10 +76,19 @@ time.
   or `<world>-dropped-1.png`), left, and opened again, once, and the progress says so. Hung twice, the world doesn't
   open: the run's tests are `NO RESULT`. A Python run also pictures the game as it comes up
   (`screenshots/opened.png`).
+- A game unitTAS opens, unitTAS closes, and it never waits on one that shows no sign of life:
+  - Before its probe says hello, the launch must keep saying what it does: the launcher names each file it fetches and
+    each line of NeoForge's installer as they come, a build its tasks. Two minutes with nothing new
+    (`UNITTAS_HELLO_SECONDS`) and the game is stopped, said so. Once the agent has woken in the game (its first line,
+    as the JVM starts), the hello must follow within 30 s; it takes about 2. A game that ends first is said at once,
+    with its exit code.
+  - An agent whose probe can't be loaded ends the game itself, saying why (exit code 70): a game no probe drives is
+    no test, so it isn't left on its title screen for the run to wait on.
 - A Python run (`unittas run`, plain `unittest`) watches the two stretches before its first world opens:
-  - While the game loads its mods, its log grows. With nothing new in it for 2 minutes, the terminal says so. After
-    5 minutes (`UNITTAS_LOG_QUIET_SECONDS`) the game counts as hung while loading: it is stopped, and every test is
-    `NO RESULT`, "the game didn't start". 10 minutes (`UNITTAS_READY_SECONDS`) is the most the loading may take.
+  - While the game loads its mods, its log grows. With nothing new in it for 1 minute, the terminal says so. After
+    2 minutes (`UNITTAS_LOG_QUIET_SECONDS`) the game counts as hung while loading: it is stopped, and every test is
+    `NO RESULT`, "the game didn't start". 10 minutes (`UNITTAS_READY_SECONDS`) is the most a loading that keeps
+    going may take (a big modpack's).
   - Once the game is at its title screen, the run asks for its first world at once. If it hasn't asked 600 client
     ticks later (about 30 s), the terminal and `progress.txt` say so (`NO WORLD YET`). At 1200 ticks the run stops,
     every test `NO RESULT`, and the game quits. It counts the game's ticks, so a slow machine gets more time.

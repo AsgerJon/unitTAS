@@ -259,6 +259,21 @@ class ModernLauncherTests(unittest.TestCase):
     self.assertNotIn('fabric-loader-0.20.1.jar', names)
     self.assertTrue(all(os.path.isfile(jar) for jar in jars))
 
+  def test_each_fetch_said_as_it_comes(self) -> None:
+    """
+    The launcher's sign of life while it fetches (a launch never hangs, so a quiet one is stuck): each file it fetches
+    said as it comes, once; nothing said for what the cache has already.
+    """
+    said = []
+    sources = Sources(cache=Cache(os.path.join(self.scratch, 'cache'), fetch=self.fixture.fetch, said=said.append))
+    self.launch(sources)
+    self.assertTrue(any('the 26.3 client jar' in line for line in said), said[:5])
+    self.assertTrue(all(line.startswith('fetched ') for line in said), said[:5])
+    self.assertEqual(len(said), len(set(said)), 'each once')
+    before = len(said)
+    self.launch(sources)
+    self.assertEqual(before, len(said), 'nothing for what was there')
+
   def test_each_file_once_and_then_none(self) -> None:
     sources = self.sources()
     self.launch(sources)

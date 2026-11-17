@@ -9,8 +9,10 @@ from __future__ import annotations
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-#  from the start of loading to the title screen, with every mod (a cold start included)
-READY_SECONDS = 600.0
+#  a game's longest silence before its hello (LaunchedGame.accept: nothing new in its output; the agent's probe hails
+#  within HELLO_AFTER_WAKE of waking), and from its hello to the title screen; seconds in a healthy start, so a game
+#  that takes this long is stuck (Asger, 2026-11-17: "600s is disgusting. If you open a game, it must never hang")
+READY_SECONDS = 120.0
 #  from asking it to quit, or from losing its orchestrator, to its process gone
 GONE_SECONDS = 120.0
 #  unitTAS's mixins, as the ready event names them (mixins.unittas.json)
