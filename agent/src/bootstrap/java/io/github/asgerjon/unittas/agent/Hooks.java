@@ -4,9 +4,9 @@ import java.util.List;
 
 /**
  * The game's methods the probe hooks (SPEC.md 19.7 step 5), by their class, name and descriptor in Mojang's names (26.x
- * is unobfuscated): each the counterpart of one of the 26.3 Fabric probe's mixins. A hook BEFORE is called at the
- * method's start, and may end it there (its value then the method's); a hook AFTER is called before each of its
- * returns.
+ * is unobfuscated): each the counterpart of one of the 26.3 Fabric probe's mixins. A hook BEFORE is called as the
+ * method is, and may end it there (its value then the method's); a hook AFTER is called once the method has returned
+ * (Rewriter wraps each hooked method: step 6a). A constructor can't be wrapped, so nothing hooks one.
  */
 final class Hooks {
 
@@ -23,8 +23,9 @@ final class Hooks {
 	private static final String MOUSE = "net/minecraft/client/MouseHandler";
 
 	static final List<Hook> TABLE = List.of(
-		// the game made: the probe dials (as 1.7.10's does from Minecraft's constructor)
-		new Hook(MINECRAFT, "<init>", null, When.AFTER, "minecraft.made"),
+		// the game made: the probe dials (as 1.7.10's does from Minecraft's constructor). Main calls run right after
+		// constructing it, on the same thread
+		new Hook(MINECRAFT, "run", "()V", When.BEFORE, "minecraft.made"),
 		new Hook(MINECRAFT, "tick", "()V", When.BEFORE, "client.tick.start"),
 		new Hook(MINECRAFT, "tick", "()V", When.AFTER, "client.tick.end"),
 		// the window's title while the probe is awake (PROTOCOL.md 2.5)

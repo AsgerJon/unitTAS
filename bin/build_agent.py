@@ -6,8 +6,10 @@ Builds unitTAS's loader-free probe for 26.3 (SPEC.md 19.7 step 5): a Java agent,
 What it compiles against comes from unitTAS's own launcher: 26.3's client jar and its libraries for this system,
 from the download cache (~/.cache/unittas, or UNITTAS_CACHE, or --cache), each held to its sha1, fetched there if
 missing. Java 25's javac compiles, in two passes:
-- the bootstrap (agent/src/bootstrap/java): the premain, the class rewriter and the bridge, JDK classes only;
-- the probe (src/probe-core/java and agent/src/v26/java), against the game and the bootstrap.
+- the bootstrap (agent/src/bootstrap/java): the premain, the class rewriter and the bridge, JDK classes only, for
+  Java 17, so that one bootstrap runs on every version's Java (17 for 1.20.1, 21 for 1.21.1, 25 for 26.3: SPEC.md
+  19.7 step 6);
+- the probe (src/probe-core/java and agent/src/v26/java), against the game and the bootstrap, for the game's Java.
 The probe's classes go into a jar of their own (unittas-probe-inner.jar), which goes inside the agent's jar beside
 the bootstrap's classes: on the application class path only the bootstrap is; the bridge loads the probe under the
 game's own class loader. Both manifests carry the root's mod_version. The jar: agent/build/unittas-probe-26.3.jar
@@ -35,6 +37,9 @@ PREMAIN = 'io.github.asgerjon.unittas.agent.Agent'
 OUT = os.path.join(ROOT, 'agent', 'build', 'unittas-probe-26.3.jar')
 BOOTSTRAP = os.path.join(ROOT, 'agent', 'src', 'bootstrap', 'java')
 PROBE = (os.path.join(ROOT, 'src', 'probe-core', 'java'), os.path.join(ROOT, 'agent', 'src', 'v26', 'java'))
+#  the bootstrap's Java (the oldest a version runs on), and the 26.3 probe's (its game's)
+BOOTSTRAP_RELEASE = '17'
+PROBE_RELEASE = '25'
 JAVA_25 = ('/usr/lib/jvm/java-25-openjdk', '/usr/lib/jvm/java-25-openjdk-amd64', '/usr/lib/jvm/jdk-25')
 #  every entry's time, so the same classes make the same jar
 STAMP = (1980, 1, 1, 0, 0, 0)
@@ -111,14 +116,19 @@ def javac(java25: str) -> str:
     java25 or ', '.join(JAVA_25)))
 
 
-def _compile(compiler: str, classPath: list, sources: list, into: str) -> None:
+def _compile(compiler: str, classPath: list, sources: list, into: str, release: str) -> None:
   os.makedirs(into, exist_ok=True)
-  command = [compiler, '--release', '25', '-encoding', 'UTF-8', '-nowarn', '-d', into]
+  command = [compiler, '--release', release, '-encoding', 'UTF-8', '-nowarn', '-d', into]
   if classPath:
     command += ['-cp', os.pathsep.join(classPath)]
   done = subprocess.run(command + sources, stdin=subprocess.DEVNULL, capture_output=True, text=True)
   if done.returncode != 0:
     raise RuntimeError('javac failed:\n' + done.stdout + done.stderr)
+
+
+def compileBootstrap(compiler: str, into: str) -> None:
+  """The bootstrap's classes into the folder, for Java 17: it needs the JDK only, so any javac from 17 does."""
+  _compile(compiler, [], sourcesUnder(BOOTSTRAP), into, BOOTSTRAP_RELEASE)
 
 
 def build(out: str = OUT, cacheRoot: str = '', java25: str = '') -> str:
@@ -132,9 +142,9 @@ def build(out: str = OUT, cacheRoot: str = '', java25: str = '') -> str:
   try:
     bootstrapClasses = os.path.join(work, 'bootstrap')
     probeClasses = os.path.join(work, 'probe')
-    _compile(compiler, [], sourcesUnder(BOOTSTRAP), bootstrapClasses)
+    compileBootstrap(compiler, bootstrapClasses)
     _compile(compiler, game + [bootstrapClasses], [path for folder in PROBE for path in sourcesUnder(folder)],
-             probeClasses)
+             probeClasses, PROBE_RELEASE)
     return assemble(bootstrapClasses, probeClasses, modVersion(), out)
   finally:
     shutil.rmtree(work, ignore_errors=True)

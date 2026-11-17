@@ -61,6 +61,9 @@ public final class V26Entry implements BiFunction<String, Object[], Object> {
 		Object[] arguments = java.util.Arrays.copyOfRange(call, 2, call.length);
 		switch (hook) {
 			// before a method: the pass mark goes on with it; anything else ends it, as its value
+			case "minecraft.made":
+				launched((Minecraft) self);
+				return pass;
 			case "client.tick.start":
 				V26Hooks.clientTickStart();
 				return pass;
@@ -89,9 +92,6 @@ public final class V26Entry implements BiFunction<String, Object[], Object> {
 				return V26Hooks.awake() && mc.level != null && mc.gui.screen() == null ? Boolean.TRUE : pass;
 			}
 			// after a method: its value is dropped
-			case "minecraft.made":
-				launched((Minecraft) self);
-				return pass;
 			case "client.tick.end":
 				V26Hooks.clientTickEnd((Minecraft) self);
 				return pass;
@@ -104,8 +104,9 @@ public final class V26Entry implements BiFunction<String, Object[], Object> {
 	}
 
 	/**
-	 * Minecraft is made: the probe is given the game's own way out (Minecraft.stop, which the Quit button calls), then
-	 * it dials, as the 1.7.10 probe does from its MixinMinecraft. A quit asked for before there is a game to quit
+	 * Minecraft is made (its run is starting, which Main calls right after constructing it): the probe is given the
+	 * game's own way out (Minecraft.stop, which the Quit button calls), then it dials, as the 1.7.10 probe does from
+	 * its MixinMinecraft. A quit asked for before there is a game to quit
 	 * happens as soon as there is.
 	 */
 	private static void launched(Minecraft minecraft) {

@@ -697,8 +697,11 @@ The 26.3 probe is a Java agent, built without Gradle: `python3 bin/build_agent.p
 against 26.3's own client jar and libraries (from unitTAS's download cache, each held to its sha1) and makes
 `agent/build/unittas-probe-26.3.jar`. It needs no loader and no library: the game is started with
 `-javaagent:unittas-probe-26.3.jar=GAME` (the launcher's `--agent JAR`), and the probe puts its few hooks into the
-game's classes itself, by the JDK's own class-file API, naming only the JDK's classes in them (a loader may hide the
-agent's jar from the game, as Fabric's does). It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
+game's classes itself, naming only the JDK's classes in them (a loader may hide the agent's jar from the game, as
+Fabric's does). It wraps each hooked method (the original renamed `name$unittas` and made private, a method of the
+hooked one's name calling the hooks and then it), so the game's own code is never edited, and the wrapping needs
+nothing but the JDK, on Java 17 and later: `python3 -m unittest bin/tests/test_agent_wrap.py` checks it on every Java
+installed of 17, 21 and 25. It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
 under test brings: a mod and its loader are the user's, taken as working. Its version is the root's `mod_version`.
 The probe's version-free core, `src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
 
