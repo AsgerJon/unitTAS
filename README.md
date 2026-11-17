@@ -696,10 +696,17 @@ The 26.3 Fabric probe is a Gradle build of its own in `fabric/`, with its own wr
 on Java 25 (Gradle 9.8.2, Fabric Loom, Mojang's names) makes `fabric/build/libs/unittas-probe-26.3-fabric.jar`. Its
 version is the root's `mod_version`. The probe's version-free core, `src/probe-core/java`, is compiled into both.
 
+The loader-free 26.3 probe is a Java agent, built without Gradle: `python3 bin/build_agent.py` compiles it with Java
+25's `javac` against 26.3's own client jar and libraries (from unitTAS's download cache, each held to its sha1) and
+makes `agent/build/unittas-probe-26.3.jar`. It needs no loader and no library: the game is started with
+`-javaagent:unittas-probe-26.3.jar=GAME` (the launcher's `--agent JAR`), and the probe puts its few hooks into the
+game's classes itself, by the JDK's own class-file API. It runs in 26.3 as Mojang ships it, and beside whatever loader
+the mod under test brings.
+
 The probe's own game tests (`python/tests/probe`) run with `python -m unittas.selftest [filter] [on PORT]` from the
-root (through the watcher: `probe [filter] [on PORT]`). The port is a version and its loader: `1.7.10-forge` (the
-development client, the default) or `26.3-fabric` (a real client from unitTAS's own launcher, `fabric/`'s jar in its
-`mods/`). A test written for every port names things by mcdex member and places from the port's start; one its port
+root (through the watcher: `probe [filter] [on PORT]`). The port is a version and what runs it: `1.7.10-forge` (the
+development client, the default), `26.3-fabric` (a real client from unitTAS's own launcher, `fabric/`'s jar in its
+`mods/`) or `26.3` (26.3 as Mojang ships it, the probe a Java agent). A test written for every port names things by mcdex member and places from the port's start; one its port
 can't do yet skips, saying which step brings it (`ports.py`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be

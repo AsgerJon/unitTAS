@@ -464,21 +464,24 @@ def _jar(sources: Sources, library: versions.Library) -> str:
                   None if library.sha1s else url + '.sha1')
 
 
-def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: str, loader: str, loaderVersion: str,
-                   username: str = USERNAME, memory: str = '4G', width: int = 854, height: int = 480,
-                   javaCandidates: Optional[dict] = None) -> Launch:
+def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: str, loader: Optional[str],
+                   loaderVersion: Optional[str], username: str = USERNAME, memory: str = '4G', width: int = 854,
+                   height: int = 480, javaCandidates: Optional[dict] = None, agents: tuple = ()) -> Launch:
   """
-  The launch of a real client of any version with a loader on top (SPEC.md
-  12.3, step 2; LOADERS names them), in the game folder, on that Java: the
-  version JSON and the loader's profile resolved for this system
-  (unittas.versions), every file from the Gradle cache or the download
-  cache and held to its sha1. Its player 'username' (offline), its memory
-  the run's ('-Xmx'), the version's own collector flags kept, its window
-  'width' by 'height'. 'java' None: the Java the version's JSON asks for
-  (findJavaFor). Missing naming what can't be had; ValueError for a
-  loader it doesn't put on, a name, or a memory it can't take.
+  The launch of a real client of any version, as Mojang ships it (loader
+  None) or with a loader on top (SPEC.md 12.3, step 2; LOADERS names
+  them), in the game folder, on that Java: the version JSON and the
+  loader's profile resolved for this system (unittas.versions), every
+  file from the Gradle cache or the download cache and held to its sha1.
+  Its player 'username' (offline), its memory the run's ('-Xmx'), the
+  version's own collector flags kept, its window 'width' by 'height'.
+  Each of 'agents' (a jar) a Java agent, given the game folder
+  (-javaagent:JAR=GAME): the loader-free probe (SPEC.md 19.7 step 5).
+  'java' None: the Java the version's JSON asks for (findJavaFor).
+  Missing naming what can't be had; ValueError for a loader it doesn't
+  put on, a name, or a memory it can't take.
   """
-  if loader not in LOADERS:
+  if loader is not None and loader not in LOADERS:
     raise ValueError('unitTAS puts %s on a version, not %r (1.7.10 Forge is command\'s)' % (
       ', '.join(LOADERS), loader))
   if not isinstance(username, str) or not PLAYER_NAME.match(username):
@@ -486,7 +489,7 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   if not MEMORY.match(memory or ''):
     raise ValueError("memory is as -Xmx takes it, '4G' or '3072M', not %r" % (memory,))
   vanilla = _versionJson(sources, minecraft)
-  profile = _profile(sources, minecraft, loader, loaderVersion)
+  profile = None if loader is None else _profile(sources, minecraft, loader, loaderVersion)
   version = versions.resolve(vanilla, profile, features={'has_custom_resolution': True})
   if java is None:
     java = findJavaFor(version.javaMajor, javaCandidates)
@@ -514,8 +517,27 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
                           'the logging config ' + config['id'], [config['sha1']])
     jvm += versions.fill([version.logging['argument']], {'path': configPath})
   jvm += versions.fill(version.jvm, values)
+  jvm += ['-javaagent:%s=%s' % (agent, game) for agent in agents]
   return Launch([java] + jvm + [version.mainClass] + versions.fill(version.game, values), natives, assets,
                 version.javaMajor)
+
+
+def classPath(sources: Sources, minecraft: str) -> list:
+  """
+  What code built against the game compiles with (the loader-free probe,
+  SPEC.md 19.7 step 5): the version's own libraries for this system and
+  its client jar last, from the Gradle cache or the download cache, each
+  held to its sha1. Missing naming what can't be had.
+  """
+  vanilla = _versionJson(sources, minecraft)
+  version = versions.resolve(vanilla, None)
+  path = [_jar(sources, library) for library in version.libraries]
+  client = version.client
+  if not client:
+    raise Missing('the %s version JSON names no client jar' % minecraft)
+  path.append(_fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
+                       'the %s client jar' % minecraft, [client['sha1']]))
+  return path
 
 
 def extract(natives: list, into: str) -> None:
@@ -592,12 +614,13 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   """
   bin/launch_client.py's command line:
   --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]
-  [--username NAME] [--minecraft VERSION --loader NAME --loader-version
-  VERSION [--memory 4G] [--width N] [--height N]].
+  [--username NAME] [--minecraft VERSION [--loader NAME --loader-version
+  VERSION] [--agent JAR] [--memory 4G] [--width N] [--height N]].
 
   Without --minecraft it is 1.7.10 Forge (command); with it, that version
-  with the loader on top (versionCommand), its Java the one its JSON asks
-  for unless --java names one.
+  as Mojang ships it, or with the loader on top (versionCommand), with
+  the Java agent if one is named, its Java the one its JSON asks for
+  unless --java names one.
 
   The Gradle cache is UNITTAS_GRADLE_HOME's, else the one given, unless
   --no-gradle-cache. Nothing is downloaded but with --cache, which names
@@ -607,8 +630,8 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   folder.
   """
   usage = ('Usage: python3 bin/launch_client.py --game DIR [--dry-run] [--cache DIR] [--no-gradle-cache] [--java PATH]'
-           ' [--username NAME] [--minecraft VERSION --loader NAME --loader-version VERSION [--memory 4G] [--width N]'
-           ' [--height N]]  (or: python -m unittas.launcher ...)')
+           ' [--username NAME] [--minecraft VERSION [--loader NAME --loader-version VERSION] [--agent JAR]'
+           ' [--memory 4G] [--width N] [--height N]]  (or: python -m unittas.launcher ...)')
   args = list(args)
   dry = '--dry-run' in args
   if dry:
@@ -617,8 +640,8 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
   if noGradle:
     args.remove('--no-gradle-cache')
   taken = {}
-  for option in ('--cache', '--java', '--username', '--minecraft', '--loader', '--loader-version', '--memory',
-                 '--width', '--height'):
+  for option in ('--cache', '--java', '--username', '--minecraft', '--loader', '--loader-version', '--agent',
+                 '--memory', '--width', '--height'):
     if option in args:
       at = args.index(option)
       if at + 1 >= len(args):
@@ -635,13 +658,14 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
                     cache=Cache(cacheRoot) if cacheRoot else None)
   try:
     if '--minecraft' in taken:
-      if '--loader' not in taken or '--loader-version' not in taken:
+      if ('--loader' in taken) != ('--loader-version' in taken):
         print(usage)
         return 2
+      agents = (os.path.abspath(taken['--agent']),) if '--agent' in taken else ()
       launch = versionCommand(game, findJava(taken['--java']) if '--java' in taken else None, sources,
-                              taken['--minecraft'], taken['--loader'], taken['--loader-version'],
+                              taken['--minecraft'], taken.get('--loader'), taken.get('--loader-version'),
                               taken.get('--username', USERNAME), taken.get('--memory', '4G'),
-                              int(taken.get('--width', 854)), int(taken.get('--height', 480)))
+                              int(taken.get('--width', 854)), int(taken.get('--height', 480)), agents=agents)
     else:
       launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources,
                        taken.get('--username', USERNAME))

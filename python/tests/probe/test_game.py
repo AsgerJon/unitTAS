@@ -18,7 +18,7 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities, MCItems, MCSounds
 
-from ports import FORGE_1_7_10, code, port, probeGame, start
+from ports import V1_7_10, code, probeGame, start, version
 from probegame import READY_SECONDS, results
 from unittas.api import Game
 from unittas.codec import toJson
@@ -144,7 +144,7 @@ class GameTests(unittest.TestCase):
     read = self.request('chat.read')
     self.assertEqual('/time', read['text'])
     self.assertIn('/time', read['suggestions'])
-    if port() == FORGE_1_7_10:
+    if version() == V1_7_10:
       self.assertEqual([], read['usage'], "1.7.10's own chat shows no usage")
     self.request('screen.close')
 

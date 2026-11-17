@@ -19,7 +19,7 @@ import unittest
 
 from mcdex import MCEntities
 
-from ports import FABRIC_26_3, FORGE_1_7_10, at, onlyOn, point, port, probeGame, start
+from ports import V1_7_10, V26_3, at, onlyOn, point, probeGame, start, version
 from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
 from unittas.errors import BadRequest, NotFound
@@ -34,38 +34,38 @@ EVERY_TYPE = ('{b:1b,s:2s,i:3,l:4L,f:5.5f,d:6.25d,str:"seven",list:[1,2,3],bytes
               'comp:{x:1},"odd key":"v"}')
 #  what the tests reach, as each version names it
 NAMES = {
-  'inventory': {FORGE_1_7_10: 'inventory', FABRIC_26_3: 'inventory'},
-  'selected slot': {FORGE_1_7_10: 'currentItem', FABRIC_26_3: 'selected'},
-  'main slots': {FORGE_1_7_10: 'mainInventory', FABRIC_26_3: 'items'},
-  'player name': {FORGE_1_7_10: 'getCommandSenderName', FABRIC_26_3: 'getScoreboardName'},
-  'difficulty': {FORGE_1_7_10: 'difficultySetting', FABRIC_26_3: {'call': 'getDifficulty'}},
-  'server player': {FORGE_1_7_10: 'EntityPlayerMP', FABRIC_26_3: 'ServerPlayer'},
-  'items': {FORGE_1_7_10: 'net.minecraft.init.Items', FABRIC_26_3: 'net.minecraft.world.item.Items'},
-  'diamond': {FORGE_1_7_10: 'diamond', FABRIC_26_3: 'DIAMOND'},
-  'translation key': {FORGE_1_7_10: 'getUnlocalizedName', FABRIC_26_3: 'getDescriptionId'},
-  "diamond's key": {FORGE_1_7_10: 'item.diamond', FABRIC_26_3: 'item.minecraft.diamond'},
-  'item stack': {FORGE_1_7_10: 'net.minecraft.item.ItemStack', FABRIC_26_3: 'net.minecraft.world.item.ItemStack'},
-  'two diamonds': {FORGE_1_7_10: {'id': 'minecraft:diamond', 'count': 2, 'meta': 0},
-                   FABRIC_26_3: {'id': 'minecraft:diamond', 'count': 2}},
+  'inventory': {V1_7_10: 'inventory', V26_3: 'inventory'},
+  'selected slot': {V1_7_10: 'currentItem', V26_3: 'selected'},
+  'main slots': {V1_7_10: 'mainInventory', V26_3: 'items'},
+  'player name': {V1_7_10: 'getCommandSenderName', V26_3: 'getScoreboardName'},
+  'difficulty': {V1_7_10: 'difficultySetting', V26_3: {'call': 'getDifficulty'}},
+  'server player': {V1_7_10: 'EntityPlayerMP', V26_3: 'ServerPlayer'},
+  'items': {V1_7_10: 'net.minecraft.init.Items', V26_3: 'net.minecraft.world.item.Items'},
+  'diamond': {V1_7_10: 'diamond', V26_3: 'DIAMOND'},
+  'translation key': {V1_7_10: 'getUnlocalizedName', V26_3: 'getDescriptionId'},
+  "diamond's key": {V1_7_10: 'item.diamond', V26_3: 'item.minecraft.diamond'},
+  'item stack': {V1_7_10: 'net.minecraft.item.ItemStack', V26_3: 'net.minecraft.world.item.ItemStack'},
+  'two diamonds': {V1_7_10: {'id': 'minecraft:diamond', 'count': 2, 'meta': 0},
+                   V26_3: {'id': 'minecraft:diamond', 'count': 2}},
   #  a pause screen's class and its constructor's arguments
-  'pause screen': {FORGE_1_7_10: ('net.minecraft.client.gui.GuiIngameMenu', []),
-                   FABRIC_26_3: ('net.minecraft.client.gui.screens.PauseScreen', [True])},
-  "the player's other inventory": {FORGE_1_7_10: 'inventoryContainer', FABRIC_26_3: 'inventoryMenu'},
+  'pause screen': {V1_7_10: ('net.minecraft.client.gui.GuiIngameMenu', []),
+                   V26_3: ('net.minecraft.client.gui.screens.PauseScreen', [True])},
+  "the player's other inventory": {V1_7_10: 'inventoryContainer', V26_3: 'inventoryMenu'},
   #  as the orchestrator sends a readable name with its Searge names (1.7.10), or with a name no class has (26.3)
-  'inventory or else': {FORGE_1_7_10: ['noSuchField', 'inventory', 'field_71071_by'],
-                        FABRIC_26_3: ['noSuchField', 'inventory']},
-  'getHealth or else': {FORGE_1_7_10: ['func_110143_aJ', 'getHealth'], FABRIC_26_3: ['noSuchMethod', 'getHealth']},
-  'selected slot or else': {FORGE_1_7_10: ['currentItem', 'field_70461_c'], FABRIC_26_3: ['selected', 'noSuchField']},
+  'inventory or else': {V1_7_10: ['noSuchField', 'inventory', 'field_71071_by'],
+                        V26_3: ['noSuchField', 'inventory']},
+  'getHealth or else': {V1_7_10: ['func_110143_aJ', 'getHealth'], V26_3: ['noSuchMethod', 'getHealth']},
+  'selected slot or else': {V1_7_10: ['currentItem', 'field_70461_c'], V26_3: ['selected', 'noSuchField']},
   #  a chest of seven diamonds, as each version writes its items; their count's name
-  'seven diamonds': {FORGE_1_7_10: ('{Items:[{Slot:0b,id:264s,Count:7b,Damage:0s}]}', 'Count'),
-                     FABRIC_26_3: ('{Items:[{Slot:0b,id:"minecraft:diamond",count:7}]}', 'count')},
+  'seven diamonds': {V1_7_10: ('{Items:[{Slot:0b,id:264s,Count:7b,Damage:0s}]}', 'Count'),
+                     V26_3: ('{Items:[{Slot:0b,id:"minecraft:diamond",count:7}]}', 'count')},
   #  a pig's tag that each version keeps
-  "a pig's tag": {FORGE_1_7_10: ('{Saddle:1b}', 'Saddle'), FABRIC_26_3: ('{Invulnerable:1b}', 'Invulnerable')},
+  "a pig's tag": {V1_7_10: ('{Saddle:1b}', 'Saddle'), V26_3: ('{Invulnerable:1b}', 'Invulnerable')},
 }
 
 
 def name(what: str):
-  return NAMES[what][port()]
+  return NAMES[what][version()]
 
 
 class ReflectTests(unittest.TestCase):
@@ -96,7 +96,7 @@ class ReflectTests(unittest.TestCase):
 
   def test_01_every_type_through_an_item(self) -> None:
     """1.7.10: the item's NBT; 26.3: its custom data component, NBT as any other."""
-    if port() == FORGE_1_7_10:
+    if version() == V1_7_10:
       self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:stick', 'nbt': EVERY_TYPE}})
       tree = loads(self.request('inventory.get', {'slot': 'held'})['nbt'])
     else:
@@ -107,7 +107,7 @@ class ReflectTests(unittest.TestCase):
     self.assertIs(Byte, type(tree['b']))
     self.assertIs(Float, type(tree['f']))
 
-  @onlyOn(FORGE_1_7_10, why="26.3's names and enchantments are components (test_values has an item's name)")
+  @onlyOn(V1_7_10, why="26.3's names and enchantments are components (test_values has an item's name)")
   def test_02_an_enchanted_name(self) -> None:
     nbt = '{display:{Name:"Red"},ench:[{id:16s,lvl:5s}]}'
     self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:diamond_sword', 'nbt': nbt}})
@@ -136,7 +136,7 @@ class ReflectTests(unittest.TestCase):
     tree = loads(self.request('entity.get', {'entity': pig['entity'], 'nbt': True})['nbt'])
     self.assertEqual(1, tree[key])
     self.assertIn('Health', tree)
-    data = 'nbt' if port() == FORGE_1_7_10 else 'components'
+    data = 'nbt' if version() == V1_7_10 else 'components'
     with self.assertRaises(BadRequest):
       self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:stick', data: '{broken'}})
 
@@ -242,7 +242,7 @@ class ReflectTests(unittest.TestCase):
     self.reflect({'from': 'player', 'path': path, 'value': 4}, op='reflect.set')
     self.assertEqual(4, self.reflect({'from': 'player', 'path': [name('inventory'), name('selected slot')]}))
 
-  @onlyOn(FORGE_1_7_10, why='26.3 is unobfuscated: its names are the game\'s own, nothing is translated')
+  @onlyOn(V1_7_10, why='26.3 is unobfuscated: its names are the game\'s own, nothing is translated')
   def test_13d_a_path_translated_from_the_mappings(self) -> None:
     mappings = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
     self.assertEqual(0, self.reflect({'from': 'player', 'path': mappings.translate(['inventory', 'currentItem'])}))

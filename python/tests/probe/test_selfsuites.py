@@ -22,7 +22,7 @@ import sys
 import unittest
 
 from fabricgame import buildFabric
-from ports import FABRIC_26_3, FORGE_1_7_10, onlyOn
+from ports import V1_7_10, V26_3, onlyOn
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -44,7 +44,7 @@ def outcomes(report: str) -> tuple:
   return lines, [(found.group(1), found.group(2)) for found in map(RESULT.match, lines) if found]
 
 
-@onlyOn(FORGE_1_7_10, why="1.7.10's development and real clients; 26.3's is SelfSuites26Tests'")
+@onlyOn(V1_7_10, why="1.7.10's development and real clients; 26.3's is SelfSuites26Tests'")
 class SelfSuitesTests(unittest.TestCase):
 
   def run_(self, launched, suites: list) -> str:
@@ -91,7 +91,7 @@ class SelfSuitesTests(unittest.TestCase):
     self.assertEqual('OK', [line for line in lines if line][-1])
 
 
-@onlyOn(FABRIC_26_3, why="26.3's real client from a spec; 1.7.10's are SelfSuitesTests'")
+@onlyOn(V26_3, why="26.3's real client from a spec; 1.7.10's are SelfSuitesTests'")
 class SelfSuites26Tests(unittest.TestCase):
 
   def test_1_unittas_run_on_a_26_3_spec(self) -> None:

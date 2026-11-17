@@ -20,7 +20,7 @@ from typing import Any
 from mcdex import MCBlocks
 
 from fabricgame import FabricGame, buildFabric
-from ports import FABRIC_26_3, FORGE_1_7_10, STARTS
+from ports import STARTS, V1_7_10, V26_3
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -43,8 +43,8 @@ class CrossVersionTests(unittest.TestCase):
   def setUpClass(cls) -> None:
     cls.launched = {}
     cls.games = {}
-    for port, launched in ((FORGE_1_7_10, lambda: DevGame(ROOT, results(), 'cross-1.7.10')),
-                           (FABRIC_26_3, lambda: FabricGame(results(), buildFabric(
+    for port, launched in ((V1_7_10, lambda: DevGame(ROOT, results(), 'cross-1.7.10')),
+                           (V26_3, lambda: FabricGame(results(), buildFabric(
                              os.path.join(results(), 'fabric-build', 'build.log')), 'cross-26.3'))):
       game = launched()
       cls.launched[port] = game
@@ -75,22 +75,22 @@ class CrossVersionTests(unittest.TestCase):
       game.setBlock(pos, MCBlocks.Air)
 
   def test_both_games_are_up(self) -> None:
-    self.assertEqual(('1.7.10', '26.3'), (self.games[FORGE_1_7_10].connection.hello.minecraft,
-                                          self.games[FABRIC_26_3].connection.hello.minecraft))
+    self.assertEqual(('1.7.10', '26.3'), (self.games[V1_7_10].connection.hello.minecraft,
+                                          self.games[V26_3].connection.hello.minecraft))
 
   def test_red_wool_on_both(self) -> None:
-    old = self.placed(FORGE_1_7_10, MCBlocks.RedWool)
-    new = self.placed(FABRIC_26_3, MCBlocks.RedWool)
+    old = self.placed(V1_7_10, MCBlocks.RedWool)
+    new = self.placed(V26_3, MCBlocks.RedWool)
     # read as each version keeps it: not alike as values
     self.assertEqual(('minecraft:wool', 14), (old.id, old.meta))
     self.assertEqual(('minecraft:red_wool', -1), (new.id, new.meta))
     # the same thing all the same
-    self.assertEqual({MCBlocks.RedWool}, sameThing((self.games[FORGE_1_7_10], old), (self.games[FABRIC_26_3], new)))
+    self.assertEqual({MCBlocks.RedWool}, sameThing((self.games[V1_7_10], old), (self.games[V26_3], new)))
 
   def test_different_things_are_told_apart(self) -> None:
-    old = self.placed(FORGE_1_7_10, MCBlocks.RedWool)
-    new = self.placed(FABRIC_26_3, MCBlocks.BlueWool)
-    self.assertEqual(frozenset(), sameThing((self.games[FORGE_1_7_10], old), (self.games[FABRIC_26_3], new)))
+    old = self.placed(V1_7_10, MCBlocks.RedWool)
+    new = self.placed(V26_3, MCBlocks.BlueWool)
+    self.assertEqual(frozenset(), sameThing((self.games[V1_7_10], old), (self.games[V26_3], new)))
 
 
 if __name__ == '__main__':

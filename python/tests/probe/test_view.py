@@ -22,7 +22,7 @@ import unittest
 
 from mcdex import MCBlocks
 
-from ports import FORGE_1_7_10, at, onlyOn, probeGame, start
+from ports import V1_7_10, at, onlyOn, probeGame, start
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.reset import reset
@@ -103,7 +103,7 @@ class ViewTests(unittest.TestCase):
     shown = self.view('lamp-lit').brightness()
     self.assertGreater(shown, unlit + 30, (unlit, shown))
 
-  @onlyOn(FORGE_1_7_10, why='26.3 draws no toast while the HUD is hidden')
+  @onlyOn(V1_7_10, why='26.3 draws no toast while the HUD is hidden')
   def test_d_what_the_toast_covers(self) -> None:
     """
     1.7.10 draws its tutorial toast with the GUI hidden: a block behind it

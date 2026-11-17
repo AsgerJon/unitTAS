@@ -22,7 +22,7 @@ import tempfile
 import unittest
 
 from unittas.cache import Cache
-from unittas.launcher import FABRIC_META, MANIFEST, Missing, Sources, findJavaFor, main, versionCommand
+from unittas.launcher import FABRIC_META, MANIFEST, Missing, Sources, classPath, findJavaFor, main, versionCommand
 
 VERSIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'versions')
 
@@ -130,6 +130,41 @@ class ModernLauncherTests(unittest.TestCase):
     self.assertEqual(('640', '360'), (pairs['--width'], pairs['--height']))
     self.assertNotIn('--demo', game)
 
+  def test_vanilla_with_no_loader(self) -> None:
+    """26.3 as Mojang ships it (SPEC.md 19.7 step 5): no loader, vanilla's own main class and libraries."""
+    java = versionCommand(self.game, self.java, self.sources(), '26.3', None, None).java
+    self.assertIn('net.minecraft.client.main.Main', java)
+    main = java.index('net.minecraft.client.main.Main')
+    jvm, game = java[1:main], java[main + 1:]
+    classPath = [os.path.basename(jar) for jar in jvm[jvm.index('-cp') + 1].split(os.pathsep)]
+    self.assertNotIn('fabric-loader-0.20.1.jar', classPath)
+    self.assertNotIn('asm-9.10.1.jar', classPath, "no loader's libraries")
+    self.assertEqual('26.3.jar', classPath[-1])
+    self.assertFalse([word for word in jvm if 'Fabric' in word], "no loader's JVM arguments")
+    pairs = dict(zip(game[::2], game[1::2]))
+    self.assertEqual('26.3', pairs['--version'])
+
+  def test_the_probe_as_a_java_agent(self) -> None:
+    """The loader-free probe (SPEC.md 19.7 step 5): -javaagent:<its jar>=<the game folder>, before the main class."""
+    probe = os.path.join(self.scratch, 'unittas-probe-26.3.jar')
+    for loader, version, mainClass in ((None, None, 'net.minecraft.client.main.Main'),
+                                       ('fabric', '0.20.1', 'net.fabricmc.loader.impl.launch.knot.KnotClient')):
+      with self.subTest(loader=loader):
+        java = versionCommand(self.game, self.java, self.sources(), '26.3', loader, version, agents=(probe,)).java
+        agent = '-javaagent:%s=%s' % (probe, self.game)
+        self.assertIn(agent, java)
+        self.assertLess(java.index(agent), java.index(mainClass))
+
+  def test_the_class_path_to_compile_against(self) -> None:
+    """The version's own libraries for this system and its client jar, each held to its sha1: what the agent's build
+    compiles the probe against (SPEC.md 19.7 step 5)."""
+    jars = classPath(self.sources(), '26.3')
+    names = [os.path.basename(jar) for jar in jars]
+    self.assertEqual('26.3.jar', names[-1])
+    self.assertIn('lwjgl-sdl-3.4.3.jar', names)
+    self.assertNotIn('fabric-loader-0.20.1.jar', names)
+    self.assertTrue(all(os.path.isfile(jar) for jar in jars))
+
   def test_each_file_once_and_then_none(self) -> None:
     sources = self.sources()
     self.launch(sources)
@@ -216,6 +251,14 @@ class ModernLauncherTests(unittest.TestCase):
     self.assertIn('net.fabricmc.loader.impl.launch.knot.KnotClient', said)
     self.assertIn('-Xmx3G', said)
     self.assertIn('--width 640', said)
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+      code = main('--game', self.game, '--dry-run', '--no-gradle-cache', '--cache', cache, '--java', self.java,
+                  '--minecraft', '26.3', '--agent', '/opt/probe.jar')
+    self.assertEqual(0, code, printed.getvalue())
+    said = printed.getvalue()
+    self.assertIn('net.minecraft.client.main.Main', said, 'no loader named: vanilla')
+    self.assertIn('-javaagent:/opt/probe.jar=' + self.game, said)
 
 
 if __name__ == '__main__':

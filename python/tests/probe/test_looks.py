@@ -23,7 +23,7 @@ import unittest
 
 from mcdex import MCBlocks
 
-from ports import FABRIC_26_3, FORGE_1_7_10, at, port, probeGame, start
+from ports import V1_7_10, V26_3, at, probeGame, start, version
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.reset import reset
@@ -34,23 +34,23 @@ PLACE = at(0, 5, 3)
 #  each version's textures, by what they are: 1.7.10's icon names, 26.3's
 #  texture names
 TEXTURES = {
-  'stone': {FORGE_1_7_10: 'stone', FABRIC_26_3: 'minecraft:block/stone'},
-  'furnace front': {FORGE_1_7_10: 'furnace_front_off',
-                    FABRIC_26_3: 'minecraft:block/furnace_front'},
-  'red wool': {FORGE_1_7_10: 'wool_colored_red',
-               FABRIC_26_3: 'minecraft:block/red_wool'},
-  'none': {FORGE_1_7_10: 'no_such', FABRIC_26_3: 'minecraft:block/no_such'},
+  'stone': {V1_7_10: 'stone', V26_3: 'minecraft:block/stone'},
+  'furnace front': {V1_7_10: 'furnace_front_off',
+                    V26_3: 'minecraft:block/furnace_front'},
+  'red wool': {V1_7_10: 'wool_colored_red',
+               V26_3: 'minecraft:block/red_wool'},
+  'none': {V1_7_10: 'no_such', V26_3: 'minecraft:block/no_such'},
 }
 #  which of a block's metas (1.7.10) or states (26.3) a look is drawn for
 DRAWN_FOR = {
-  'furnace facing east': {FORGE_1_7_10: [[5]],
-                          FABRIC_26_3: [[{'facing': 'east', 'lit': 'false'}]]},
-  'red wool': {FORGE_1_7_10: [[14]], FABRIC_26_3: [[{}]]},
+  'furnace facing east': {V1_7_10: [[5]],
+                          V26_3: [[{'facing': 'east', 'lit': 'false'}]]},
+  'red wool': {V1_7_10: [[14]], V26_3: [[{}]]},
 }
 
 
 def texture(what: str) -> str:
-  return TEXTURES[what][port()]
+  return TEXTURES[what][version()]
 
 
 def drawnFor(variant: dict) -> list:
@@ -99,7 +99,7 @@ class LooksTests(unittest.TestCase):
     self.assertEqual({texture('stone')}, {
       icon for variant in stone['variants']
       for icon in variant['faces'].values()})
-    if port() == FORGE_1_7_10:
+    if version() == V1_7_10:
       self.assertEqual(list(range(16)), sorted(
         meta for variant in stone['variants'] for meta in variant['metas']))
     else:
@@ -118,10 +118,10 @@ class LooksTests(unittest.TestCase):
                             corner)
     east = [drawnFor(variant) for variant in furnace['variants']
             if variant['faces']['east'] == texture('furnace front')]
-    self.assertEqual(DRAWN_FOR['furnace facing east'][port()], east)
+    self.assertEqual(DRAWN_FOR['furnace facing east'][version()], east)
     red = [drawnFor(variant) for variant in wool['variants']
            if variant['faces']['north'] == texture('red wool')]
-    self.assertEqual(DRAWN_FOR['red wool'][port()], red)
+    self.assertEqual(DRAWN_FOR['red wool'][version()], red)
     self.assertFalse(lever['cube'])
     self.assertIn('error', nothing)
 

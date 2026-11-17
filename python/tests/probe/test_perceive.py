@@ -27,7 +27,7 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities
 
-from ports import FABRIC_26_3, FORGE_1_7_10, at, block, lift, port, probeGame, start
+from ports import V1_7_10, V26_3, at, block, lift, probeGame, start, version
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.box import Box
@@ -42,7 +42,7 @@ EYE = 1.62
 WIDTH = 0.6
 HEIGHT = 1.8
 #  a creative player's reach, blocks and entities: 6 for entities in 1.7.10, 5 from 1.20.5's attributes on
-REACH = {FORGE_1_7_10: (5.0, 6.0), FABRIC_26_3: (5.0, 5.0)}
+REACH = {V1_7_10: (5.0, 6.0), V26_3: (5.0, 5.0)}
 
 
 class PerceiveTests(unittest.TestCase):
@@ -100,7 +100,7 @@ class PerceiveTests(unittest.TestCase):
     self.assertAlmostEqual(WIDTH, box.maxX - box.minX, places=4)
     self.assertAlmostEqual(HEIGHT, box.maxY - box.minY, places=4)
     self.assertAlmostEqual(seen.pos.y, box.minY, places=6)
-    self.assertEqual(REACH[port()], (seen.blockReach, seen.entityReach))
+    self.assertEqual(REACH[version()], (seen.blockReach, seen.entityReach))
     ground = self.near(seen, (0, 3, 0))
     self.assertEqual((Box(0.0, lift(3.0), 0.0, 1.0, lift(4.0), 1.0),), ground.boxes)
     #  around 2: the 5 by 5 under the feet, and nothing above it
