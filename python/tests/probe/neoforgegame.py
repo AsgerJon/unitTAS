@@ -15,7 +15,7 @@ from fabricgame import FabricGame
 
 LOADER = 'neoforge'
 #  each version's one NeoForge (SPEC.md 19.7 V12), as unittas.spec's
-NEOFORGE = {'1.21.1': '21.1.267'}
+NEOFORGE = {'1.21.1': '21.1.267', '26.3': '26.3.0.110'}
 
 
 class NeoForgeGame(FabricGame):

@@ -31,14 +31,15 @@ from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Item, Vec3
 
 (FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1,
- NEOFORGE_1_21_1) = PORTS
+ NEOFORGE_1_21_1, NEOFORGE_26_3) = PORTS
 #  the versions, which the tables are by
 V1_7_10, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.20.1', '1.21.1', '26.3'
 VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
-            FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1, NEOFORGE_1_21_1: V1_21_1}
+            FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1, NEOFORGE_1_21_1: V1_21_1,
+            NEOFORGE_26_3: V26_3}
 #  the ports with Fabric Loader beside the probe, and with NeoForge
 FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1)
-NEOFORGE_PORTS = (NEOFORGE_1_21_1,)
+NEOFORGE_PORTS = (NEOFORGE_1_21_1, NEOFORGE_26_3)
 #  the versions whose items keep their data as NBT (data components from 1.20.5 on)
 NBT_ITEMS = (V1_7_10, V1_20_1)
 #  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
@@ -216,9 +217,9 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == FABRIC_1_21_1:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
                       minecraft=V1_21_1)
-  if port() == NEOFORGE_1_21_1:
-    return NeoForgeGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
-                        minecraft=V1_21_1)
+  if port() in NEOFORGE_PORTS:
+    return NeoForgeGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version()), name,
+                        minecraft=version())
   if port() == VANILLA_1_20_1:
     return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_20_1), name,
                      minecraft=V1_20_1)

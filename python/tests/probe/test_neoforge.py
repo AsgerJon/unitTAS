@@ -1,14 +1,17 @@
 """
-The probe beside NeoForge (SPEC.md 19.7 step 7b): unitTAS's loader-free
-probe, a Java agent beside NeoForge (the loader a NeoForge mod under test
-brings), mods/ empty, in one game: a real 1.21.1 NeoForge 21.1.267 client
-from unitTAS's own launcher (bin/launch_client.py --minecraft 1.21.1
---loader neoforge --loader-version 21.1.267), NeoForge installed by its
-own installer into the download cache as the launcher first needs it. As
-test_fabric's game checks have it beside Fabric:
-- its hello says what really runs: the port 1.21.1, Minecraft 1.21.1,
-  NeoForge 21.1.267 beside it, Mojang's names (NeoForge's installer renames
-  the game so: no table), a client, on Java 21;
+The probe beside NeoForge (SPEC.md 19.7 steps 7b and 7c): unitTAS's
+loader-free probe, a Java agent beside NeoForge (the loader a NeoForge mod
+under test brings), mods/ empty, in one game: a real NeoForge client of the
+port's version (1.21.1 with NeoForge 21.1.267 on any other port; 26.3 with
+26.3.0.110 on 26.3-neoforge) from unitTAS's own launcher
+(bin/launch_client.py --minecraft 1.21.1 --loader neoforge --loader-version
+21.1.267), NeoForge installed by its own installer into the download cache
+as the launcher first needs it. As test_fabric's game checks have it beside
+Fabric:
+- its hello says what really runs: the port, Minecraft's version, NeoForge
+  beside it, Mojang's names (1.21.1's NeoForge installer renames the game
+  so; 26.x is unobfuscated: no table either way), a client, on the
+  version's Java (21, 25);
 - ready once loaded, naming NeoForge's mods (minecraft and neoforge, not
   unitTAS: no mod), every hooked class rewritten (after NeoForge's own
   transformers), its window titled unitTAS;
@@ -32,7 +35,7 @@ from ports import neoForgeVersion
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 
 #  what each version runs on beside NeoForge
-JAVAS = {'1.21.1': '21'}
+JAVAS = {'1.21.1': '21', '26.3': '25'}
 #  the probe's operations its hello lists, each in every port
 OPS = ('status', 'quit', 'ticks.wait', 'screen.get', 'key.down',
        'player.perceive', 'container.click', 'view.block', 'block.faces',

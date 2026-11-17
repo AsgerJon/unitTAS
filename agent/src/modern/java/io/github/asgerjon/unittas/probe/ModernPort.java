@@ -192,11 +192,26 @@ public final class ModernPort implements Port {
 			return "";
 		}
 		try {
-			Object info = loader.get().getMethod("versionInfo").invoke(null);
+			Object info = versionInfo(loader.get());
 			return (String) info.getClass().getMethod("neoForgeVersion").invoke(info);
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException("NeoForge is here but doesn't say its version: " + e, e);
 		}
+	}
+
+	/**
+	 * FML's version info, as each FML has it: FML 4's (NeoForge for 1.21.x) a static versionInfo(); from FML 10 on (26.x)
+	 * the running loader's (FMLLoader.getCurrent()) getVersionInfo().
+	 */
+	private static Object versionInfo(Class<?> loader) throws ReflectiveOperationException {
+		for (Method each : loader.getMethods()) {
+			if (each.getName().equals("versionInfo") && java.lang.reflect.Modifier.isStatic(each.getModifiers())
+				&& each.getParameterCount() == 0) {
+				return each.invoke(null);
+			}
+		}
+		Object current = loader.getMethod("getCurrent").invoke(null);
+		return loader.getMethod("getVersionInfo").invoke(current);
 	}
 
 	/** Each mod the loader beside the probe has, (id, name, version): Fabric Loader's or NeoForge's; none in vanilla. */

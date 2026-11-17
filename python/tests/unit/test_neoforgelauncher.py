@@ -9,7 +9,9 @@ FOLDER), refuses a folder without a launcher_profiles.json, as the real
 one does, and else writes the version JSON and the patched client there:
 - the installer fetched from NeoForge's maven, held to its .sha1, and run
   once into the download cache, on the version's Java; the folder's
-  launcher_profiles.json written first;
+  launcher_profiles.json written first; installed when the version JSON
+  and the patched client its install profile names (PATCHED: NeoForge
+  21.1's neoforge client, 26.x's minecraft-client-patched) are there;
 - the command: NeoForge's main class (BootstrapLauncher), its module
   path's library folder the cache's, the client jar on the class path by
   the version's own name (which NeoForge's ignore list names), its game
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -35,6 +38,7 @@ import stat
 import sys
 import tempfile
 import unittest
+import zipfile
 
 from unittas.cache import Cache
 from unittas.launcher import (MANIFEST, NEOFORGE_MAVEN, Missing, Sources,
@@ -74,7 +78,8 @@ with open(os.path.join(here, 'profile.json')) as given:
   profile = given.read()
 with open(os.path.join(folder, %(name)r + '.json'), 'w') as written:
   written.write(profile)
-patched = os.path.join(root, %(patched)r)
+with open(os.path.join(here, 'patched.txt')) as given:
+  patched = os.path.join(root, given.read())
 os.makedirs(os.path.dirname(patched), exist_ok=True)
 with open(patched, 'wb') as written:
   written.write(b'the patched client')
@@ -88,6 +93,16 @@ def sha1(data: bytes) -> str:
 def recorded(name: str) -> dict:
   with open(os.path.join(VERSIONS, name), encoding='utf-8') as file:
     return json.load(file)
+
+
+def installerJar(patched: str) -> bytes:
+  """An installer jar: its install profile naming its patched client."""
+  data = io.BytesIO()
+  with zipfile.ZipFile(data, 'w') as jar:
+    jar.writestr('install_profile.json', json.dumps(
+      {'version': NAME, 'data': {'PATCHED': {'client': '[%s]' % patched,
+                                             'server': '[%s]' % patched}}}))
+  return data.getvalue()
 
 
 def faked(libraries: list, served: dict) -> None:
@@ -126,7 +141,11 @@ class NeoForgeFixture:
     ]}).encode('utf-8')
     self.profile = copy.deepcopy(recorded(NAME + '.json'))
     faked(self.profile['libraries'], self.served)
-    self.installer = b'the NeoForge 21.1.267 installer'
+    self.serveInstaller('net.neoforged:neoforge:%s:client' % NEOFORGE)
+
+  def serveInstaller(self, patched: str) -> None:
+    """The installer, its install profile naming that patched client."""
+    self.installer = installerJar(patched)
     self.served[INSTALLER] = self.installer
     self.served[INSTALLER + '.sha1'] = sha1(self.installer).encode('ascii')
     self.asked = []
@@ -149,10 +168,10 @@ class NeoForgeLauncherTests(unittest.TestCase):
     os.makedirs(self.bin)
     self.java = os.path.join(self.bin, 'java')
     with open(self.java, 'w', encoding='utf-8') as file:
-      file.write(FAKE_JAVA % {'python': sys.executable, 'name': NAME,
-                              'patched': PATCHED})
+      file.write(FAKE_JAVA % {'python': sys.executable, 'name': NAME})
     os.chmod(self.java, os.stat(self.java).st_mode | stat.S_IXUSR)
     self.setProfile(self.fixture.profile)
+    self.setPatched(PATCHED)
     self.cache = Cache(os.path.join(self.scratch, 'cache'),
                        fetch=self.fixture.fetch)
 
@@ -161,6 +180,12 @@ class NeoForgeLauncherTests(unittest.TestCase):
     with open(os.path.join(self.bin, 'profile.json'), 'w',
               encoding='utf-8') as file:
       json.dump(profile, file)
+
+  def setPatched(self, relative: str) -> None:
+    """Where the stand-in installer writes the patched client."""
+    with open(os.path.join(self.bin, 'patched.txt'), 'w',
+              encoding='utf-8') as file:
+      file.write(relative)
 
   def calls(self) -> list:
     path = os.path.join(self.bin, 'calls.txt')
@@ -186,6 +211,17 @@ class NeoForgeLauncherTests(unittest.TestCase):
     with open(self.cache.path('launcher_profiles.json'),
               encoding='utf-8') as file:
       self.assertIn('profiles', json.load(file))
+    self.launch()
+    self.assertEqual(1, len(self.calls()), 'installed once')
+
+  def test_installed_by_the_patched_client_its_profile_names(self) -> None:
+    """26.x's installer makes minecraft-client-patched instead."""
+    coordinates = 'net.neoforged:minecraft-client-patched:%s' % NEOFORGE
+    self.fixture.serveInstaller(coordinates)
+    self.setPatched('libraries/net/neoforged/minecraft-client-patched/'
+                    '%s/minecraft-client-patched-%s.jar'
+                    % (NEOFORGE, NEOFORGE))
+    self.launch()
     self.launch()
     self.assertEqual(1, len(self.calls()), 'installed once')
 
@@ -252,7 +288,7 @@ class NeoForgeLauncherTests(unittest.TestCase):
     self.assertEqual(2, len(self.calls()), 'not taken as installed')
 
   def test_its_installer_held_to_its_sha1(self) -> None:
-    self.fixture.served[INSTALLER] = b'not the installer'
+    self.fixture.served[INSTALLER] = installerJar('not:the:installer')
     with self.assertRaises(Missing) as refused:
       self.launch()
     self.assertIn('sha1', str(refused.exception))

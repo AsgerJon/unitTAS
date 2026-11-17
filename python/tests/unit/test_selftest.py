@@ -49,7 +49,7 @@ class PortTests(unittest.TestCase):
     self.assertEqual(('test_values', '26.3-fabric'), parseArgs(['test_values on 26.3-fabric']))
     self.assertEqual(('', '26.3-fabric'), parseArgs(['on 26.3-fabric']))
     self.assertEqual(('1.7.10-forge', '26.3-fabric', '26.3', '1.21.1', '1.21.1-fabric', '1.20.1', '1.20.1-fabric',
-                      '1.21.1-neoforge'), PORTS)
+                      '1.21.1-neoforge', '26.3-neoforge'), PORTS)
     self.assertEqual(('test_agent', '26.3'), parseArgs(['test_agent on 26.3']), 'vanilla 26.3, the probe an agent')
 
   def test_mistakes_refused(self) -> None:

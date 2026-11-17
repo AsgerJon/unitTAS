@@ -448,26 +448,44 @@ def _profile(sources: Sources, minecraft: str, loader: str, loaderVersion: str) 
     return json.load(file)
 
 
+def _mavenFile(coordinates: str) -> str:
+  """A maven artifact's path in a library folder, from '[group:artifact:version(:classifier)(@extension)]'."""
+  name, _, extension = coordinates.strip('[]').partition('@')
+  parts = name.split(':')
+  if len(parts) not in (3, 4):
+    raise ValueError('%r is no maven artifact' % coordinates)
+  group, artifact, version = parts[:3]
+  classifier = '-' + parts[3] if len(parts) == 4 else ''
+  return '%s/%s/%s/%s-%s%s.%s' % (group.replace('.', '/'), artifact, version, artifact, version, classifier,
+                                  extension or 'jar')
+
+
 def _neoForgeProfile(sources: Sources, minecraft: str, loaderVersion: str, java: str) -> dict:
   """
   NeoForge's version JSON for that version (SPEC.md 19.7 step 7): what NeoForge's own installer writes, run headless
   once into the download cache (--install-client), which is laid out as a launcher's folder (versions/, libraries/).
-  Its processors make the game NeoForge runs (the client jar split, renamed by Mojang's names, patched): they are
-  NeoForge's own, run by its installer, on the version's Java. The installer is fetched from NeoForge's maven and held
-  to its .sha1; the folder's launcher_profiles.json, which the installer asks for, written first. Installed when its
-  version JSON and its patched client are both there. Missing, naming the installer's output, when it fails, or when
-  the profile is for another version.
+  Its processors make the game NeoForge runs (for 1.21.1 the client jar split, renamed by Mojang's names, patched; for
+  26.x patched): they are NeoForge's own, run by its installer, on the version's Java. The installer is fetched from
+  NeoForge's maven and held to its .sha1; the folder's launcher_profiles.json, which the installer asks for, written
+  first. Installed when its version JSON and the patched client its install profile names (PATCHED) are both there.
+  Missing, naming the installer's output, when it fails, or when the profile is for another version.
   """
   import subprocess
   if sources.cache is None:
     raise Missing('no NeoForge %s: there is no download cache to install it into' % loaderVersion)
   name = 'neoforge-%s' % loaderVersion
+  url = NEOFORGE_MAVEN + '%s/%s-installer.jar' % (loaderVersion, name)
+  installer = _fetched(sources, 'libraries/net/neoforged/neoforge/%s/%s-installer.jar' % (loaderVersion, name), url,
+                       "NeoForge %s's installer" % loaderVersion, sha1Url=url + '.sha1')
+  try:
+    with zipfile.ZipFile(installer) as jar:
+      patchedName = json.loads(jar.read('install_profile.json').decode('utf-8'))['data']['PATCHED']['client']
+    patched = sources.cache.path('libraries/' + _mavenFile(patchedName))
+  except (zipfile.BadZipFile, KeyError, TypeError, ValueError) as error:
+    raise Missing("NeoForge %s's installer (%s) names no patched client in its install profile: %s" % (
+      loaderVersion, installer, error)) from None
   profilePath = sources.cache.path('versions/%s/%s.json' % (name, name))
-  patched = sources.cache.path('libraries/net/neoforged/neoforge/%s/%s-client.jar' % (loaderVersion, name))
   if not (os.path.isfile(profilePath) and os.path.isfile(patched)):
-    url = NEOFORGE_MAVEN + '%s/%s-installer.jar' % (loaderVersion, name)
-    installer = _fetched(sources, 'libraries/net/neoforged/neoforge/%s/%s-installer.jar' % (loaderVersion, name), url,
-                         "NeoForge %s's installer" % loaderVersion, sha1Url=url + '.sha1')
     root = sources.cache.path('')
     profiles = os.path.join(root, 'launcher_profiles.json')
     if not os.path.isfile(profiles):

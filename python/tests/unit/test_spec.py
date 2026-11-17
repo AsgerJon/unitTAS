@@ -264,6 +264,16 @@ class SpecTests(unittest.TestCase):
                                      '{ neoforge = "21.1.267" }'),
                  '"loader"', '1.20.1', 'fabric')
 
+  def test_26_3_beside_neoforge(self) -> None:
+    """26.3 with NeoForge 26.3.0.110 (SPEC.md 19.7 step 7c), or Fabric."""
+    neoforge = REAL_26.replace('{ fabric = "0.20.1" }',
+                               '{ neoforge = "26.3.0.110" }')
+    spec = InstanceSpec.read(self.write(neoforge))
+    self.assertEqual(('neoforge', '26.3.0.110'),
+                     (spec.loaderName, spec.loaderVersion))
+    self.refused(neoforge.replace('"26.3.0.110"', '"21.1.267"'), '"loader"',
+                 'NeoForge 21.1.267', '26.3.0.110')
+
   def test_an_unknown_key_says_which(self) -> None:
     self.refused(REAL.replace('mods =', 'mod ='), 'unknown key "mod"', 'did you mean "mods"')
     self.refused(REAL + '[gradle]\ntask = "runClient"\n', '"gradle"', 'client = "gradle"')
