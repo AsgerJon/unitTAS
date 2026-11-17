@@ -38,8 +38,6 @@ import java.util.List;
  */
 final class ModernPerceive {
 
-	/** The game's own pick of what the crosshair meets (private), made afresh. */
-	private static final java.lang.reflect.Method PICK = Members.method(Minecraft.class, "pick", float.class);
 	/** A trapdoor's kind (protected), whose hand-opening it says. */
 	private static final java.lang.reflect.Method TRAPDOOR_TYPE = Members.method(TrapDoorBlock.class, "getType");
 
@@ -63,7 +61,7 @@ final class ModernPerceive {
 		int below = (int) call.number("below", 1, 0, 8);
 		int above = (int) call.number("above", 1, 0, 8);
 		// the game's own pick, as each tick makes it, for the look as it is now
-		Members.call(PICK, mc, 1.0F);
+		Version.pick(1.0F);
 		Entity camera = mc.getCameraEntity() == null ? player : mc.getCameraEntity();
 		Vec3 eye = camera.getEyePosition(1.0F);
 		Vec3 motion = player.getDeltaMovement();

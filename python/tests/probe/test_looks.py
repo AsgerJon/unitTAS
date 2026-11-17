@@ -23,7 +23,7 @@ import unittest
 
 from mcdex import MCBlocks
 
-from ports import V1_7_10, V26_3, at, probeGame, start, version
+from ports import V1_7_10, V1_21_1, V26_3, at, probeGame, start, version
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.reset import reset
@@ -47,6 +47,10 @@ DRAWN_FOR = {
                           V26_3: [[{'facing': 'east', 'lit': 'false'}]]},
   'red wool': {V1_7_10: [[14]], V26_3: [[{}]]},
 }
+#  1.21.1's are 26.3's: the same texture names and states
+for _table in (TEXTURES, DRAWN_FOR):
+  for _entry in _table.values():
+    _entry[V1_21_1] = _entry[V26_3]
 
 
 def texture(what: str) -> str:

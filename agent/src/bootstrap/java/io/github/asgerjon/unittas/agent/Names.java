@@ -146,6 +146,7 @@ final class Names {
 	 * key to an answer, null where there is none:
 	 * - "kind": what the names run under (obfuscated, intermediary, srg);
 	 * - "c RUNNING": a running class's Mojang name (internal names), null for a class not the game's;
+	 * - "C MOJANG": a class's running name by its Mojang name, null for a class not the game's;
 	 * - "f OWNER NAME": a field's running name, by its Mojang owner and name (a class declares one field by a name);
 	 * - "m OWNER NAME (PARAMETERS)": a method's running name, by its Mojang owner, name and parameters' descriptors.
 	 * Another key is an IllegalArgumentException.
@@ -160,6 +161,9 @@ final class Names {
 		}
 		if (parts.length == 2 && parts[0].equals("c")) {
 			return classesBack.get(parts[1]);
+		}
+		if (parts.length == 2 && parts[0].equals("C")) {
+			return classes.get(parts[1]);
 		}
 		if (parts.length == 3 && parts[0].equals("f")) {
 			return fieldsByName.get(parts[1] + "\t" + parts[2]);

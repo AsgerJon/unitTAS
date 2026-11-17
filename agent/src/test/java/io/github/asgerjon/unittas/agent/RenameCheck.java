@@ -162,6 +162,8 @@ public final class RenameCheck {
 			same("obfuscated", lookup.apply("kind"));
 			same(ENTITY, lookup.apply("c\t" + names.className(ENTITY)));
 			same(null, lookup.apply("c\tjava/lang/String"));
+			same(names.className(ENTITY), lookup.apply("C\t" + ENTITY));
+			same(null, lookup.apply("C\tjava/lang/String"));
 			same(names.field(ENTITY, "x", "D"), lookup.apply("f\t" + ENTITY + "\tx"));
 			same(names.method(ENTITY, "tick", "()V"), lookup.apply("m\t" + ENTITY + "\ttick\t()"));
 			same(names.method(WORLD, "add", "(L" + ENTITY + ";)V"), lookup.apply("m\t" + WORLD + "\tadd\t(L" + ENTITY + ";)"));

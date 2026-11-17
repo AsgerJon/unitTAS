@@ -385,7 +385,7 @@ hasn't holds its empty value, never None:
 
 A thing named by its mcdex member (`MCBlocks.RedWool`) becomes each version's own value: wool of meta 14 in 1.7.10,
 `minecraft:red_wool` in 26.3. A block given by its id alone (`'minecraft:stone'`) goes without meta, so the game puts
-its own. 1.20.1 and 1.21.1 come next (SPEC.md §19), the first with items' NBT, the second with components.
+its own. 1.21.1's values are 26.3's (states, components); 1.20.1 comes next (SPEC.md §19), with items' NBT.
 
 **Running:**
 
@@ -693,10 +693,14 @@ The scripts use the project's own Gradle cache, `.gradle-home/`; a session build
 `GRADLE_USER_HOME` to it too, so Minecraft is set up once, and runs `./gradlew --stop` before asking the watcher for
 a run (a daemon left inside the sandbox could hold the cache's locks).
 
-The 26.3 probe is a Java agent, built without Gradle: `python3 bin/build_agent.py` compiles it with Java 25's `javac`
-against 26.3's own client jar and libraries (from unitTAS's download cache, each held to its sha1) and makes
-`agent/build/unittas-probe-26.3.jar`. It needs no loader and no library: the game is started with
-`-javaagent:unittas-probe-26.3.jar=GAME` (the launcher's `--agent JAR`), and the probe puts its few hooks into the
+The probe for 26.3 and for 1.21.1 is a Java agent, built without Gradle: `python3 bin/build_agent.py [--minecraft
+VERSION]` compiles it with Java 25's `javac` against the version's own client jar and libraries (from unitTAS's
+download cache, each held to its sha1), for the version's Java (25 for 26.3, 21 for 1.21.1), and makes
+`agent/build/unittas-probe-VERSION.jar`. The code the versions share is `agent/src/modern/java`, compiled with each
+version's own folder (`agent/src/v26`, `agent/src/v1_21_1`): its `Version` (what that version does its own way, the
+same methods in each), what differs too widely to share (the view, the looks, the worlds), and its hooks file. It
+needs no loader and no library: the game is started with
+`-javaagent:unittas-probe-VERSION.jar=GAME` (the launcher's `--agent JAR`), and the probe puts its few hooks into the
 game's classes itself, naming only the JDK's classes in them (a loader may hide the agent's jar from the game, as
 Fabric's does). It wraps each hooked method (the original renamed `name$unittas` and made private, a method of the
 hooked one's name calling the hooks and then it), so the game's own code is never edited, and the wrapping needs
@@ -705,16 +709,21 @@ installed of 17, 21 and 25. For a version the game runs under other names than M
 probe is written in Mojang's names all the same and renamed as it loads, by a table of the version's names that the
 launcher writes once from the version's own obfuscation log (`client_mappings`) and names to the agent
 (`-Dunittas.names=TABLE`); the log and the table stay in the download cache, never shipped.
-`python3 -m unittest bin/tests/test_agent_names.py` checks the renaming on a small game of its own. It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
-under test brings: a mod and its loader are the user's, taken as working. Its version is the root's `mod_version`.
+`python3 -m unittest bin/tests/test_agent_names.py` checks the renaming on a small game of its own, and
+`bin/tests/test_agent_members.py` the names the probe reaches by reflection against each obfuscated version's own.
+Against an obfuscated version it is compiled against stubs of the version's classes in Mojang's names, made once into
+the download cache from its client jar, never shipped. It runs in the version as Mojang ships it, and beside whatever
+loader the mod under test brings (on 26.3 so far): a mod and its loader are the user's, taken as working. Its version
+is the root's `mod_version`.
 The probe's version-free core, `src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
 
 The probe's own game tests (`python/tests/probe`) run with `python -m unittas.selftest [filter] [on PORT]` from the
 root (through the watcher: `probe [filter] [on PORT]`). The port is a version and what runs it: `1.7.10-forge` (the
-development client, the default), `26.3` (a real client from unitTAS's own launcher, as Mojang ships it) or
-`26.3-fabric` (the same with Fabric Loader, as a Fabric mod's tests would have it); on both 26.3 ports the probe is
-the Java agent. A test written for every port names things by mcdex member and places from the port's start; one its
-version can't do yet skips, saying which step brings it (`ports.py`).
+development client, the default), `26.3` (a real client from unitTAS's own launcher, as Mojang ships it),
+`26.3-fabric` (the same with Fabric Loader, as a Fabric mod's tests would have it) or `1.21.1` (a real client as
+Mojang ships it, obfuscated); on the 26.3 and 1.21.1 ports the probe is the Java agent. A test written for every port
+names things by mcdex member and places from the port's start; one its version can't do yet skips, saying which step
+brings it (`ports.py`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the

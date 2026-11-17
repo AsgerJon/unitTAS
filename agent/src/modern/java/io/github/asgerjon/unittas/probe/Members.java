@@ -80,6 +80,45 @@ final class Members {
 		return mojang(binaryName.replace('.', '/')).replace('/', '.');
 	}
 
+	/** A class's running binary name by its Mojang binary name; a class not the game's, its own. */
+	static String runningClass(String binaryName) {
+		Function<String, String> lookup = names;
+		String found = lookup == null ? null : lookup.apply("C\t" + binaryName.replace('.', '/'));
+		return found == null ? binaryName : found.replace('/', '.');
+	}
+
+	/** Whether a class is the game's: one with a Mojang name of its own other than its running one. */
+	private static boolean isGame(Class<?> type) {
+		return names != null && !mojang(type).equals(type.getName().replace('.', '/'));
+	}
+
+	/**
+	 * The running name of the field by that Mojang name the class declares (reflection's, class by class): for a class
+	 * of the game's, its own field's by the lookup, or null where it declares none; for another (the JDK's, a mod's),
+	 * the name itself.
+	 */
+	static String runningField(Class<?> declaring, String name) {
+		if (!isGame(declaring)) {
+			return name;
+		}
+		return names.apply("f\t" + mojang(declaring) + "\t" + name);
+	}
+
+	/** Whether the method, its declaring class's own, is the one by that Mojang name (by the lookup, for the game's). */
+	static boolean isMethod(Method method, String name) {
+		Class<?> declaring = method.getDeclaringClass();
+		if (!isGame(declaring)) {
+			return method.getName().equals(name);
+		}
+		StringBuilder parameters = new StringBuilder("(");
+		for (Class<?> parameter : method.getParameterTypes()) {
+			parameters.append(descriptor(parameter));
+		}
+		parameters.append(')');
+		String running = names.apply("m\t" + mojang(declaring) + "\t" + name + "\t" + parameters);
+		return method.getName().equals(running);
+	}
+
 	private static String running(String key, String name, Class<?> owner, String what) {
 		Function<String, String> lookup = names;
 		if (lookup == null) {

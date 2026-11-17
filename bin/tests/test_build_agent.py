@@ -68,6 +68,15 @@ class AssemblyTests(unittest.TestCase):
     with inner:
       self.assertNotIn(build_agent.HOOKS_FILE, inner.namelist())
 
+  def test_the_declarers_inside_the_probe_s_jar(self) -> None:
+    """An obfuscated version's declarers (SPEC.md 19.7 step 6b): in the probe's jar, where its renaming loader reads them."""
+    touch(os.path.join(self.probe, build_agent.DECLARERS), b'a\tb\t()V\tc\n')
+    with zipfile.ZipFile(self.assembled()) as jar:
+      self.assertNotIn(build_agent.DECLARERS, jar.namelist())
+      inner = zipfile.ZipFile(io.BytesIO(jar.read(build_agent.INNER)))
+    with inner:
+      self.assertEqual(b'a\tb\t()V\tc\n', inner.read(build_agent.DECLARERS))
+
   def test_the_same_bytes_again(self) -> None:
     with open(self.assembled('one.jar'), 'rb') as one, open(self.assembled('two.jar'), 'rb') as two:
       self.assertEqual(one.read(), two.read())
@@ -86,9 +95,19 @@ class VersionsTests(unittest.TestCase):
   def test_26_3(self) -> None:
     version = build_agent.VERSIONS['26.3']
     self.assertEqual('25', version.release)
+    self.assertFalse(version.obfuscated, '26.x runs under Mojang\'s own names')
+    self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
+
+  def test_1_21_1(self) -> None:
+    """Java 21, obfuscated (compiled against its stubs, its probe renamed as it loads), the shared code and its own."""
+    version = build_agent.VERSIONS['1.21.1']
+    self.assertEqual('21', version.release)
+    self.assertTrue(version.obfuscated)
+    self.assertIn(build_agent.MODERN, version.sources)
     self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
 
   def test_each_version_s_hooks_file(self) -> None:
+    counts = {'26.3': 18, '1.21.1': 19}
     for minecraft, version in build_agent.VERSIONS.items():
       with self.subTest(minecraft=minecraft):
         with open(version.hooks, encoding='utf-8') as file:
@@ -102,7 +121,7 @@ class VersionsTests(unittest.TestCase):
           parts = line.split('\t')
           self.assertEqual(5, len(parts), line)
           self.assertIn(parts[0], ('BEFORE', 'AFTER'), line)
-    self.assertEqual(18, len(lines) - 1, "26.3's 18 hooks")
+        self.assertEqual(counts[minecraft], len(lines) - 1, "%s's hooks" % minecraft)
 
 
 if __name__ == '__main__':

@@ -102,7 +102,8 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 				ModernHooks.serverTickEnd();
 				return pass;
 			default:
-				throw new IllegalArgumentException("the probe knows no hook " + hook);
+				// a hook of the version's own (1.21.1's view keeps its frames and builds by hooks): its Version's
+				return Version.hook(hook, self, arguments, pass);
 		}
 	}
 

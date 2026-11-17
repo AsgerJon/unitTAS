@@ -67,6 +67,32 @@ final class Reflect {
 
 		/** A value of the version's own as JSON (an item stack, an entity, a tag as SNBT); null for any other. */
 		JsonElement value(Call call, Object value) throws ProbeException;
+
+		/*
+		 * The names reflection reaches the game by, which a version run under other names than the ones the tests write
+		 * translates (SPEC.md 19.7 step 6c: 1.21.1's Mojang names to its obfuscated ones, by the exact class, which the
+		 * orchestrator can't know). By default each name is taken as it is: 1.7.10's and 26.3's.
+		 */
+
+		/** The running name of a class asked for by its binary name (net.minecraft.world.item.Items). */
+		default String runningClass(String binaryName) {
+			return binaryName;
+		}
+
+		/** A class's name as the tests write it, for an answer. */
+		default String readableClass(Class<?> type) {
+			return type.getName();
+		}
+
+		/** The running name of the field by that name that the class itself declares; null where it declares none. */
+		default String fieldName(Class<?> declaring, String name) {
+			return name;
+		}
+
+		/** Whether the method (its declaring class's own) is the one by that name. */
+		default boolean methodNamed(Method method, String name) {
+			return method.getName().equals(name);
+		}
 	}
 
 	/** The port's Game (ClientHooks', ServerHooks', FabricHooks'), or null before its hooks start. */
@@ -159,7 +185,7 @@ final class Reflect {
 
 	static Class<?> type(String name) throws ProbeException {
 		try {
-			return Class.forName(name, false, game().loader());
+			return Class.forName(game().runningClass(name), false, game().loader());
 		} catch (ClassNotFoundException | LinkageError e) {
 			throw new ProbeException("NotFound", "no class " + name, Json.object("what", name));
 		}
@@ -210,11 +236,11 @@ final class Reflect {
 				}
 				return list.get(index);
 			}
-			throw ProbeException.badRequest("path", "an index needs an array or a list, not a " + here.getClass().getName());
+			throw ProbeException.badRequest("path", "an index needs an array or a list, not a " + readable(here.getClass()));
 		}
 		if (object.has("key")) {
 			if (!(here instanceof Map<?, ?>)) {
-				throw ProbeException.badRequest("path", "a key needs a map, not a " + here.getClass().getName());
+				throw ProbeException.badRequest("path", "a key needs a map, not a " + readable(here.getClass()));
 			}
 			return ((Map<?, ?>) here).get(object.get("key").getAsString());
 		}
@@ -293,10 +319,10 @@ final class Reflect {
 			return fits.get(0);
 		}
 		if (fits.isEmpty()) {
-			throw new ProbeException("NotFound", type.getName() + " has none of " + String.join(", ", names) + " as "
+			throw new ProbeException("NotFound", readable(type) + " has none of " + String.join(", ", names) + " as "
 				+ member.words, Json.object("what", names));
 		}
-		throw ProbeException.badRequest("path", "several of the candidates are " + member.words + " of " + type.getName()
+		throw ProbeException.badRequest("path", "several of the candidates are " + member.words + " of " + readable(type)
 			+ ": " + String.join(", ", fits));
 	}
 
@@ -304,7 +330,7 @@ final class Reflect {
 	private static boolean hasMethod(Class<?> type, String name, boolean statics) {
 		for (Class<?> at = type; at != null; at = at.getSuperclass()) {
 			for (Method method : at.getDeclaredMethods()) {
-				if (method.getName().equals(name) && statics == Modifier.isStatic(method.getModifiers())) {
+				if (named(method, name) && statics == Modifier.isStatic(method.getModifiers())) {
 					return true;
 				}
 			}
@@ -312,7 +338,7 @@ final class Reflect {
 		if (!statics) {
 			for (Class<?> face : type.getInterfaces()) {
 				for (Method method : face.getMethods()) {
-					if (method.getName().equals(name)) {
+					if (named(method, name)) {
 						return true;
 					}
 				}
@@ -328,8 +354,12 @@ final class Reflect {
 	/** The field by name, up the class chain, of any visibility; static ones only for a class itself. */
 	static Field field(Class<?> type, String name, boolean statics) {
 		for (Class<?> at = type; at != null; at = at.getSuperclass()) {
+			String running = fieldName(at, name);
+			if (running == null) {
+				continue;
+			}
 			try {
-				Field field = at.getDeclaredField(name);
+				Field field = at.getDeclaredField(running);
 				if (statics == Modifier.isStatic(field.getModifiers())) {
 					field.setAccessible(true);
 					return field;
@@ -341,29 +371,45 @@ final class Reflect {
 		return null;
 	}
 
+	/** The port's names, where it has a Game: by default, each name as it is. */
+	private static String fieldName(Class<?> declaring, String name) {
+		Game found = game;
+		return found == null ? name : found.fieldName(declaring, name);
+	}
+
+	private static boolean named(Method method, String name) {
+		Game found = game;
+		return found == null ? method.getName().equals(name) : found.methodNamed(method, name);
+	}
+
+	private static String readable(Class<?> type) {
+		Game found = game;
+		return found == null ? type.getName() : found.readableClass(type);
+	}
+
 	private static Object invoke(Call call, Object here, String name, JsonArray args, String sig) throws ProbeException {
 		boolean statics = here instanceof Statics;
 		// by signature, the most specific first: an override up the chain is the same method, not a second one
 		Map<String, Method> bySignature = new java.util.LinkedHashMap<>();
 		for (Class<?> at = owner(here); at != null; at = at.getSuperclass()) {
 			for (Method method : at.getDeclaredMethods()) {
-				if (method.getName().equals(name) && statics == Modifier.isStatic(method.getModifiers())) {
+				if (named(method, name) && statics == Modifier.isStatic(method.getModifiers())) {
 					bySignature.putIfAbsent(signature(method), method);
 				}
 			}
 		}
 		for (Class<?> face : owner(here).getInterfaces()) {
 			for (Method method : face.getMethods()) {
-				if (method.getName().equals(name) && !statics) {
+				if (named(method, name) && !statics) {
 					bySignature.putIfAbsent(signature(method), method);
 				}
 			}
 		}
 		List<Method> named = new ArrayList<>(bySignature.values());
 		if (named.isEmpty()) {
-			throw new ProbeException("NotFound", owner(here).getName() + " has no field or method " + name
-				+ " (names are the running game's: 1.7.10's MCP in a development run, Searge in a real client; 26.3's"
-				+ " Mojang's)", Json.object("what", name));
+			throw new ProbeException("NotFound", readable(owner(here)) + " has no field or method " + name
+				+ " (names are the running game's: 1.7.10's MCP in a development run, Searge in a real client; Mojang's"
+				+ " from 1.20.1 on, translated where the game runs obfuscated)", Json.object("what", name));
 		}
 		Method chosen = (Method) choose(call, named, args, sig, name);
 		try {
@@ -611,7 +657,7 @@ final class Reflect {
 
 	private static JsonObject ref(Call call, Object value) {
 		int id = call.probe.refs.add(value, call.side);
-		return Json.object("ref", id, "class", value.getClass().getName(), "text", cut(String.valueOf(value)));
+		return Json.object("ref", id, "class", readable(value.getClass()), "text", cut(String.valueOf(value)));
 	}
 
 	private static String cut(String text) {
@@ -702,7 +748,7 @@ final class Reflect {
 			: pick(owner, names(last.getAsJsonObject().get("name"), "name"), Member.FIELD);
 		Field field = field(owner(owner), name, owner instanceof Statics);
 		if (field == null) {
-			throw new ProbeException("NotFound", owner(owner).getName() + " has no field " + name, Json.object("what", name));
+			throw new ProbeException("NotFound", readable(owner(owner)) + " has no field " + name, Json.object("what", name));
 		}
 		if (Modifier.isFinal(field.getModifiers())) {
 			throw ProbeException.badRequest("path", name + " is final: reflect.set doesn't change a final field");

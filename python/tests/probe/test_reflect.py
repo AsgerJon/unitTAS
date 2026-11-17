@@ -19,7 +19,7 @@ import unittest
 
 from mcdex import MCEntities
 
-from ports import V1_7_10, V26_3, at, onlyOn, point, probeGame, start, version
+from ports import V1_7_10, V1_21_1, V26_3, at, onlyOn, point, probeGame, start, version
 from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
 from unittas.errors import BadRequest, NotFound
@@ -39,7 +39,6 @@ NAMES = {
   'main slots': {V1_7_10: 'mainInventory', V26_3: 'items'},
   'player name': {V1_7_10: 'getCommandSenderName', V26_3: 'getScoreboardName'},
   'difficulty': {V1_7_10: 'difficultySetting', V26_3: {'call': 'getDifficulty'}},
-  'server player': {V1_7_10: 'EntityPlayerMP', V26_3: 'ServerPlayer'},
   'items': {V1_7_10: 'net.minecraft.init.Items', V26_3: 'net.minecraft.world.item.Items'},
   'diamond': {V1_7_10: 'diamond', V26_3: 'DIAMOND'},
   'translation key': {V1_7_10: 'getUnlocalizedName', V26_3: 'getDescriptionId'},
@@ -62,6 +61,11 @@ NAMES = {
   #  a pig's tag that each version keeps
   "a pig's tag": {V1_7_10: ('{Saddle:1b}', 'Saddle'), V26_3: ('{Invulnerable:1b}', 'Invulnerable')},
 }
+
+
+#  1.21.1's are 26.3's: the tests write Mojang's names, which the probe translates where the game runs obfuscated
+for _entry in NAMES.values():
+  _entry[V1_21_1] = _entry[V26_3]
 
 
 def name(what: str):
@@ -107,7 +111,7 @@ class ReflectTests(unittest.TestCase):
     self.assertIs(Byte, type(tree['b']))
     self.assertIs(Float, type(tree['f']))
 
-  @onlyOn(V1_7_10, why="26.3's names and enchantments are components (test_values has an item's name)")
+  @onlyOn(V1_7_10, why="from 1.20.5 on, an item's name and enchantments are components (test_values has an item's name)")
   def test_02_an_enchanted_name(self) -> None:
     nbt = '{display:{Name:"Red"},ench:[{id:16s,lvl:5s}]}'
     self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:diamond_sword', 'nbt': nbt}})
@@ -157,7 +161,7 @@ class ReflectTests(unittest.TestCase):
                      self.reflect({'from': 'world', 'path': [name('difficulty')]}), 'an enum by its name')
     self.assertEqual(36, len(self.reflect({'from': 'player', 'path': [name('inventory'), name('main slots')]})))
     text = self.reflect({'from': 'player', 'path': [], 'as': 'text'})
-    self.assertIn(name('server player'), text)
+    self.assertIn(self.request('player.get')['name'], text, "the game's own text for the player, which names it")
     me = self.reflect({'from': 'player', 'path': []})
     self.assertEqual(self.request('player.get')['entity'], me['entity'], 'an entity comes as its summary')
 
@@ -242,7 +246,7 @@ class ReflectTests(unittest.TestCase):
     self.reflect({'from': 'player', 'path': path, 'value': 4}, op='reflect.set')
     self.assertEqual(4, self.reflect({'from': 'player', 'path': [name('inventory'), name('selected slot')]}))
 
-  @onlyOn(V1_7_10, why='26.3 is unobfuscated: its names are the game\'s own, nothing is translated')
+  @onlyOn(V1_7_10, why="the orchestrator translates 1.7.10's MCP names; from 1.20.1 on, the probe translates Mojang's where the game runs obfuscated")
   def test_13d_a_path_translated_from_the_mappings(self) -> None:
     mappings = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
     self.assertEqual(0, self.reflect({'from': 'player', 'path': mappings.translate(['inventory', 'currentItem'])}))

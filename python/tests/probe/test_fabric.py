@@ -83,7 +83,7 @@ class FabricGameTests(unittest.TestCase):
     mods = {mod['id'] for mod in self.ready['mods']}
     self.assertTrue({'minecraft', 'fabricloader'} <= mods, mods)
     self.assertNotIn('unittas', mods, 'the probe is no Fabric mod')
-    self.assertEqual(HOOKED, self.ready['mixins']['applied'], "each hooked class rewritten after Fabric's Mixin")
+    self.assertEqual(HOOKED['26.3'], self.ready['mixins']['applied'], "each hooked class rewritten after Fabric's Mixin")
     self.assertEqual((854, 480), (self.ready['window']['width'], self.ready['window']['height']))
     self.assertEqual('unitTAS', self.ready['window']['title'], "the window's behaviours (PROTOCOL.md 2.5)")
     self.assertEqual([], self.ready['mixins']['missing'])

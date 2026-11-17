@@ -2,12 +2,14 @@
 The port the probe's game tests run on (SPEC.md 19.7): a version and what
 runs it, named by the run ('on 26.3-fabric', 'on 26.3'; unittas.selftest
 puts it in UNITTAS_PROBE_PORT), 1.7.10 Forge's development client without
-one. A test class starts its port's game (probeGame: 26.3 as Mojang ships
-it, the probe a Java agent, for '26.3'), puts the player where its flat
-test world's start is (start), says a command as that version reads it
-where the versions' texts differ (command), and skips what its version
-can't do yet, saying why (onlyOn). The tables are by version (V1_7_10,
-V26_3): both 26.3 ports share 26.3's.
+one. A test class starts its port's game (probeGame: 26.3 or 1.21.1 as
+Mojang ships it, the probe a Java agent, for '26.3' and '1.21.1'), puts
+the player where its flat test world's start is (start), says a command
+as that version reads it where the versions' texts differ (command), and
+skips what its version can't do yet, saying why (onlyOn). The tables are
+by version (V1_7_10, V1_21_1, V26_3): both 26.3 ports share 26.3's, and
+1.21.1 has 26.3's block states and command texts (the same from 1.13 and
+1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -25,12 +27,13 @@ from unittas.game import LaunchedGame
 from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Vec3
 
-FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3 = PORTS
+FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1 = PORTS
 #  the versions, which the tables are by
-V1_7_10, V26_3 = '1.7.10', '26.3'
-VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3}
-#  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 in 26.3
-STARTS = {V1_7_10: (0.5, 4.0, 0.5), V26_3: (0.5, -60.0, 0.5)}
+V1_7_10, V1_21_1, V26_3 = '1.7.10', '1.21.1', '26.3'
+VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1}
+#  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
+#  1.18 on (the world's bottom at y -64)
+STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_21_1: (0.5, -60.0, 0.5), V26_3: (0.5, -60.0, 0.5)}
 #  the commands whose text differs between the versions, by what they do
 COMMANDS = {
   'xp 30 levels': {V1_7_10: '/xp 30L', V26_3: '/xp add @p 30 levels'},
@@ -42,7 +45,7 @@ COMMANDS = {
                      V26_3: '/effect give @p minecraft:instant_damage 1 0'},
 }
 #  a key's raw code, as each version numbers its keys: 1.7.10's LWJGL codes, 26.3's SDL3 scancodes
-CODES = {'space': {V1_7_10: 57, V26_3: 44}}
+CODES = {'space': {V1_7_10: 57, V1_21_1: 32, V26_3: 44}}
 
 
 def _door(kind: str, half: str) -> Block:
@@ -99,6 +102,12 @@ BLOCKS = {
                  V26_3: Block('minecraft:oak_fence_gate', -1, state=(('facing', 'south'), ('in_wall', 'false'),
                                                                           ('open', 'false'), ('powered', 'false')))},
 }
+
+
+#  1.21.1's block states and command texts are 26.3's: the same from 1.13 (states) and 1.20.5 (commands, items' data)
+for _table in (COMMANDS, BLOCKS):
+  for _entry in _table.values():
+    _entry[V1_21_1] = _entry[V26_3]
 
 
 def port() -> str:
@@ -163,4 +172,7 @@ def probeGame(name: str) -> LaunchedGame:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log')), name)
   if port() == VANILLA_26_3:
     return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log')), name)
+  if port() == VANILLA_1_21_1:
+    return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
+                     minecraft=V1_21_1)
   return DevGame(ROOT, results(), name)

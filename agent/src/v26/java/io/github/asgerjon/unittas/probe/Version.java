@@ -95,6 +95,11 @@ final class Version {
 		return arguments[2] == GuiMessageSource.PLAYER ? "chat" : "system";
 	}
 
+	/** The version's own hooks, which the shared entry passes on: 26.3 has none (its render states keep the frame). */
+	static Object hook(String id, Object self, Object[] arguments, Object pass) {
+		throw new IllegalArgumentException("the probe knows no hook " + id);
+	}
+
 	// ---------------------------------------------------------------- screens and the HUD
 
 	static Screen screen() {
@@ -198,6 +203,16 @@ final class Version {
 
 	static ItemStack selectedItem(Inventory inventory) {
 		return inventory.getSelectedItem();
+	}
+
+	/** The game's own pick of what the crosshair meets, made afresh for the look as it is now (Minecraft's, private). */
+	static void pick(float partialTick) {
+		Members.call(Picking.PICK, Minecraft.getInstance(), partialTick);
+	}
+
+	private static final class Picking {
+
+		static final java.lang.reflect.Method PICK = Members.method(Minecraft.class, "pick", float.class);
 	}
 
 	// ---------------------------------------------------------------- the world, players and entities

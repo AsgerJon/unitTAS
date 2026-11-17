@@ -1,10 +1,11 @@
 """
-The loader-free probe (SPEC.md 19.7 step 5a): unitTAS's probe for 26.3 as a Java agent in vanilla 26.3, no loader
-and no library, from unitTAS's own launcher (bin/launch_client.py --minecraft 26.3 --agent JAR). It wakes at the
-game's first hook, loaded under the game's own class loader; its hello says what runs (the port 26.3, Minecraft
-26.3, no loader, Mojang's names, the probe's version from its own jar); ready once loaded, every hooked class
-rewritten; its window's behaviours (PROTOCOL.md 2.5); a world made and a block set and read in it; asked to quit, it
-does.
+The loader-free probe (SPEC.md 19.7 steps 5a and 6c): unitTAS's probe for a version as a Java agent in that version
+as Mojang ships it, no loader and no library, from unitTAS's own launcher (bin/launch_client.py --minecraft VERSION
+--agent JAR): 26.3, under Mojang's own names, and 1.21.1, obfuscated, its probe renamed as it loads. It wakes at the
+game's first hook, loaded under the game's own class loader; its hello says what runs (the port, the version, no
+loader, the names it runs under, the probe's version from its own jar, the version's Java); ready once loaded, every
+hooked class rewritten, each by its Mojang name; its window's behaviours (PROTOCOL.md 2.5); a world made and a block
+set and read in it; asked to quit, it does. On the run's port's version (26.3 for 26.3-fabric's run too).
 
   python -m unittas.selftest test_agent.      (through the watcher: "probe test_agent.")
 """
@@ -16,19 +17,25 @@ import os
 import shutil
 import unittest
 
-from agentgame import HOOKED, MINECRAFT, AgentGame, buildAgent
+from agentgame import HOOKED, AgentGame, buildAgent
+from ports import V1_21_1, V26_3, onlyOn, version
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.reset import reset
 
 TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
+#  what each version runs under, and on
+NAMES = {V26_3: 'mojang', V1_21_1: 'obfuscated'}
+JAVAS = {V26_3: '25', V1_21_1: '21'}
 
 
+@onlyOn(V26_3, V1_21_1, why="the agent's own port is a version from 1.20.1 on")
 class AgentTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'))
-    cls.game = AgentGame(results(), jar)
+    cls.version = version()
+    jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), cls.version)
+    cls.game = AgentGame(results(), jar, minecraft=cls.version)
     shutil.rmtree(os.path.join(cls.game.gameDir, 'saves', 'unittas'), ignore_errors=True)
     cls.connection = cls.game.start(READY_SECONDS)
     cls.ready = cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
@@ -39,18 +46,18 @@ class AgentTests(unittest.TestCase):
 
   def test_1_its_hello_says_what_runs(self) -> None:
     hello = self.connection.hello
-    self.assertEqual('26.3', hello.probePort)
-    self.assertEqual(MINECRAFT, hello.minecraft)
+    self.assertEqual(self.version, hello.probePort)
+    self.assertEqual(self.version, hello.minecraft)
     self.assertEqual(('', ''), (hello.loaderName, hello.loaderVersion), 'vanilla: no loader')
-    self.assertEqual('mojang', hello.names, '26.x is unobfuscated: no mappings')
+    self.assertEqual(NAMES[self.version], hello.names, '26.x is unobfuscated; before it, vanilla is obfuscated')
     self.assertFalse(hello.development)
     self.assertEqual(modVersion(), hello.probeVersion, "the probe's version from its own jar's manifest")
-    self.assertTrue(hello.javaVersion.startswith('25'), hello.javaVersion)
+    self.assertTrue(hello.javaVersion.startswith(JAVAS[self.version]), hello.javaVersion)
 
   def test_2_ready_with_every_hook(self) -> None:
     self.assertEqual(TITLE, self.ready['screen'])
     self.assertEqual([], self.ready['mods'], 'vanilla: no mods, no loader to list them')
-    self.assertEqual(HOOKED, self.ready['mixins']['applied'], 'each hooked class rewritten as it loaded')
+    self.assertEqual(HOOKED[self.version], self.ready['mixins']['applied'], 'each hooked class rewritten as it loaded')
     self.assertEqual([], self.ready['mixins']['missing'])
     self.assertEqual('unitTAS', self.ready['window']['title'], "the window's behaviours (PROTOCOL.md 2.5)")
 

@@ -541,13 +541,24 @@ def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str
   if loader is not None:
     raise Missing('%s runs beside %s under its intermediary names, which the agent takes from SPEC.md 19.7 step 6d '
                   'on: not yet' % (minecraft, loader))
+  return ['-Dunittas.names=' + namesTable(sources, minecraft)]
+
+
+def namesTable(sources: Sources, minecraft: str) -> str:
+  """
+  The version's table of names, Mojang's to the obfuscated ones the game
+  runs under in vanilla (SPEC.md 19.7 step 6b): written once into the
+  download cache from its obfuscation log, which is fetched there once
+  and held to its sha1. Missing for a version with no log, or when it
+  can't be had.
+  """
   from .mojangnames import TABLE_FORMAT, MojangNames
   if sources.cache is None:
     raise Missing('no %s table of names: there is no download cache to write it into' % minecraft)
   table = sources.cache.path('names/%s-obfuscated-%s.txt' % (minecraft, TABLE_FORMAT))
   if not os.path.isfile(table):
     MojangNames.load(sources, minecraft).write(table, minecraft)
-  return ['-Dunittas.names=' + table]
+  return table
 
 
 def classPath(sources: Sources, minecraft: str) -> list:

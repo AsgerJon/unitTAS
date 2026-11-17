@@ -10,10 +10,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * What reflection (the probe core's Reflect) reaches of 26.3 that is its own (SPEC.md 19.7 step 4): the side's
- * player, its level, the game (the client's Minecraft, the integrated server), an entity by its number, and 26.3's
- * stacks (with their components), entities and tags as the protocol writes them. Names are Mojang's: 26.x is
- * unobfuscated, so nothing is translated.
+ * What reflection (the probe core's Reflect) reaches of the version that is its own (SPEC.md 19.7 steps 4 and 6c): the
+ * side's player, its level, the game (the client's Minecraft, the integrated server), an entity by its number, and its
+ * stacks (with their components), entities and tags as the protocol writes them. Names are Mojang's, as the tests
+ * write them. 26.x runs under them, so nothing is translated; where the game runs obfuscated (1.21.1), each name is
+ * translated by the names' lookup (Members), class by class: a class, a field of the class that declares it, a method
+ * by its declaring class and parameters. A game class that doesn't declare a name has nothing by it, so a name is
+ * never matched against an obfuscated one it merely spells.
  */
 final class ModernReflect implements Reflect.Game {
 
@@ -66,5 +69,25 @@ final class ModernReflect implements Reflect.Game {
 			return Json.of(value.toString());
 		}
 		return null;
+	}
+
+	@Override
+	public String runningClass(String binaryName) {
+		return Members.runningClass(binaryName);
+	}
+
+	@Override
+	public String readableClass(Class<?> type) {
+		return Members.className(type);
+	}
+
+	@Override
+	public String fieldName(Class<?> declaring, String name) {
+		return Members.runningField(declaring, name);
+	}
+
+	@Override
+	public boolean methodNamed(java.lang.reflect.Method method, String name) {
+		return Members.isMethod(method, name);
 	}
 }

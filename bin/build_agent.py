@@ -46,18 +46,28 @@ BOOTSTRAP = os.path.join(AGENT, 'bootstrap', 'java')
 CORE = os.path.join(ROOT, 'src', 'probe-core', 'java')
 #  the probe's code shared by the versions from 1.20.1 on, compiled for each against its own classes (19.7 step 6c)
 MODERN = os.path.join(AGENT, 'modern', 'java')
+#  the builder's own tools (stubs, declarers: SPEC.md 19.7 step 6b), never shipped
+TOOLS = os.path.join(AGENT, 'build', 'java')
+#  an obfuscated version's declarers, in the probe's jar (its RenamingLoader.DECLARERS)
+DECLARERS = 'unittas-probe-declarers.txt'
 
 
 @dataclass(frozen=True)
 class Version:
-  """One version the builder makes an agent for: its probe's source folders, its Java (javac --release), its hooks."""
+  """
+  One version the builder makes an agent for: its probe's source folders, its Java (javac --release), its hooks, and
+  whether the game runs obfuscated (before 26.1: the probe compiled against its stubs and renamed as it loads).
+  """
   release: str
   sources: tuple
   hooks: str
+  obfuscated: bool = False
 
 
 VERSIONS = {
   '26.3': Version('25', (CORE, MODERN, os.path.join(AGENT, 'v26', 'java')), os.path.join(AGENT, 'v26', 'hooks.txt')),
+  '1.21.1': Version('21', (CORE, MODERN, os.path.join(AGENT, 'v1_21_1', 'java')),
+                    os.path.join(AGENT, 'v1_21_1', 'hooks.txt'), True),
 }
 #  the bootstrap's Java: the oldest a version runs on
 BOOTSTRAP_RELEASE = '17'
@@ -156,8 +166,34 @@ def compileBootstrap(compiler: str, into: str) -> None:
   _compile(compiler, [], sourcesUnder(BOOTSTRAP), into, BOOTSTRAP_RELEASE)
 
 
+def _tool(compiler: str, tools: str, name: str, *args: str) -> None:
+  """One of the builder's tools, run on the JDK whose javac compiles; RuntimeError with its own words if it fails."""
+  java = os.path.join(os.path.dirname(compiler), 'java')
+  done = subprocess.run([java, '-cp', tools, 'io.github.asgerjon.unittas.agent.' + name] + list(args),
+                        stdin=subprocess.DEVNULL, capture_output=True, text=True)
+  if done.returncode != 0:
+    raise RuntimeError('%s failed:\n%s%s' % (name, done.stdout, done.stderr))
+
+
+def stubs(sources, minecraft: str, client: str, compiler: str, tools: str) -> str:
+  """
+  An obfuscated version's stubs (SPEC.md 19.7 step 6b): its client jar's classes by Mojang's names, declarations only,
+  made once into the download cache by the client jar's sha1, never shipped.
+  """
+  from unittas.cache import fileSha1
+  from unittas.launcher import namesTable
+  target = sources.cache.path('stubs/%s-%s.jar' % (minecraft, fileSha1(client)))
+  if not os.path.isfile(target):
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    _tool(compiler, tools, 'Stubs', client, namesTable(sources, minecraft), target)
+  return target
+
+
 def build(out: str = '', cacheRoot: str = '', java25: str = '', minecraft: str = MINECRAFT) -> str:
-  """The version's agent's jar, built from the sources as they are now: two javac passes, then the jars."""
+  """
+  The version's agent's jar, built from the sources as they are now: two javac passes, then the jars. For an
+  obfuscated version the probe is compiled against its stubs, and its declarers found and packed with it.
+  """
   from unittas.cache import Cache, defaultRoot
   from unittas.launcher import Sources, classPath
   if minecraft not in VERSIONS:
@@ -165,15 +201,24 @@ def build(out: str = '', cacheRoot: str = '', java25: str = '', minecraft: str =
   version = VERSIONS[minecraft]
   out = out or OUT % minecraft
   compiler = javac(java25)
-  game = classPath(Sources(cache=Cache(cacheRoot or defaultRoot())), minecraft)
+  sources = Sources(cache=Cache(cacheRoot or defaultRoot()))
+  game = classPath(sources, minecraft)
   os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
   work = tempfile.mkdtemp(prefix='classes-', dir=os.path.dirname(os.path.abspath(out)))
   try:
     bootstrapClasses = os.path.join(work, 'bootstrap')
     probeClasses = os.path.join(work, 'probe')
     compileBootstrap(compiler, bootstrapClasses)
-    _compile(compiler, game + [bootstrapClasses], [path for folder in version.sources for path in sourcesUnder(folder)],
+    against = game
+    if version.obfuscated:
+      tools = os.path.join(work, 'tools')
+      _compile(compiler, [], sourcesUnder(BOOTSTRAP) + sourcesUnder(TOOLS), tools, BOOTSTRAP_RELEASE)
+      gameStubs = stubs(sources, minecraft, game[-1], compiler, tools)
+      against = game[:-1] + [gameStubs]
+    _compile(compiler, against + [bootstrapClasses], [path for folder in version.sources for path in sourcesUnder(folder)],
              probeClasses, version.release)
+    if version.obfuscated:
+      _tool(compiler, tools, 'Declarers', gameStubs, probeClasses, os.path.join(probeClasses, DECLARERS))
     with open(version.hooks, 'rb') as file:
       hooks = file.read()
     return assemble(bootstrapClasses, probeClasses, modVersion(), out, hooks, minecraft)
