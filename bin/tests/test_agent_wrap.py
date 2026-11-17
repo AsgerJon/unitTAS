@@ -27,6 +27,7 @@ import build_agent  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
   os.path.abspath(__file__))))
 SOURCES = (os.path.join(ROOT, 'agent', 'src', 'bootstrap', 'java'),
+           os.path.join(ROOT, 'agent', 'src', 'build', 'java'),
            os.path.join(ROOT, 'agent', 'src', 'test', 'java'))
 CHECK = 'io.github.asgerjon.unittas.agent.WrapCheck'
 #  WrapCheck's checks, in the order it runs them: each must say ok
@@ -66,7 +67,7 @@ def javac(homes: dict) -> Optional[str]:
 
 
 def sources() -> list:
-  """Every .java file of the bootstrap and the check, in a fixed order."""
+  """Every .java file of the bootstrap, the build's tools and the checks."""
   found = []
   for folder in SOURCES:
     for where, _, names in os.walk(folder):

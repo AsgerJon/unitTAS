@@ -57,14 +57,14 @@ final class Rewriter implements ClassFileTransformer {
 		if ((file.access & ClassBytes.INTERFACE) != 0) {
 			throw new IllegalArgumentException(file.name() + " is an interface: the probe hooks classes only");
 		}
-		Map<ClassBytes.Method, List<Hooks.Hook>> byMethod = new IdentityHashMap<>();
-		List<ClassBytes.Method> hooked = new ArrayList<>();
+		Map<ClassBytes.Member, List<Hooks.Hook>> byMethod = new IdentityHashMap<>();
+		List<ClassBytes.Member> hooked = new ArrayList<>();
 		for (Hooks.Hook hook : hooks) {
 			if (hook.method().startsWith("<")) {
 				throw new IllegalArgumentException(hook.method() + " can't be wrapped: " + hook);
 			}
 			boolean found = false;
-			for (ClassBytes.Method method : file.methods) {
+			for (ClassBytes.Member method : file.methods) {
 				if (file.utf8(method.name).equals(hook.method())
 					&& (hook.descriptor() == null || file.utf8(method.descriptor).equals(hook.descriptor()))) {
 					found = true;
@@ -80,15 +80,15 @@ final class Rewriter implements ClassFileTransformer {
 					+ (hook.descriptor() == null ? "" : hook.descriptor()) + " in " + file.name() + ": " + hook);
 			}
 		}
-		List<ClassBytes.Method> wrappers = new ArrayList<>();
-		for (ClassBytes.Method method : hooked) {
+		List<ClassBytes.Member> wrappers = new ArrayList<>();
+		for (ClassBytes.Member method : hooked) {
 			String name = file.utf8(method.name);
 			String descriptor = file.utf8(method.descriptor);
 			if ((method.access & (ClassBytes.ABSTRACT | ClassBytes.NATIVE)) != 0) {
 				throw new IllegalArgumentException(name + descriptor + " in " + file.name() + " has no code to wrap");
 			}
 			String renamed = name + RENAMED;
-			for (ClassBytes.Method other : file.methods) {
+			for (ClassBytes.Member other : file.methods) {
 				if (file.utf8(other.name).equals(renamed) && file.utf8(other.descriptor).equals(descriptor)) {
 					throw new IllegalArgumentException(file.name() + " has a " + renamed + descriptor + " already");
 				}

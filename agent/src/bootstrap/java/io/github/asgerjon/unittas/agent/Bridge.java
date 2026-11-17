@@ -8,6 +8,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,18 +36,26 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 	private static final Set<String> REWRITTEN = ConcurrentHashMap.newKeySet();
 
 	private final File game;
+	private final List<Hooks.Hook> hooks;
+	/** The names the game runs under, where they aren't Mojang's: the probe is renamed as it loads (null: not). */
+	private final Names names;
 	/** A BEFORE hook's value for "go on with the method". */
 	private final Object pass = new Object();
 	private volatile BiFunction<String, Object[], Object> probe;
 	private volatile boolean broken;
 
-	private Bridge(File game) {
+	private Bridge(File game, List<Hooks.Hook> hooks, Names names) {
 		this.game = game;
+		this.hooks = hooks;
+		this.names = names;
 	}
 
-	/** The bridge for the game in this folder, where the hooks will look for it. */
-	static void install(File game) {
-		Bridge bridge = new Bridge(game);
+	/**
+	 * The bridge for the game in this folder, where the hooks will look for it: its hooks by the names the game runs
+	 * under, and those names where they aren't Mojang's (null where they are).
+	 */
+	static void install(File game, List<Hooks.Hook> hooks, Names names) {
+		Bridge bridge = new Bridge(game, hooks, names);
 		System.getProperties().put(PASS, bridge.pass);
 		System.getProperties().put(HOOKS, bridge);
 	}
@@ -55,10 +64,10 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 		REWRITTEN.add(className);
 	}
 
-	/** Every class the probe hooks, by its internal name (net/minecraft/client/Minecraft). */
-	static Set<String> hookedClasses() {
+	/** Every class the hooks name, by its internal name (net/minecraft/client/Minecraft) as the game runs it. */
+	static Set<String> hookedClasses(List<Hooks.Hook> hooks) {
 		Set<String> owners = new TreeSet<>();
-		for (Hooks.Hook hook : Hooks.TABLE) {
+		for (Hooks.Hook hook : hooks) {
 			owners.add(hook.owner());
 		}
 		return Collections.unmodifiableSet(owners);
@@ -90,7 +99,10 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 		}
 	}
 
-	/** The probe's jar, out of the agent's into the game's folder, loaded under the game's class loader. */
+	/**
+	 * The probe's jar, out of the agent's into the game's folder, loaded under the game's class loader: as it is where
+	 * the game runs under Mojang's names, renamed as it loads where it doesn't (RenamingLoader).
+	 */
 	@SuppressWarnings("unchecked")
 	private BiFunction<String, Object[], Object> load(ClassLoader gameLoader) throws IOException,
 		ReflectiveOperationException {
@@ -103,9 +115,11 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 			Files.createDirectories(folder.toPath());
 			Files.copy(in, jar.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		}
-		URLClassLoader loader = new URLClassLoader("unittas-probe", new URL[] {jar.toURI().toURL()}, gameLoader);
+		URLClassLoader loader = names == null
+			? new URLClassLoader("unittas-probe", new URL[] {jar.toURI().toURL()}, gameLoader)
+			: RenamingLoader.of(jar, gameLoader, names);
 		Class<?> entry = Class.forName(ENTRY, true, loader);
 		return (BiFunction<String, Object[], Object>) entry.getMethod("start", File.class, Object.class, Set.class,
-			Set.class).invoke(null, game, pass, hookedClasses(), Collections.unmodifiableSet(REWRITTEN));
+			Set.class).invoke(null, game, pass, hookedClasses(hooks), Collections.unmodifiableSet(REWRITTEN));
 	}
 }

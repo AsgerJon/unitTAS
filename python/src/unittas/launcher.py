@@ -476,7 +476,9 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   Its player 'username' (offline), its memory the run's ('-Xmx'), the
   version's own collector flags kept, its window 'width' by 'height'.
   Each of 'agents' (a jar) a Java agent, given the game folder
-  (-javaagent:JAR=GAME): the loader-free probe (SPEC.md 19.7 step 5).
+  (-javaagent:JAR=GAME): the loader-free probe (SPEC.md 19.7 step 5),
+  and for a version under other names than Mojang's its table of names
+  (_names: -Dunittas.names).
   'java' None: the Java the version's JSON asks for (findJavaFor).
   Missing naming what can't be had; ValueError for a loader it doesn't
   put on, a name, or a memory it can't take.
@@ -517,9 +519,35 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
                           'the logging config ' + config['id'], [config['sha1']])
     jvm += versions.fill([version.logging['argument']], {'path': configPath})
   jvm += versions.fill(version.jvm, values)
+  if agents:
+    jvm += _names(sources, vanilla, minecraft, loader)
   jvm += ['-javaagent:%s=%s' % (agent, game) for agent in agents]
   return Launch([java] + jvm + [version.mainClass] + versions.fill(version.game, values), natives, assets,
                 version.javaMajor)
+
+
+def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str]) -> list:
+  """
+  The agent's table of names, for a version the game runs under names
+  other than Mojang's (before 26.1: SPEC.md 19.7 step 6b): written once
+  into the download cache from the version's obfuscation log, and named
+  to the agent by -Dunittas.names. None for a version under Mojang's own
+  names (no client_mappings in its JSON). Beside a loader such a version
+  runs under the loader's names (Fabric's intermediary), which come with
+  step 6d: Missing until then.
+  """
+  if not vanilla.get('downloads', {}).get('client_mappings'):
+    return []
+  if loader is not None:
+    raise Missing('%s runs beside %s under its intermediary names, which the agent takes from SPEC.md 19.7 step 6d '
+                  'on: not yet' % (minecraft, loader))
+  from .mojangnames import TABLE_FORMAT, MojangNames
+  if sources.cache is None:
+    raise Missing('no %s table of names: there is no download cache to write it into' % minecraft)
+  table = sources.cache.path('names/%s-obfuscated-%s.txt' % (minecraft, TABLE_FORMAT))
+  if not os.path.isfile(table):
+    MojangNames.load(sources, minecraft).write(table, minecraft)
+  return ['-Dunittas.names=' + table]
 
 
 def classPath(sources: Sources, minecraft: str) -> list:

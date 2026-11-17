@@ -1,5 +1,6 @@
 package io.github.asgerjon.unittas.agent;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -55,5 +56,27 @@ final class Hooks {
 		new Hook(MOUSE, "isMouseGrabbed", "()Z", When.BEFORE, "mouse.grabbed"));
 
 	private Hooks() {
+	}
+
+	/**
+	 * The hooks as the game runs under other names (SPEC.md 19.7 step 6b): each hooked class, method and descriptor
+	 * by the table's. A hook the table can't name is refused: never put in by its Mojang name, where it would match
+	 * nothing (or, worse, another method).
+	 */
+	static List<Hook> renamed(List<Hook> hooks, Names names) {
+		List<Hook> renamed = new ArrayList<>();
+		for (Hook hook : hooks) {
+			if (hook.descriptor() == null) {
+				throw new IllegalArgumentException("a hook with no descriptor can't be renamed: " + hook);
+			}
+			String method = names.method(hook.owner(), hook.method(), hook.descriptor());
+			if (method == null) {
+				throw new IllegalArgumentException("no " + names.kind + " name for the hooked " + hook.owner() + "."
+					+ hook.method() + hook.descriptor());
+			}
+			renamed.add(new Hook(names.className(hook.owner()), method, names.descriptor(hook.descriptor()), hook.when(),
+				hook.id()));
+		}
+		return List.copyOf(renamed);
 	}
 }

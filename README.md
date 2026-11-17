@@ -701,7 +701,11 @@ game's classes itself, naming only the JDK's classes in them (a loader may hide 
 Fabric's does). It wraps each hooked method (the original renamed `name$unittas` and made private, a method of the
 hooked one's name calling the hooks and then it), so the game's own code is never edited, and the wrapping needs
 nothing but the JDK, on Java 17 and later: `python3 -m unittest bin/tests/test_agent_wrap.py` checks it on every Java
-installed of 17, 21 and 25. It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
+installed of 17, 21 and 25. For a version the game runs under other names than Mojang's (before 26.1: obfuscated), the
+probe is written in Mojang's names all the same and renamed as it loads, by a table of the version's names that the
+launcher writes once from the version's own obfuscation log (`client_mappings`) and names to the agent
+(`-Dunittas.names=TABLE`); the log and the table stay in the download cache, never shipped.
+`python3 -m unittest bin/tests/test_agent_names.py` checks the renaming on a small game of its own. It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
 under test brings: a mod and its loader are the user's, taken as working. Its version is the root's `mod_version`.
 The probe's version-free core, `src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
 

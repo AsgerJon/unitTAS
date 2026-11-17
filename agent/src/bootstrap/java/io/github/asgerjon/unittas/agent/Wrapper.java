@@ -70,7 +70,7 @@ final class Wrapper {
 	 * The original renamed and made private (its code and nothing else kept on it), and its wrapper made: the
 	 * original's name, descriptor and access, and every attribute of the original's but its code.
 	 */
-	static ClassBytes.Method wrap(ClassBytes file, ClassBytes.Method original, String renamed,
+	static ClassBytes.Member wrap(ClassBytes file, ClassBytes.Member original, String renamed,
 		List<Hooks.Hook> before, List<Hooks.Hook> after) {
 		String descriptor = file.utf8(original.descriptor);
 		Wrapper wrapper = new Wrapper(file, (original.access & ClassBytes.STATIC) != 0, descriptor);
@@ -90,7 +90,7 @@ final class Wrapper {
 		for (ClassBytes.Attribute attribute : original.attributes) {
 			(file.utf8(attribute.name()).equals("Code") ? kept : its).add(attribute);
 		}
-		ClassBytes.Method made = new ClassBytes.Method(original.access, original.name, original.descriptor, its);
+		ClassBytes.Member made = new ClassBytes.Member(original.access, original.name, original.descriptor, its);
 		original.attributes.clear();
 		original.attributes.addAll(kept);
 		original.name = file.utf8(renamed);

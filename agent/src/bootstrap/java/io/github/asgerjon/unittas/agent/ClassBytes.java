@@ -11,10 +11,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A class file as the rewriter needs it (SPEC.md 19.7 step 6a; the format is JVMS chapter 4): its constant pool read
- * entry by entry, so that new entries can follow the old ones; its methods by their access, name, descriptor and
- * attributes; every other part kept as the bytes it was. Written back, every old entry keeps its index, so all that
- * names one (the fields, the code, the attributes) stays exactly as it was. JDK only, on any Java the agent runs on.
+ * A class file as the agent needs it (SPEC.md 19.7 step 6; the format is JVMS chapter 4): its constant pool read
+ * entry by entry, so that entries can be replaced where they are and new ones follow the old; its fields and methods
+ * by their access, name, descriptor and attributes; its own attributes; the rest kept as the bytes it was. Written
+ * back, every entry keeps its index, so all that names one stays as it was unless the entry itself was replaced. The
+ * rewriter (Rewriter, Wrapper) adds methods; the renamer (Renamer) replaces entries. JDK only, on any Java from 17.
  */
 final class ClassBytes {
 
@@ -27,33 +28,33 @@ final class ClassBytes {
 	static final int ABSTRACT = 0x0400;
 	static final int SYNTHETIC = 0x1000;
 
-	private static final int UTF8 = 1;
-	private static final int INTEGER = 3;
-	private static final int FLOAT = 4;
-	private static final int LONG = 5;
-	private static final int DOUBLE = 6;
-	private static final int CLASS = 7;
-	private static final int STRING = 8;
-	private static final int FIELD = 9;
-	private static final int METHOD = 10;
-	private static final int INTERFACE_METHOD = 11;
-	private static final int NAME_AND_TYPE = 12;
-	private static final int METHOD_HANDLE = 15;
-	private static final int METHOD_TYPE = 16;
-	private static final int DYNAMIC = 17;
-	private static final int INVOKE_DYNAMIC = 18;
-	private static final int MODULE = 19;
-	private static final int PACKAGE = 20;
+	static final int UTF8 = 1;
+	static final int INTEGER = 3;
+	static final int FLOAT = 4;
+	static final int LONG = 5;
+	static final int DOUBLE = 6;
+	static final int CLASS = 7;
+	static final int STRING = 8;
+	static final int FIELD = 9;
+	static final int METHOD = 10;
+	static final int INTERFACE_METHOD = 11;
+	static final int NAME_AND_TYPE = 12;
+	static final int METHOD_HANDLE = 15;
+	static final int METHOD_TYPE = 16;
+	static final int DYNAMIC = 17;
+	static final int INVOKE_DYNAMIC = 18;
+	static final int MODULE = 19;
+	static final int PACKAGE = 20;
 
-	/** One method: what the rewriter reads and changes of it, its attributes as they were. */
-	static final class Method {
+	/** A field or a method: what the agent reads and changes of it, its attributes as they were. */
+	static final class Member {
 
 		int access;
 		int name;
 		int descriptor;
 		final List<Attribute> attributes;
 
-		Method(int access, int name, int descriptor, List<Attribute> attributes) {
+		Member(int access, int name, int descriptor, List<Attribute> attributes) {
 			this.access = access;
 			this.name = name;
 			this.descriptor = descriptor;
@@ -61,7 +62,7 @@ final class ClassBytes {
 		}
 	}
 
-	/** An attribute: its name's entry and its body, as the file had them. */
+	/** An attribute: its name's entry and its body. */
 	record Attribute(int name, byte[] body) {
 	}
 
@@ -73,11 +74,12 @@ final class ClassBytes {
 	private final Map<String, Integer> added = new HashMap<>();
 	final int access;
 	final int thisClass;
-	private final int superClass;
-	private final byte[] interfaces;
-	private final byte[] fields;
-	final List<Method> methods = new ArrayList<>();
-	private final byte[] attributes;
+	final int superClass;
+	/** The interfaces' Class entries. */
+	final int[] interfaces;
+	final List<Member> fields = new ArrayList<>();
+	final List<Member> methods = new ArrayList<>();
+	final List<Attribute> attributes = new ArrayList<>();
 
 	ClassBytes(byte[] bytes) throws IOException {
 		DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
@@ -134,41 +136,38 @@ final class ClassBytes {
 		access = in.readUnsignedShort();
 		thisClass = in.readUnsignedShort();
 		superClass = in.readUnsignedShort();
-		ByteArrayOutputStream kept = new ByteArrayOutputStream();
-		DataOutputStream out = new DataOutputStream(kept);
-		int names = in.readUnsignedShort();
-		out.writeShort(names);
-		copy(in, out, 2 * names);
-		interfaces = kept.toByteArray();
-		kept.reset();
-		int fieldCount = in.readUnsignedShort();
-		out.writeShort(fieldCount);
-		for (int i = 0; i < fieldCount; i++) {
-			copy(in, out, 6);
-			copyAttributes(in, out);
+		interfaces = new int[in.readUnsignedShort()];
+		for (int i = 0; i < interfaces.length; i++) {
+			interfaces[i] = in.readUnsignedShort();
 		}
-		fields = kept.toByteArray();
-		int methodCount = in.readUnsignedShort();
-		for (int i = 0; i < methodCount; i++) {
-			int flags = in.readUnsignedShort();
-			int name = in.readUnsignedShort();
-			int descriptor = in.readUnsignedShort();
-			List<Attribute> its = new ArrayList<>();
-			int attributeCount = in.readUnsignedShort();
-			for (int j = 0; j < attributeCount; j++) {
-				int attributeName = in.readUnsignedShort();
-				byte[] body = new byte[in.readInt()];
-				in.readFully(body);
-				its.add(new Attribute(attributeName, body));
-			}
-			methods.add(new Method(flags, name, descriptor, its));
-		}
-		kept.reset();
-		copyAttributes(in, out);
-		attributes = kept.toByteArray();
+		readMembers(in, fields);
+		readMembers(in, methods);
+		readAttributes(in, attributes);
 		if (in.read() != -1) {
 			throw new IllegalArgumentException("bytes after the class file's end");
 		}
+	}
+
+	/** How many entries the pool has room for (its count: the last index is one less). */
+	int poolSize() {
+		return pool.size();
+	}
+
+	/** An entry's tag, or 0 where there is none (index 0, the slot after a long or a double). */
+	int tag(int index) {
+		byte[] entry = pool.get(index);
+		return entry == null ? 0 : entry[0];
+	}
+
+	/** One of an entry's two-byte references (the which-th after its tag: a Class entry's name is its 0th). */
+	int reference(int index, int which) {
+		byte[] entry = pool.get(index);
+		int at = 1 + 2 * which;
+		if (entry[0] == METHOD_HANDLE) {
+			// its kind (one byte), then its reference
+			at = 2;
+		}
+		return ((entry[at] & 0xFF) << 8) | (entry[at + 1] & 0xFF);
 	}
 
 	/** A Utf8 entry's text. */
@@ -181,15 +180,29 @@ final class ClassBytes {
 		}
 	}
 
-	/** A Class entry's name (java/lang/Object). */
+	/** A Class entry's name (java/lang/Object, or an array's descriptor). */
 	String className(int index) {
-		byte[] entry = entry(index, CLASS);
-		return utf8(((entry[1] & 0xFF) << 8) | (entry[2] & 0xFF));
+		entry(index, CLASS);
+		return utf8(reference(index, 0));
 	}
 
 	/** The class's own name. */
 	String name() {
 		return className(thisClass);
+	}
+
+	/** The superclass's name, or "" for java/lang/Object's own file. */
+	String superName() {
+		return superClass == 0 ? "" : className(superClass);
+	}
+
+	/** An entry put in place of the one at that index: the same tag and size of slot (never a long or a double). */
+	void replace(int index, int tag, int... references) {
+		byte[] old = pool.get(index);
+		if (old == null || old[0] != tag || tag == LONG || tag == DOUBLE || tag == METHOD_HANDLE) {
+			throw new IllegalArgumentException("entry " + index + " can't be replaced by one of tag " + tag);
+		}
+		pool.set(index, entryOf(tag, references));
 	}
 
 	int utf8(String text) {
@@ -205,24 +218,25 @@ final class ClassBytes {
 	}
 
 	int classRef(String internalName) {
-		return add("class " + internalName, CLASS, utf8(internalName));
+		return add("class " + internalName, entryOf(CLASS, utf8(internalName)));
 	}
 
 	int string(String text) {
-		return add("string " + text, STRING, utf8(text));
+		return add("string " + text, entryOf(STRING, utf8(text)));
 	}
 
 	int methodRef(String owner, String name, String descriptor) {
-		return add("method " + owner + "." + name + descriptor, METHOD, classRef(owner), nameAndType(name, descriptor));
+		return add("method " + owner + "." + name + descriptor,
+			entryOf(METHOD, classRef(owner), nameAndType(name, descriptor)));
 	}
 
 	int interfaceMethodRef(String owner, String name, String descriptor) {
-		return add("interface method " + owner + "." + name + descriptor, INTERFACE_METHOD, classRef(owner),
-			nameAndType(name, descriptor));
+		return add("interface method " + owner + "." + name + descriptor,
+			entryOf(INTERFACE_METHOD, classRef(owner), nameAndType(name, descriptor)));
 	}
 
-	private int nameAndType(String name, String descriptor) {
-		return add("name and type " + name + descriptor, NAME_AND_TYPE, utf8(name), utf8(descriptor));
+	int nameAndType(String name, String descriptor) {
+		return add("name and type " + name + descriptor, entryOf(NAME_AND_TYPE, utf8(name), utf8(descriptor)));
 	}
 
 	/** The class file again, the new entries after the old ones. */
@@ -242,21 +256,13 @@ final class ClassBytes {
 			out.writeShort(access);
 			out.writeShort(thisClass);
 			out.writeShort(superClass);
-			out.write(interfaces);
-			out.write(fields);
-			out.writeShort(methods.size());
-			for (Method method : methods) {
-				out.writeShort(method.access);
-				out.writeShort(method.name);
-				out.writeShort(method.descriptor);
-				out.writeShort(method.attributes.size());
-				for (Attribute attribute : method.attributes) {
-					out.writeShort(attribute.name());
-					out.writeInt(attribute.body().length);
-					out.write(attribute.body());
-				}
+			out.writeShort(interfaces.length);
+			for (int each : interfaces) {
+				out.writeShort(each);
 			}
-			out.write(attributes);
+			writeMembers(out, fields);
+			writeMembers(out, methods);
+			writeAttributes(out, attributes);
 		} catch (IOException e) {
 			throw new IllegalStateException(e);
 		}
@@ -271,14 +277,14 @@ final class ClassBytes {
 		return entry;
 	}
 
-	private int add(String key, int tag, int... references) {
+	private static byte[] entryOf(int tag, int... references) {
 		byte[] entry = new byte[1 + 2 * references.length];
 		entry[0] = (byte) tag;
 		for (int i = 0; i < references.length; i++) {
 			entry[1 + 2 * i] = (byte) (references[i] >> 8);
 			entry[2 + 2 * i] = (byte) references[i];
 		}
-		return add(key, entry);
+		return entry;
 	}
 
 	private int add(String key, byte[] entry) {
@@ -301,20 +307,44 @@ final class ClassBytes {
 		return value;
 	}
 
-	private static void copy(DataInputStream in, DataOutputStream out, int size) throws IOException {
-		byte[] bytes = new byte[size];
-		in.readFully(bytes);
-		out.write(bytes);
+	private static void readMembers(DataInputStream in, List<Member> into) throws IOException {
+		int count = in.readUnsignedShort();
+		for (int i = 0; i < count; i++) {
+			int flags = in.readUnsignedShort();
+			int name = in.readUnsignedShort();
+			int descriptor = in.readUnsignedShort();
+			List<Attribute> its = new ArrayList<>();
+			readAttributes(in, its);
+			into.add(new Member(flags, name, descriptor, its));
+		}
 	}
 
-	private static void copyAttributes(DataInputStream in, DataOutputStream out) throws IOException {
+	private static void readAttributes(DataInputStream in, List<Attribute> into) throws IOException {
 		int count = in.readUnsignedShort();
-		out.writeShort(count);
 		for (int i = 0; i < count; i++) {
-			out.writeShort(in.readUnsignedShort());
-			int length = in.readInt();
-			out.writeInt(length);
-			copy(in, out, length);
+			int name = in.readUnsignedShort();
+			byte[] body = new byte[in.readInt()];
+			in.readFully(body);
+			into.add(new Attribute(name, body));
+		}
+	}
+
+	private static void writeMembers(DataOutputStream out, List<Member> members) throws IOException {
+		out.writeShort(members.size());
+		for (Member member : members) {
+			out.writeShort(member.access);
+			out.writeShort(member.name);
+			out.writeShort(member.descriptor);
+			writeAttributes(out, member.attributes);
+		}
+	}
+
+	private static void writeAttributes(DataOutputStream out, List<Attribute> attributes) throws IOException {
+		out.writeShort(attributes.size());
+		for (Attribute attribute : attributes) {
+			out.writeShort(attribute.name());
+			out.writeInt(attribute.body().length);
+			out.write(attribute.body());
 		}
 	}
 }

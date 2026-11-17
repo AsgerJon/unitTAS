@@ -82,6 +82,17 @@ class ModernFixture:
     self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(profile).encode('utf-8')
     self.asked = []
 
+  def withMappings(self, log: bytes) -> None:
+    """The version as an obfuscated one is served (before 26.1): its JSON names its obfuscation log."""
+    url = 'https://piston-data.mojang.com/v1/objects/x/client.txt'
+    self.vanilla['downloads']['client_mappings'] = {'sha1': sha1(log), 'size': len(log), 'url': url}
+    self.served[url] = log
+    versionJson = json.dumps(self.vanilla).encode('utf-8')
+    self.served['https://piston-meta.mojang.com/v1/packages/x/26.3.json'] = versionJson
+    self.served[MANIFEST] = json.dumps({'versions': [
+      {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
+    ]}).encode('utf-8')
+
   def fetch(self, url: str) -> bytes:
     self.asked.append(url)
     if url not in self.served:
@@ -154,6 +165,40 @@ class ModernLauncherTests(unittest.TestCase):
         agent = '-javaagent:%s=%s' % (probe, self.game)
         self.assertIn(agent, java)
         self.assertLess(java.index(agent), java.index(mainClass))
+
+  def test_no_names_for_a_version_under_mojang_s_own(self) -> None:
+    """26.x is unobfuscated: its JSON names no obfuscation log, and the agent is given no table of names."""
+    probe = os.path.join(self.scratch, 'unittas-probe-26.3.jar')
+    java = versionCommand(self.game, self.java, self.sources(), '26.3', None, None, agents=(probe,)).java
+    self.assertFalse([word for word in java if word.startswith('-Dunittas.names=')])
+
+  def test_an_obfuscated_version_s_names_for_the_agent(self) -> None:
+    """
+    Before 26.1 (SPEC.md 19.7 step 6b): the agent renames its probe by a table of the version's names, written once
+    into the download cache from the version's obfuscation log, and named to it by -Dunittas.names before the agent.
+    """
+    from test_mojangnames import LOG
+    self.fixture.withMappings(LOG.encode('utf-8'))
+    probe = os.path.join(self.scratch, 'unittas-probe-x.jar')
+    java = versionCommand(self.game, self.java, self.sources(), '26.3', None, None, agents=(probe,)).java
+    table = os.path.join(self.scratch, 'cache', 'names', '26.3-obfuscated-1.txt')
+    self.assertIn('-Dunittas.names=' + table, java)
+    self.assertLess(java.index('-Dunittas.names=' + table), java.index('-javaagent:%s=%s' % (probe, self.game)))
+    with open(table, encoding='utf-8') as file:
+      self.assertEqual('unittas-names\t1\tobfuscated\t26.3\n', file.readline())
+    again = versionCommand(self.game, self.java, self.sources(), '26.3', None, None, agents=(probe,)).java
+    self.assertIn('-Dunittas.names=' + table, again)
+    plain = versionCommand(self.game, self.java, self.sources(), '26.3', None, None).java
+    self.assertFalse([word for word in plain if word.startswith('-Dunittas.names=')], 'no agent, no names')
+
+  def test_the_agent_beside_a_loader_on_an_obfuscated_version_waits(self) -> None:
+    """Fabric runs such a version under intermediary names, which come with SPEC.md 19.7 step 6d: said, not guessed."""
+    from test_mojangnames import LOG
+    self.fixture.withMappings(LOG.encode('utf-8'))
+    probe = os.path.join(self.scratch, 'unittas-probe-x.jar')
+    with self.assertRaises(Missing) as said:
+      versionCommand(self.game, self.java, self.sources(), '26.3', 'fabric', '0.20.1', agents=(probe,))
+    self.assertIn('intermediary', str(said.exception))
 
   def test_the_class_path_to_compile_against(self) -> None:
     """The version's own libraries for this system and its client jar, each held to its sha1: what the agent's build
