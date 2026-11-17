@@ -1,0 +1,28 @@
+# The game's methods the 26.3 probe hooks (SPEC.md 19.7 steps 5 and 6c), by Mojang's names (26.x is unobfuscated):
+# each the counterpart of one of the old 26.3 Fabric probe's mixins. The agent's bootstrap reads this at premain
+# (Hooks.read), the same bootstrap for every version: tab apart, the probe's entry class first, then each hook's
+# when (BEFORE: called as the method is, and may end it there, its value the method's; AFTER: once it has returned),
+# its class, method and descriptor ("*" for every method by the name), and the name the probe knows it by.
+entry	io.github.asgerjon.unittas.probe.V26Entry
+# the game made: the probe dials (as 1.7.10's does from Minecraft's constructor); Main calls run right after
+# constructing it, on the same thread
+BEFORE	net/minecraft/client/Minecraft	run	()V	minecraft.made
+BEFORE	net/minecraft/client/Minecraft	tick	()V	client.tick.start
+AFTER	net/minecraft/client/Minecraft	tick	()V	client.tick.end
+# the window's title while the probe is awake (PROTOCOL.md 2.5)
+BEFORE	net/minecraft/client/Minecraft	createTitle	()Ljava/lang/String;	window.title
+BEFORE	net/minecraft/client/gui/Gui	setScreen	(Lnet/minecraft/client/gui/screens/Screen;)V	screen.set
+BEFORE	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.start
+AFTER	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.end
+BEFORE	net/minecraft/client/gui/components/ChatComponent	addMessage	(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/multiplayer/chat/GuiMessageSource;Lnet/minecraft/client/multiplayer/chat/GuiMessageTag;)V	chat.line
+BEFORE	net/minecraft/client/sounds/SoundManager	play	(Lnet/minecraft/client/resources/sounds/SoundInstance;)Lnet/minecraft/client/sounds/SoundEngine$PlayResult;	sound.play
+# the real keyboard and mouse dropped before the game reads them, the pointer never grabbed (PROTOCOL.md 2.5)
+BEFORE	net/minecraft/client/KeyboardHandler	keyPress	(JILnet/minecraft/client/input/KeyEvent;)V	real.input
+BEFORE	net/minecraft/client/KeyboardHandler	charTyped	(JLnet/minecraft/client/input/CharacterEvent;)V	real.input
+BEFORE	net/minecraft/client/KeyboardHandler	textInput	(JLjava/lang/String;)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	grabMouse	()V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onButton	(JLnet/minecraft/client/input/MouseButtonInfo;I)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onMove	(JDDDD)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onScroll	(JDD)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onDrop	(JLjava/util/List;)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	isMouseGrabbed	()Z	mouse.grabbed

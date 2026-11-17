@@ -32,10 +32,11 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 	static final String PASS = "unittas.probe.pass";
 
 	private static final String INNER = "/unittas-probe-inner.jar";
-	private static final String ENTRY = "io.github.asgerjon.unittas.probe.V26Entry";
 	private static final Set<String> REWRITTEN = ConcurrentHashMap.newKeySet();
 
 	private final File game;
+	/** The probe's entry class (its version's hooks file names it): start(), then a hook's every call. */
+	private final String entry;
 	private final List<Hooks.Hook> hooks;
 	/** The names the game runs under, where they aren't Mojang's: the probe is renamed as it loads (null: not). */
 	private final Names names;
@@ -44,8 +45,9 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 	private volatile BiFunction<String, Object[], Object> probe;
 	private volatile boolean broken;
 
-	private Bridge(File game, List<Hooks.Hook> hooks, Names names) {
+	private Bridge(File game, String entry, List<Hooks.Hook> hooks, Names names) {
 		this.game = game;
+		this.entry = entry;
 		this.hooks = hooks;
 		this.names = names;
 	}
@@ -54,8 +56,8 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 	 * The bridge for the game in this folder, where the hooks will look for it: its hooks by the names the game runs
 	 * under, and those names where they aren't Mojang's (null where they are).
 	 */
-	static void install(File game, List<Hooks.Hook> hooks, Names names) {
-		Bridge bridge = new Bridge(game, hooks, names);
+	static void install(File game, String entry, List<Hooks.Hook> hooks, Names names) {
+		Bridge bridge = new Bridge(game, entry, hooks, names);
 		System.getProperties().put(PASS, bridge.pass);
 		System.getProperties().put(HOOKS, bridge);
 	}
@@ -118,8 +120,8 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 		URLClassLoader loader = names == null
 			? new URLClassLoader("unittas-probe", new URL[] {jar.toURI().toURL()}, gameLoader)
 			: RenamingLoader.of(jar, gameLoader, names);
-		Class<?> entry = Class.forName(ENTRY, true, loader);
-		return (BiFunction<String, Object[], Object>) entry.getMethod("start", File.class, Object.class, Set.class,
+		Class<?> started = Class.forName(entry, true, loader);
+		return (BiFunction<String, Object[], Object>) started.getMethod("start", File.class, Object.class, Set.class,
 			Set.class).invoke(null, game, pass, hookedClasses(hooks), Collections.unmodifiableSet(REWRITTEN));
 	}
 }

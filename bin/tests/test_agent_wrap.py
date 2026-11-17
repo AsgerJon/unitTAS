@@ -36,7 +36,7 @@ EXPECTED = [
   'static-arguments', 'reference-answer', 'boolean-answer',
   'after-primitive', 'overloads', 'own-branches', 'super-call',
   'reflection', 'refuses-missing', 'refuses-constructor',
-  'refuses-abstract', 'refuses-interface', 'others-untouched',
+  'refuses-abstract', 'refuses-interface', 'others-untouched', 'hooks-read',
 ]
 JAVAS = (17, 21, 25)
 

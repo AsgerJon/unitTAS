@@ -154,6 +154,23 @@ public final class WrapCheck {
 			() -> refused(INTERFACE, new Hooks.Hook(INTERFACE, "answer", "()I", Hooks.When.BEFORE, "x")));
 		check("others-untouched", () -> same(null, new Rewriter(List.of(new Hooks.Hook(SAMPLE, "tick", "()V",
 			Hooks.When.BEFORE, "x"))).transform(null, SUB, null, null, bytesOf(SUB))));
+		check("hooks-read", () -> {
+			Hooks.Table table = Hooks.read(new java.io.ByteArrayInputStream(("# a comment\n\nentry\tx.y.Entry\n"
+				+ "BEFORE\ta/B\ttick\t()V\ttick.start\nAFTER\ta/B\tpick\t*\tpicked\n").getBytes(
+				java.nio.charset.StandardCharsets.UTF_8)), "the check's");
+			same("x.y.Entry", table.entry());
+			same(List.of(new Hooks.Hook("a/B", "tick", "()V", Hooks.When.BEFORE, "tick.start"),
+				new Hooks.Hook("a/B", "pick", null, Hooks.When.AFTER, "picked")), table.hooks());
+			for (String bad : List.of("BEFORE\ta/B\ttick\t()V\tx\n", "entry\tx.Entry\nWHILE\ta/B\tt\t()V\tx\n",
+				"entry\tx.Entry\nBEFORE\ta/B\t()V\tx\n")) {
+				try {
+					Hooks.read(new java.io.ByteArrayInputStream(bad.getBytes(java.nio.charset.StandardCharsets.UTF_8)), "bad");
+					throw new AssertionError("read, where it should have been refused: " + bad);
+				} catch (IllegalArgumentException expected) {
+					// as it should be
+				}
+			}
+		});
 		System.exit(failures == 0 ? 0 : 1);
 	}
 

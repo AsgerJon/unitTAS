@@ -1,13 +1,19 @@
 package io.github.asgerjon.unittas.agent;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The game's methods the probe hooks (SPEC.md 19.7 step 5), by their class, name and descriptor in Mojang's names (26.x
- * is unobfuscated): each the counterpart of one of the 26.3 Fabric probe's mixins. A hook BEFORE is called as the
- * method is, and may end it there (its value then the method's); a hook AFTER is called once the method has returned
- * (Rewriter wraps each hooked method: step 6a). A constructor can't be wrapped, so nothing hooks one.
+ * The game's methods the probe hooks (SPEC.md 19.7 steps 5 and 6c): each version's in its own file, packed into its
+ * agent's jar (agent/src/VERSION/hooks.txt, read at premain by read()), by Mojang's names, so that this bootstrap is
+ * the same for every version. A hook BEFORE is called as the method is, and may end it there (its value then the
+ * method's); a hook AFTER is called once the method has returned (Rewriter wraps each hooked method: step 6a). A
+ * constructor can't be wrapped, so nothing hooks one.
  */
 final class Hooks {
 
@@ -19,41 +25,45 @@ final class Hooks {
 	record Hook(String owner, String method, String descriptor, When when, String id) {
 	}
 
-	private static final String MINECRAFT = "net/minecraft/client/Minecraft";
-	private static final String KEYBOARD = "net/minecraft/client/KeyboardHandler";
-	private static final String MOUSE = "net/minecraft/client/MouseHandler";
+	/** A version's hooks, and the probe's entry class they reach (the bridge starts it at the first hook). */
+	record Table(String entry, List<Hook> hooks) {
+	}
 
-	static final List<Hook> TABLE = List.of(
-		// the game made: the probe dials (as 1.7.10's does from Minecraft's constructor). Main calls run right after
-		// constructing it, on the same thread
-		new Hook(MINECRAFT, "run", "()V", When.BEFORE, "minecraft.made"),
-		new Hook(MINECRAFT, "tick", "()V", When.BEFORE, "client.tick.start"),
-		new Hook(MINECRAFT, "tick", "()V", When.AFTER, "client.tick.end"),
-		// the window's title while the probe is awake (PROTOCOL.md 2.5)
-		new Hook(MINECRAFT, "createTitle", "()Ljava/lang/String;", When.BEFORE, "window.title"),
-		new Hook("net/minecraft/client/gui/Gui", "setScreen", "(Lnet/minecraft/client/gui/screens/Screen;)V",
-			When.BEFORE, "screen.set"),
-		new Hook("net/minecraft/server/MinecraftServer", "tickServer", "(Ljava/util/function/BooleanSupplier;)V",
-			When.BEFORE, "server.tick.start"),
-		new Hook("net/minecraft/server/MinecraftServer", "tickServer", "(Ljava/util/function/BooleanSupplier;)V",
-			When.AFTER, "server.tick.end"),
-		new Hook("net/minecraft/client/gui/components/ChatComponent", "addMessage",
-			"(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;"
-				+ "Lnet/minecraft/client/multiplayer/chat/GuiMessageSource;"
-				+ "Lnet/minecraft/client/multiplayer/chat/GuiMessageTag;)V", When.BEFORE, "chat.line"),
-		new Hook("net/minecraft/client/sounds/SoundManager", "play",
-			"(Lnet/minecraft/client/resources/sounds/SoundInstance;)Lnet/minecraft/client/sounds/SoundEngine$PlayResult;",
-			When.BEFORE, "sound.play"),
-		// the real keyboard and mouse dropped before the game reads them, the pointer never grabbed (PROTOCOL.md 2.5)
-		new Hook(KEYBOARD, "keyPress", "(JILnet/minecraft/client/input/KeyEvent;)V", When.BEFORE, "real.input"),
-		new Hook(KEYBOARD, "charTyped", "(JLnet/minecraft/client/input/CharacterEvent;)V", When.BEFORE, "real.input"),
-		new Hook(KEYBOARD, "textInput", "(JLjava/lang/String;)V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "grabMouse", "()V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "onButton", "(JLnet/minecraft/client/input/MouseButtonInfo;I)V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "onMove", "(JDDDD)V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "onScroll", "(JDD)V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "onDrop", "(JLjava/util/List;)V", When.BEFORE, "real.input"),
-		new Hook(MOUSE, "isMouseGrabbed", "()Z", When.BEFORE, "mouse.grabbed"));
+	/**
+	 * A hooks file: '#' lines and blank ones aside, its first line "entry CLASS", then a hook a line, tab apart: when
+	 * (BEFORE, AFTER), the class, the method, the descriptor ("*" for every method by the name), the hook's name.
+	 * IllegalArgumentException naming the line it can't read ('where' says whose file it is).
+	 */
+	static Table read(InputStream in, String where) throws IOException {
+		BufferedReader lines = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+		String entry = null;
+		List<Hook> hooks = new ArrayList<>();
+		int number = 0;
+		for (String line = lines.readLine(); line != null; line = lines.readLine()) {
+			number++;
+			if (line.isBlank() || line.startsWith("#")) {
+				continue;
+			}
+			String[] parts = line.split("\t", -1);
+			if (entry == null) {
+				if (parts.length != 2 || !parts[0].equals("entry") || parts[1].isEmpty()) {
+					throw new IllegalArgumentException("line " + number + " of " + where + "'s hooks isn't its entry class:"
+						+ " " + line);
+				}
+				entry = parts[1];
+				continue;
+			}
+			if (parts.length != 5 || !(parts[0].equals("BEFORE") || parts[0].equals("AFTER"))) {
+				throw new IllegalArgumentException("line " + number + " of " + where + "'s hooks can't be read: " + line);
+			}
+			hooks.add(new Hook(parts[1], parts[2], parts[3].equals("*") ? null : parts[3], When.valueOf(parts[0]),
+				parts[4]));
+		}
+		if (entry == null) {
+			throw new IllegalArgumentException(where + "'s hooks name no entry class");
+		}
+		return new Table(entry, List.copyOf(hooks));
+	}
 
 	private Hooks() {
 	}

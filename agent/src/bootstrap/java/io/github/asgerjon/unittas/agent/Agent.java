@@ -2,6 +2,7 @@ package io.github.asgerjon.unittas.agent;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,6 +23,8 @@ public final class Agent {
 	static final String START_FILE = "unittas/probe.properties";
 	/** The system property naming the table of the names the game runs under, where they aren't Mojang's. */
 	static final String NAMES = "unittas.names";
+	/** This agent's version's hooks (Hooks.read), beside the bootstrap in its jar. */
+	static final String HOOKS_FILE = "/unittas-probe-hooks.txt";
 
 	private Agent() {
 	}
@@ -36,20 +39,31 @@ public final class Agent {
 		if (!new File(game, START_FILE).isFile()) {
 			return;
 		}
-		List<Hooks.Hook> hooks = Hooks.TABLE;
+		Hooks.Table table;
+		try (InputStream in = Agent.class.getResourceAsStream(HOOKS_FILE)) {
+			if (in == null) {
+				System.err.println("[unitTAS] the probe sleeps: its jar holds no " + HOOKS_FILE);
+				return;
+			}
+			table = Hooks.read(in, "the agent");
+		} catch (IOException | IllegalArgumentException e) {
+			System.err.println("[unitTAS] the probe sleeps: its hooks can't be read: " + e);
+			return;
+		}
+		List<Hooks.Hook> hooks = table.hooks();
 		Names names = null;
-		String table = System.getProperty(NAMES);
-		if (table != null) {
+		String named = System.getProperty(NAMES);
+		if (named != null) {
 			try {
-				names = Names.read(Path.of(table));
+				names = Names.read(Path.of(named));
 				hooks = Hooks.renamed(hooks, names);
 			} catch (IOException | IllegalArgumentException e) {
 				// never woken by names that would hook the wrong methods: the orchestrator, never greeted, says so
-				System.err.println("[unitTAS] the probe sleeps: the names in " + table + " can't be used: " + e);
+				System.err.println("[unitTAS] the probe sleeps: the names in " + named + " can't be used: " + e);
 				return;
 			}
 		}
-		Bridge.install(game, hooks, names);
+		Bridge.install(game, table.entry(), hooks, names);
 		instrumentation.addTransformer(new Rewriter(hooks));
 		System.err.println("[unitTAS] the probe wakes: " + hooks.size() + " hooks to put into the game's classes"
 			+ (names == null ? "" : ", by " + names.kind + " names (" + names.minecraft + ")"));

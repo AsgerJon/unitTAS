@@ -39,7 +39,8 @@ class AssemblyTests(unittest.TestCase):
     touch(os.path.join(self.probe, 'io/github/asgerjon/unittas/probe/Probe.class'), b'probe')
 
   def assembled(self, name: str = 'agent.jar') -> str:
-    return build_agent.assemble(self.bootstrap, self.probe, '0.1.0-dev18', os.path.join(self.folder, name))
+    return build_agent.assemble(self.bootstrap, self.probe, '0.1.0-dev18', os.path.join(self.folder, name),
+                                b'entry\tx.Entry\n', '26.3')
 
   def test_the_agent_s_jar(self) -> None:
     with zipfile.ZipFile(self.assembled()) as jar:
@@ -56,6 +57,17 @@ class AssemblyTests(unittest.TestCase):
       self.assertEqual(b'entry', inner.read('io/github/asgerjon/unittas/probe/V26Entry.class'))
       self.assertIn('Implementation-Version: 0.1.0-dev18\r\n', inner.read('META-INF/MANIFEST.MF').decode('utf-8'))
 
+  def test_its_version_s_hooks_beside_the_bootstrap(self) -> None:
+    """The version's hooks as data (SPEC.md 19.7 step 6c): read by the bootstrap at premain, which is the same for
+    every version, so at the agent's top level, not inside the probe's jar (loaded only at the first hook)."""
+    with zipfile.ZipFile(self.assembled()) as jar:
+      self.assertEqual(b'entry\tx.Entry\n', jar.read(build_agent.HOOKS_FILE))
+      self.assertIn('Implementation-Title: unitTAS probe for 26.3 (a Java agent)\r\n',
+                    jar.read('META-INF/MANIFEST.MF').decode('utf-8'))
+      inner = zipfile.ZipFile(io.BytesIO(jar.read(build_agent.INNER)))
+    with inner:
+      self.assertNotIn(build_agent.HOOKS_FILE, inner.namelist())
+
   def test_the_same_bytes_again(self) -> None:
     with open(self.assembled('one.jar'), 'rb') as one, open(self.assembled('two.jar'), 'rb') as two:
       self.assertEqual(one.read(), two.read())
@@ -66,6 +78,31 @@ class AssemblyTests(unittest.TestCase):
     touch(os.path.join(self.folder, 'src', 'notes.txt'), b'')
     self.assertEqual([os.path.join(self.folder, 'src', 'A.java'), os.path.join(self.folder, 'src', 'a', 'B.java')],
                      build_agent.sourcesUnder(os.path.join(self.folder, 'src')))
+
+
+class VersionsTests(unittest.TestCase):
+  """Each version the builder makes an agent for: its folders, its Java, its hooks."""
+
+  def test_26_3(self) -> None:
+    version = build_agent.VERSIONS['26.3']
+    self.assertEqual('25', version.release)
+    self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
+
+  def test_each_version_s_hooks_file(self) -> None:
+    for minecraft, version in build_agent.VERSIONS.items():
+      with self.subTest(minecraft=minecraft):
+        with open(version.hooks, encoding='utf-8') as file:
+          lines = [line.rstrip('\n') for line in file if line.strip() and not line.startswith('#')]
+        entry = lines[0].split('\t')
+        self.assertEqual('entry', entry[0])
+        source = entry[1].replace('.', os.sep) + '.java'
+        self.assertTrue(any(os.path.isfile(os.path.join(folder, source)) for folder in version.sources),
+                        'its entry class is one of its own: %s' % entry[1])
+        for line in lines[1:]:
+          parts = line.split('\t')
+          self.assertEqual(5, len(parts), line)
+          self.assertIn(parts[0], ('BEFORE', 'AFTER'), line)
+    self.assertEqual(18, len(lines) - 1, "26.3's 18 hooks")
 
 
 if __name__ == '__main__':
