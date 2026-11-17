@@ -2,14 +2,16 @@
 The port the probe's game tests run on (SPEC.md 19.7): a version and what
 runs it, named by the run ('on 26.3-fabric', 'on 26.3'; unittas.selftest
 puts it in UNITTAS_PROBE_PORT), 1.7.10 Forge's development client without
-one. A test class starts its port's game (probeGame: 26.3 or 1.21.1 as
-Mojang ships it, the probe a Java agent, for '26.3' and '1.21.1'), puts
+one. A test class starts its port's game (probeGame: 26.3, 1.21.1 or
+1.20.1 as Mojang ships it, the probe a Java agent; or beside Fabric), puts
 the player where its flat test world's start is (start), says a command
 as that version reads it where the versions' texts differ (command), and
 skips what its version can't do yet, saying why (onlyOn). The tables are
-by version (V1_7_10, V1_21_1, V26_3): each version's ports share its own, and
-1.21.1 has 26.3's block states and command texts (the same from 1.13 and
-1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's).
+by version (V1_7_10, V1_20_1, V1_21_1, V26_3): each version's ports share its
+own, and 1.21.1 has 26.3's block states and command texts (the same from
+1.13 and 1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's); 1.20.1
+has 1.21.1's but for its items' data in a block entity (NBT, before 1.20.5's
+components: Count, a byte).
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -25,18 +27,21 @@ from probegame import ROOT, results
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
 from unittas.selftest import PORTS
-from unittas.values import Block, BlockPos, Vec3
+from unittas.values import Block, BlockPos, Item, Vec3
 
-FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1 = PORTS
+FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1 = PORTS
 #  the versions, which the tables are by
-V1_7_10, V1_21_1, V26_3 = '1.7.10', '1.21.1', '26.3'
+V1_7_10, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.20.1', '1.21.1', '26.3'
 VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
-            FABRIC_1_21_1: V1_21_1}
+            FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1}
 #  the ports with Fabric Loader beside the probe
-FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1)
+FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1)
+#  the versions whose items keep their data as NBT (data components from 1.20.5 on)
+NBT_ITEMS = (V1_7_10, V1_20_1)
 #  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
 #  1.18 on (the world's bottom at y -64)
-STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_21_1: (0.5, -60.0, 0.5), V26_3: (0.5, -60.0, 0.5)}
+STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_20_1: (0.5, -60.0, 0.5), V1_21_1: (0.5, -60.0, 0.5),
+          V26_3: (0.5, -60.0, 0.5)}
 #  the commands whose text differs between the versions, by what they do
 COMMANDS = {
   'xp 30 levels': {V1_7_10: '/xp 30L', V26_3: '/xp add @p 30 levels'},
@@ -48,7 +53,7 @@ COMMANDS = {
                      V26_3: '/effect give @p minecraft:instant_damage 1 0'},
 }
 #  a key's raw code, as each version numbers its keys: 1.7.10's LWJGL codes, 26.3's SDL3 scancodes
-CODES = {'space': {V1_7_10: 57, V1_21_1: 32, V26_3: 44}}
+CODES = {'space': {V1_7_10: 57, V1_20_1: 32, V1_21_1: 32, V26_3: 44}}
 
 
 def _door(kind: str, half: str) -> Block:
@@ -111,6 +116,14 @@ BLOCKS = {
 for _table in (COMMANDS, BLOCKS):
   for _entry in _table.values():
     _entry[V1_21_1] = _entry[V26_3]
+    _entry[V1_20_1] = _entry[V26_3]
+#  but 1.20.1's items in a block entity are NBT: an id and Count, a byte (count, an int, from 1.20.5)
+BLOCKS['chest of three pink wool'][V1_20_1] = Block(
+  'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:3b}]}',
+  (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))
+BLOCKS['chest of one pink wool'][V1_20_1] = Block(
+  'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:1b}]}',
+  (('facing', 'south'), ('type', 'single'), ('waterlogged', 'false')))
 
 
 def port() -> str:
@@ -169,6 +182,15 @@ def code(key: str) -> int:
   return CODES[key][version()]
 
 
+def damageable(item: Item) -> Item:
+  """
+  A new damageable item (boots, a sword) as the port's game makes it: 1.20.1 writes an item's damage into its NBT as
+  it makes it, a new one's too ({Damage:0}); 1.7.10 keeps damage in the meta, and a 1.20.5 stack lists only a damage
+  taken among its components.
+  """
+  return item.replace(snbt='{Damage:0}') if version() == V1_20_1 else item
+
+
 def onlyOn(*versions: str, why: str) -> Callable:
   """A test (or class) run on those versions' ports only; on another it skips, saying why."""
   return unittest.skipUnless(version() in versions, 'not on %s: %s' % (port(), why))
@@ -186,4 +208,10 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == FABRIC_1_21_1:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
                       minecraft=V1_21_1)
+  if port() == VANILLA_1_20_1:
+    return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_20_1), name,
+                     minecraft=V1_20_1)
+  if port() == FABRIC_1_20_1:
+    return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_20_1), name,
+                      minecraft=V1_20_1)
   return DevGame(ROOT, results(), name)

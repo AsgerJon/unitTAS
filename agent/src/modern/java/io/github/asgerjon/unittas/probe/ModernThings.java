@@ -29,7 +29,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
@@ -237,8 +236,7 @@ final class ModernThings {
 			}
 		};
 		String typed = text.startsWith("/") ? text : "/" + text;
-		server.getCommands().performPrefixedCommand(source.withSource(heard)
-			.withCallback((success, value) -> result[0] = value), typed);
+		server.getCommands().performPrefixedCommand(Version.withResult(source.withSource(heard), result), typed);
 		return Json.object("result", result[0], "lines", lines, "errors", errors);
 	}
 
@@ -392,7 +390,7 @@ final class ModernThings {
 		List<Object[]> changes = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> entry : items.entrySet()) {
 			slot(player, entry.getKey());
-			changes.add(new Object[]{entry.getKey(), ModernValues.stack(entry.getValue(), player.registryAccess())});
+			changes.add(new Object[]{entry.getKey(), ModernValues.stack(entry.getValue(), player.level().registryAccess())});
 		}
 		for (Object[] change : changes) {
 			set(player, (String) change[0], (ItemStack) change[1]);
@@ -469,7 +467,7 @@ final class ModernThings {
 			if (tile == null) {
 				value.add("tile", com.google.gson.JsonNull.INSTANCE);
 			} else {
-				value.addProperty("tile", tile.saveWithoutMetadata(level.registryAccess()).toString());
+				value.addProperty("tile", Version.tileData(tile, level.registryAccess()).toString());
 			}
 		}
 		return value;
@@ -487,7 +485,7 @@ final class ModernThings {
 			throw ProbeException.badRequest("block", "block is {\"id\": ..., \"state\": {...}}");
 		}
 		if (block.has("meta")) {
-			throw ProbeException.badRequest("block", "26.3's blocks have no meta: a colour is in the id"
+			throw ProbeException.badRequest("block", Version.port() + "'s blocks have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), the rest is the state's properties");
 		}
 		if (!Version.known(BuiltInRegistries.BLOCK, id)) {

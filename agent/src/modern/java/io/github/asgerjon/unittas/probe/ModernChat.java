@@ -5,8 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.suggestion.Suggestion;
 import com.mojang.brigadier.suggestion.Suggestions;
-import com.mojang.serialization.DynamicOps;
-import com.mojang.serialization.JsonOps;
 import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -15,7 +13,6 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 import net.minecraft.util.FormattedCharSequence;
@@ -87,12 +84,9 @@ public final class ModernChat {
 		return out.toString();
 	}
 
-	/** The line as the game's own JSON, by its registries when a world is open. */
+	/** The line as the game's own JSON (Version's: each version writes it its own way). */
 	private static String json(Component message) {
-		Minecraft mc = Minecraft.getInstance();
-		DynamicOps<JsonElement> ops = mc.level == null ? JsonOps.INSTANCE
-			: mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
-		return ComponentSerialization.CODEC.encodeStart(ops, message).result().map(JsonElement::toString).orElse("");
+		return Version.chatJson(message);
 	}
 
 	private static JsonElement read(Call call) throws ProbeException {

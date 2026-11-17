@@ -27,6 +27,7 @@ client = "real"
 mods = []
 """
 REAL_1_21_1 = REAL_26.replace('"26.3"', '"1.21.1"')
+REAL_1_20_1 = REAL_26.replace('"26.3"', '"1.20.1"')
 
 
 class SpecTests(unittest.TestCase):
@@ -191,8 +192,8 @@ class SpecTests(unittest.TestCase):
     self.refused(REAL + 'window = { width = 0 }\n', '"window"', 'width')
 
   def test_this_version_and_loader_only(self) -> None:
-    self.refused(REAL.replace('"1.7.10"', '"1.20.1"'), '"minecraft"', '1.20.1', '1.7.10', '26.3',
-                 '1.21.1')
+    self.refused(REAL.replace('"1.7.10"', '"1.19.4"'), '"minecraft"', '1.19.4', '1.7.10', '26.3',
+                 '1.21.1', '1.20.1')
     self.refused(REAL.replace('{ forge = "10.13.4.1614" }', '{ fabric = "0.16.0" }'), '"loader"', 'fabric')
     self.refused(REAL.replace('"10.13.4.1614"', '"10.13.2.1291"'), '"loader"', '10.13.2.1291', '10.13.4.1614')
 
@@ -218,25 +219,27 @@ class SpecTests(unittest.TestCase):
     self.refused(gradle, '"client"', '26.3', 'real')
     self.refused(REAL_26 + '[server]\neula = true\n', '"server"', '26.3')
 
-  def test_1_21_1_on_fabric_or_with_no_loader(self) -> None:
+  def test_1_21_1_and_1_20_1_on_fabric_or_with_no_loader(self) -> None:
     """
-    1.21.1 as 26.3 (SPEC.md 19.7 step 6d): with Fabric Loader 0.20.1, or
-    as Mojang ships it; a real client only for now.
+    1.21.1 and 1.20.1 as 26.3 (SPEC.md 19.7 steps 6d and 6e): with Fabric
+    Loader 0.20.1, or as Mojang ships them; a real client only for now.
     """
-    spec = InstanceSpec.read(self.write(REAL_1_21_1))
-    self.assertEqual('1.21.1', spec.minecraft)
-    self.assertEqual(('fabric', '0.20.1'),
-                     (spec.loaderName, spec.loaderVersion))
-    self.refused(REAL_1_21_1.replace('"0.20.1"', '"0.16.5"'), '"loader"',
-                 '0.16.5', '0.20.1')
-    spec = InstanceSpec.read(self.write(REAL_1_21_1.replace(
-      'loader = { fabric = "0.20.1" }\n', '')))
-    self.assertEqual(('', ''), (spec.loaderName, spec.loaderVersion))
-    gradle = (REAL_1_21_1.replace('client = "real"', 'client = "gradle"')
-              + '[gradle]\ngame = "run"\n')
-    self.refused(gradle, '"client"', '1.21.1', 'real')
-    self.refused(REAL_1_21_1 + '[server]\neula = true\n', '"server"',
-                 '1.21.1')
+    for minecraft, real in (('1.21.1', REAL_1_21_1), ('1.20.1', REAL_1_20_1)):
+      with self.subTest(minecraft=minecraft):
+        spec = InstanceSpec.read(self.write(real))
+        self.assertEqual(minecraft, spec.minecraft)
+        self.assertEqual(('fabric', '0.20.1'),
+                         (spec.loaderName, spec.loaderVersion))
+        self.refused(real.replace('"0.20.1"', '"0.16.5"'), '"loader"',
+                     '0.16.5', '0.20.1')
+        spec = InstanceSpec.read(self.write(real.replace(
+          'loader = { fabric = "0.20.1" }\n', '')))
+        self.assertEqual(('', ''), (spec.loaderName, spec.loaderVersion))
+        gradle = (real.replace('client = "real"', 'client = "gradle"')
+                  + '[gradle]\ngame = "run"\n')
+        self.refused(gradle, '"client"', minecraft, 'real')
+        self.refused(real + '[server]\neula = true\n', '"server"',
+                     minecraft)
 
   def test_an_unknown_key_says_which(self) -> None:
     self.refused(REAL.replace('mods =', 'mod ='), 'unknown key "mod"', 'did you mean "mods"')

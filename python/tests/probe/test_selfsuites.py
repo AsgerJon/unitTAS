@@ -4,13 +4,14 @@ ones by the same names.
 - In the development client: green, red and a suite that isn't there on one Run, the report checked by
   bin/self_red_check.py --python. Its table is the Java run's, less what Python doesn't twin.
 - In the real client (unitTAS's release jar from an instance spec): the green suite, every line ok.
-- On 26.3 and on 1.21.1 (SPEC.md 19.7 steps 4 and 6d): 'unittas run' as a user runs it (python -m unittas, a process
-  of its own) with a Fabric spec of the port's version (the mod's loader), the probe the version's agent jar beside it:
-  the green suite, every line ok.
+- On 26.3, 1.21.1 and 1.20.1 (SPEC.md 19.7 steps 4, 6d and 6e): 'unittas run' as a user runs it (python -m unittas,
+  a process of its own) with a Fabric spec of the port's version (the mod's loader), the probe the version's agent jar
+  beside it: the green suite, every line ok.
 
   python -m unittas.selftest test_selfsuites.      (through the watcher: "probe test_selfsuites.")
   python -m unittas.selftest test_selfsuites on 26.3-fabric      ("probe test_selfsuites on 26.3-fabric")
   python -m unittas.selftest test_selfsuites on 1.21.1-fabric    ("probe test_selfsuites on 1.21.1-fabric")
+  python -m unittas.selftest test_selfsuites on 1.20.1-fabric    ("probe test_selfsuites on 1.20.1-fabric")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -24,7 +25,7 @@ import sys
 import unittest
 
 from agentgame import buildAgent
-from ports import V1_7_10, V1_21_1, V26_3, onlyOn, version
+from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, onlyOn, version
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -46,7 +47,7 @@ def outcomes(report: str) -> tuple:
   return lines, [(found.group(1), found.group(2)) for found in map(RESULT.match, lines) if found]
 
 
-@onlyOn(V1_7_10, why="1.7.10's development and real clients; 26.3's and 1.21.1's are SelfSuitesAgentTests'")
+@onlyOn(V1_7_10, why="1.7.10's development and real clients; the agent's versions' are SelfSuitesAgentTests'")
 class SelfSuitesTests(unittest.TestCase):
 
   def run_(self, launched, suites: list) -> str:
@@ -93,7 +94,7 @@ class SelfSuitesTests(unittest.TestCase):
     self.assertEqual('OK', [line for line in lines if line][-1])
 
 
-@onlyOn(V26_3, V1_21_1, why="26.3's and 1.21.1's real client from a spec; 1.7.10's are SelfSuitesTests'")
+@onlyOn(V26_3, V1_21_1, V1_20_1, why="the agent's versions' real client from a spec; 1.7.10's are SelfSuitesTests'")
 class SelfSuitesAgentTests(unittest.TestCase):
 
   def test_1_unittas_run_on_a_spec_of_the_version(self) -> None:
@@ -103,7 +104,7 @@ class SelfSuitesAgentTests(unittest.TestCase):
     os.makedirs(folder, exist_ok=True)
     spec = os.path.join(folder, 'self-%s.toml' % minecraft)
     with open(spec, 'w', encoding='utf-8') as file:
-      # no "java": the launcher finds one the version asks for (25, 21), as a user's spec would leave it
+      # no "java": the launcher finds one the version asks for (25, 21, 17), as a user's spec would leave it
       file.write('minecraft = "%s"\nloader = { fabric = "0.20.1" }\nclient = "real"\nprobe = "%s"\ngame = "%s"\n' % (
         minecraft, jar, os.path.join(ROOT, 'run', 'fabric-%s-spec' % minecraft)))
     run = os.path.join(results(), 'self-%s' % minecraft)

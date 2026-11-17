@@ -50,16 +50,17 @@ if TYPE_CHECKING:  # pragma: no cover
 #  Where a built package keeps the probe jars it carries (SPEC.md 9.6, decision 1); none in a development install.
 BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probes')
 #  each version's probe among the bundled ones, by its file's name: 1.7.10's is the release jar (unittas-0.1.0.jar),
-#  26.3's and 1.21.1's the agent's (unittas-probe-26.3-0.1.0.jar, unittas-probe-1.21.1-0.1.0.jar)
+#  26.3's, 1.21.1's and 1.20.1's the agent's (unittas-probe-26.3-0.1.0.jar, unittas-probe-1.21.1-0.1.0.jar)
 PROBES = {MINECRAFT: 'unittas-[0-9]*.jar', '26.3': 'unittas-probe-26.3*.jar',
-          '1.21.1': 'unittas-probe-1.21.1-*.jar'}
+          '1.21.1': 'unittas-probe-1.21.1-*.jar', '1.20.1': 'unittas-probe-1.20.1-*.jar'}
 #  the versions whose probe is a Java agent, given on the game's command line rather than put in mods/ (SPEC.md 19.7
 #  step 5): it needs no loader, and stands beside the one the mod under test brings
-AGENTS = ('26.3', '1.21.1')
-#  a returning player's options for each version's first launch: 26.3 and 1.21.1 open on their accessibility
+AGENTS = ('26.3', '1.21.1', '1.20.1')
+#  a returning player's options for each version's first launch: 26.3, 1.21.1 and 1.20.1 open on their accessibility
 #  onboarding, and a world's first minutes show the movement tutorial's hints; the spec's own options are set after
 RETURNING = {MINECRAFT: {}, '26.3': {'onboardAccessibility': False, 'tutorialStep': 'none'},
-             '1.21.1': {'onboardAccessibility': False, 'tutorialStep': 'none'}}
+             '1.21.1': {'onboardAccessibility': False, 'tutorialStep': 'none'},
+             '1.20.1': {'onboardAccessibility': False, 'tutorialStep': 'none'}}
 
 
 def gameFor(spec: InstanceSpec, results: str, name: str = 'game', cache: Optional[Cache] = None) -> LaunchedGame:

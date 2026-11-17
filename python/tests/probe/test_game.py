@@ -18,7 +18,7 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities, MCItems, MCSounds
 
-from ports import V1_7_10, code, probeGame, start, version
+from ports import V1_7_10, code, damageable, probeGame, start, version
 from probegame import READY_SECONDS, results
 from unittas.api import Game
 from unittas.codec import toJson
@@ -76,7 +76,7 @@ class GameTests(unittest.TestCase):
     self.request('inventory.set', {'items': {'main.3': toJson(wool), 'armor.feet': toJson(boots)}})
     inventory = self.game.inventory()
     self.assertEqual(wool, inventory.main[3])
-    self.assertEqual(boots, inventory.feet)
+    self.assertEqual(damageable(boots), inventory.feet)
     self.clientHolds('inventory.get', {}, {'path': ['armor', 'feet', 'id'], 'eq': boots.id})
     self.request('inventory.set', {'slot': 'held', 'item': None})
     self.assertIs(Item.EMPTY, self.game.inventory().held)

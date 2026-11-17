@@ -20,7 +20,7 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities, MCItems, MCSounds, Version
 
-from ports import command, probeGame, start
+from ports import command, damageable, probeGame, start
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.codec import fromJson, toJson
@@ -90,7 +90,7 @@ class ValuesTests(unittest.TestCase):
     self.request('inventory.set', {'slot': 'armor.feet', 'item': toJson(boots)})
     inventory = self.seen(Inventory, self.request('inventory.get'))
     self.assertEqual(held, inventory.held)
-    self.assertEqual(boots, inventory.feet)
+    self.assertEqual(damageable(boots), inventory.feet)
     self.seen(Inventory, self.request('inventory.get', side='client'))
 
   def test_02_blocks(self) -> None:

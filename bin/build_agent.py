@@ -68,6 +68,8 @@ VERSIONS = {
   '26.3': Version('25', (CORE, MODERN, os.path.join(AGENT, 'v26', 'java')), os.path.join(AGENT, 'v26', 'hooks.txt')),
   '1.21.1': Version('21', (CORE, MODERN, os.path.join(AGENT, 'v1_21_1', 'java')),
                     os.path.join(AGENT, 'v1_21_1', 'hooks.txt'), True),
+  '1.20.1': Version('17', (CORE, MODERN, os.path.join(AGENT, 'v1_20_1', 'java')),
+                    os.path.join(AGENT, 'v1_20_1', 'hooks.txt'), True),
 }
 #  the bootstrap's Java: the oldest a version runs on
 BOOTSTRAP_RELEASE = '17'

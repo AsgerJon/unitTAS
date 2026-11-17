@@ -1,8 +1,8 @@
 """
-A real vanilla client with the loader-free probe (SPEC.md 19.7 steps 5 and 6c), of 26.3 or 1.21.1: the version's
+A real vanilla client with the loader-free probe (SPEC.md 19.7 steps 5, 6c and 6e), of 26.3, 1.21.1 or 1.20.1: the version's
 agent's jar built (once a run, by bin/build_agent.py --minecraft VERSION), and one launch of the game as Mojang ships
 it, no loader at all, by unitTAS's own launcher in run/vanilla-VERSION, the probe a Java agent on its command line
-(-javaagent:JAR=GAME; for 1.21.1 also the table of its names, which the launcher gives), nothing in mods/.
+(-javaagent:JAR=GAME; before 26.1 also the table of its names, which the launcher gives), nothing in mods/.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -32,6 +32,8 @@ HOOKED = {
              'net/minecraft/client/renderer/LevelRenderer', 'net/minecraft/client/sounds/SoundManager',
              'net/minecraft/server/MinecraftServer'],
 }
+#  1.20.1 hooks 1.21.1's classes (three of their methods by its own descriptors or names)
+HOOKED['1.20.1'] = HOOKED['1.21.1']
 
 #  the jars this run built, by version: each built once a run, whichever class asks first
 _BUILT = {}

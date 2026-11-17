@@ -19,7 +19,7 @@ import unittest
 
 from mcdex import MCEntities
 
-from ports import V1_7_10, V1_21_1, V26_3, at, onlyOn, point, probeGame, start, version
+from ports import NBT_ITEMS, V1_7_10, V1_20_1, V1_21_1, V26_3, at, onlyOn, point, probeGame, start, version
 from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
 from unittas.errors import BadRequest, NotFound
@@ -63,9 +63,18 @@ NAMES = {
 }
 
 
-#  1.21.1's are 26.3's: the tests write Mojang's names, which the probe translates where the game runs obfuscated
+#  1.21.1's and 1.20.1's are 26.3's: the tests write Mojang's names, which the probe translates where the game runs
+#  obfuscated; but 1.20.1's items are NBT (Count, a byte; count, an int, from 1.20.5)
 for _entry in NAMES.values():
-  _entry[V1_21_1] = _entry[V26_3]
+  _entry[V1_21_1] = _entry[V1_20_1] = _entry[V26_3]
+NAMES['seven diamonds'][V1_20_1] = ('{Items:[{Slot:0b,id:"minecraft:diamond",Count:7b}]}', 'Count')
+#  an item's name and enchantments in its NBT, where its items have NBT: 1.7.10's plain name and numbered
+#  enchantment; 1.20.1's name a text component's JSON, its enchantment by id
+ENCHANTED = {
+  V1_7_10: ('{display:{Name:"Red"},ench:[{id:16s,lvl:5s}]}', 'Red', 'ench'),
+  V1_20_1: ('{display:{Name:\'{"text":"Red"}\'},Enchantments:[{id:"minecraft:sharpness",lvl:5s}]}',
+            '{"text":"Red"}', 'Enchantments'),
+}
 
 
 def name(what: str):
@@ -99,8 +108,8 @@ class ReflectTests(unittest.TestCase):
   # ---------------------------------------------------------------- SNBT
 
   def test_01_every_type_through_an_item(self) -> None:
-    """1.7.10: the item's NBT; 26.3: its custom data component, NBT as any other."""
-    if version() == V1_7_10:
+    """1.7.10 and 1.20.1: the item's NBT; from 1.20.5: its custom data component, NBT as any other."""
+    if version() in NBT_ITEMS:
       self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:stick', 'nbt': EVERY_TYPE}})
       tree = loads(self.request('inventory.get', {'slot': 'held'})['nbt'])
     else:
@@ -111,13 +120,13 @@ class ReflectTests(unittest.TestCase):
     self.assertIs(Byte, type(tree['b']))
     self.assertIs(Float, type(tree['f']))
 
-  @onlyOn(V1_7_10, why="from 1.20.5 on, an item's name and enchantments are components (test_values has an item's name)")
+  @onlyOn(*NBT_ITEMS, why="from 1.20.5 on, an item's name and enchantments are components (test_values has an item's name)")
   def test_02_an_enchanted_name(self) -> None:
-    nbt = '{display:{Name:"Red"},ench:[{id:16s,lvl:5s}]}'
+    nbt, shown, enchantments = ENCHANTED[version()]
     self.request('inventory.set', {'slot': 'held', 'item': {'id': 'minecraft:diamond_sword', 'nbt': nbt}})
     tree = loads(self.request('inventory.get', {'slot': 'held'})['nbt'])
-    self.assertEqual('Red', tree['display']['Name'])
-    self.assertIs(Short, type(tree['ench'][0]['lvl']))
+    self.assertEqual(shown, tree['display']['Name'])
+    self.assertIs(Short, type(tree[enchantments][0]['lvl']))
     seen = self.request('wait.until', {'side': 'client', 'op': 'inventory.get', 'args': {'slot': 'held'},
                                        'max_ticks': 40, 'test': {'path': ['nbt'], 'contains': 'Red'}})
     self.assertTrue(seen['held'], 'the client has the tag too')

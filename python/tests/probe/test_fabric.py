@@ -36,15 +36,15 @@ import unittest
 
 from agentgame import HOOKED, buildAgent
 from fabricgame import COPY, LAYERS_26, LOADER, LOADER_VERSION, SEED, START_26, TERRAIN, TITLE, FabricGame
-from ports import V1_21_1, V26_3, fabricVersion
+from ports import V1_20_1, V1_21_1, V26_3, fabricVersion
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.errors import BadRequest, Exists, NotFound, NotReady
 from unittas.reset import reset
 
 
 #  what each version runs under beside Fabric, and on
-NAMES = {V26_3: 'mojang', V1_21_1: 'intermediary'}
-JAVAS = {V26_3: '25', V1_21_1: '21'}
+NAMES = {V26_3: 'mojang', V1_21_1: 'intermediary', V1_20_1: 'intermediary'}
+JAVAS = {V26_3: '25', V1_21_1: '21', V1_20_1: '17'}
 #  the version the classes of 26.3's own checks are for
 ONLY_26_3 = unittest.skipUnless(fabricVersion() == V26_3, "26.3's own world and thing checks, from before the probe's"
                                 " tests ran on every port: the port-aware modules cover them on every version")

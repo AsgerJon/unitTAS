@@ -4,16 +4,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.serialization.DataResult;
 import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.TagParser;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -30,10 +25,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The game's things as the protocol's values in 26.3 (PROTOCOL.md 5; SPEC.md 12, D4), as 1.7.10's Values has them,
- * with 26.3's own: an item by its id and count, its data as components (SNBT of the stack's component patch; no meta,
- * no NBT); a block by its flattened id and its state's properties (no meta); an entity's type by its id
- * (minecraft:zombie). Read them on the thread of the side they belong to.
+ * The game's things as the protocol's values from 1.13 on (PROTOCOL.md 5; SPEC.md 12, D4), as 1.7.10's Values has
+ * them, with the flattened versions' own: an item by its id and count, its data as the version keeps it (Version's:
+ * components from 1.20.5, NBT before; no meta); a block by its flattened id and its state's properties (no meta); an
+ * entity's type by its id (minecraft:zombie). Read them on the thread of the side they belong to.
  */
 final class ModernValues {
 
@@ -42,7 +37,7 @@ final class ModernValues {
 
 	// ---------------------------------------------------------------- items
 
-	/** An item: its id and count, and its components when it has any of its own; null for an empty slot. */
+	/** An item: its id and count, and its data when it has any of its own (Version's); null for an empty slot. */
 	static JsonElement item(ItemStack stack, HolderLookup.Provider registries) {
 		if (stack == null || stack.isEmpty()) {
 			return JsonNull.INSTANCE;
@@ -50,19 +45,14 @@ final class ModernValues {
 		JsonObject item = Json.object(
 			"id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
 			"count", stack.getCount());
-		DataComponentPatch patch = stack.getComponentsPatch();
-		if (!patch.isEmpty()) {
-			Tag written = DataComponentPatch.CODEC.encodeStart(registries.createSerializationContext(NbtOps.INSTANCE), patch)
-				.getOrThrow();
-			item.addProperty("components", written.toString());
-		}
+		Version.itemData(stack, registries, item);
 		return item;
 	}
 
 	/**
 	 * An item stack from the protocol's item, or ItemStack.EMPTY for null: NotFound for an id the game hasn't;
-	 * BadRequest for meta or nbt, which 26.3's items haven't (the colour is in the id, damage and names are
-	 * components), and for components that aren't the game's.
+	 * BadRequest for meta, which no flattened version's items have (the colour is in the id), and for data that isn't
+	 * the version's (Version's: components or NBT).
 	 */
 	static ItemStack stack(JsonElement value, HolderLookup.Provider registries) throws ProbeException {
 		if (value == null || value.isJsonNull()) {
@@ -74,11 +64,8 @@ final class ModernValues {
 		JsonObject given = value.getAsJsonObject();
 		String id = Json.string(given, "id");
 		if (given.has("meta")) {
-			throw ProbeException.badRequest("item", "26.3's items have no meta: a colour is in the id"
-				+ " (minecraft:red_wool), damage is a component");
-		}
-		if (given.has("nbt")) {
-			throw ProbeException.badRequest("item", "26.3's items have components, not NBT");
+			throw ProbeException.badRequest("item", Version.port() + "'s items have no meta: a colour is in the id"
+				+ " (minecraft:red_wool), damage is the item's data");
 		}
 		Optional<Item> item = Version.byId(BuiltInRegistries.ITEM, id);
 		if (item.isEmpty()) {
@@ -86,17 +73,7 @@ final class ModernValues {
 		}
 		int count = given.has("count") ? given.get("count").getAsInt() : 1;
 		ItemStack stack = new ItemStack(item.get(), count);
-		String components = Json.string(given, "components");
-		if (components != null) {
-			DataResult<DataComponentPatch> read = DataComponentPatch.CODEC.parse(
-				registries.createSerializationContext(NbtOps.INSTANCE), compound(components, "item"));
-			Optional<DataComponentPatch> patch = read.result();
-			if (patch.isEmpty()) {
-				throw ProbeException.badRequest("item", "the components aren't " + id + "'s: "
-					+ read.error().map(DataResult.Error::message).orElse(components));
-			}
-			stack.applyComponents(patch.get());
-		}
+		Version.applyItemData(stack, given, id, registries);
 		return stack;
 	}
 
@@ -180,7 +157,7 @@ final class ModernValues {
 		List<Object> effects = new ArrayList<>();
 		for (MobEffectInstance effect : player.getActiveEffects()) {
 			effects.add(Json.object(
-				"effect", effect.getEffect().unwrapKey().map(Version::id).orElse(""),
+				"effect", Version.effectId(effect),
 				// 26.3's effects have no number of their own: their id is the name
 				"id", -1,
 				"amplifier", effect.getAmplifier(),

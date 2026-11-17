@@ -1,8 +1,14 @@
 package io.github.asgerjon.unittas.probe;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
+import com.mojang.serialization.JsonOps;
+import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.SharedConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -16,12 +22,18 @@ import net.minecraft.client.multiplayer.chat.GuiMessageSource;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.commands.CommandSource;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
@@ -30,16 +42,20 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockSetType;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.world.level.storage.TagValueOutput;
@@ -213,6 +229,85 @@ final class Version {
 	private static final class Picking {
 
 		static final java.lang.reflect.Method PICK = Members.method(Minecraft.class, "pick", float.class);
+	}
+
+	// ---------------------------------------------------------------- items' data, chat, reach, results
+
+	/** An item's own data as the protocol has it: its component patch as SNBT ("components"), when it has any. */
+	static void itemData(ItemStack stack, HolderLookup.Provider registries, JsonObject item) {
+		DataComponentPatch patch = stack.getComponentsPatch();
+		if (!patch.isEmpty()) {
+			Tag written = DataComponentPatch.CODEC.encodeStart(registries.createSerializationContext(NbtOps.INSTANCE), patch)
+				.getOrThrow();
+			item.addProperty("components", written.toString());
+		}
+	}
+
+	/**
+	 * The protocol's item's data put on its stack: its components (SNBT of a component patch); BadRequest for nbt, which
+	 * 26.3's items haven't (data components from 1.20.5), and for components that aren't the item's.
+	 */
+	static void applyItemData(ItemStack stack, JsonObject given, String id, HolderLookup.Provider registries)
+		throws ProbeException {
+		if (given.has("nbt")) {
+			throw ProbeException.badRequest("item", port() + "'s items have components, not NBT");
+		}
+		String components = Json.string(given, "components");
+		if (components == null) {
+			return;
+		}
+		DataResult<DataComponentPatch> read = DataComponentPatch.CODEC.parse(
+			registries.createSerializationContext(NbtOps.INSTANCE), ModernValues.compound(components, "item"));
+		Optional<DataComponentPatch> patch = read.result();
+		if (patch.isEmpty()) {
+			throw ProbeException.badRequest("item", "the components aren't " + id + "'s: "
+				+ read.error().map(DataResult.Error::message).orElse(components));
+		}
+		stack.applyComponents(patch.get());
+	}
+
+	/** A chat line as the game's own JSON, by its registries when a world is open. */
+	static String chatJson(Component message) {
+		Minecraft mc = Minecraft.getInstance();
+		DynamicOps<JsonElement> ops = mc.level == null ? JsonOps.INSTANCE
+			: mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		return ComponentSerialization.CODEC.encodeStart(ops, message).result().map(JsonElement::toString).orElse("");
+	}
+
+	/** How far the player reaches a block: its attribute's, as the game's pick takes it. */
+	static double blockReach(Player player) {
+		return player.blockInteractionRange();
+	}
+
+	/** How far the player reaches an entity: its attribute's, as the game's pick takes it. */
+	static double entityReach(Player player) {
+		return player.entityInteractionRange();
+	}
+
+	/** The source, its command's result kept in result[0] as the command ends. */
+	static CommandSourceStack withResult(CommandSourceStack source, int[] result) {
+		return source.withCallback((success, value) -> result[0] = value);
+	}
+
+	/** A block entity's data, without its id and place, as /data reads it. */
+	static CompoundTag tileData(BlockEntity tile, HolderLookup.Provider registries) {
+		return tile.saveWithoutMetadata(registries);
+	}
+
+	/** A mob effect's id (minecraft:speed). */
+	static String effectId(MobEffectInstance effect) {
+		return effect.getEffect().unwrapKey().map(Version::id).orElse("");
+	}
+
+	/** A trapdoor's kind, whose hand-opening it says (its getter protected). */
+	static BlockSetType trapdoorType(TrapDoorBlock block) {
+		return Members.call(Trapdoors.TYPE, block);
+	}
+
+	/** Found at the first trapdoor asked about, once the probe has its names. */
+	private static final class Trapdoors {
+
+		static final java.lang.reflect.Method TYPE = Members.method(TrapDoorBlock.class, "getType");
 	}
 
 	// ---------------------------------------------------------------- the world, players and entities

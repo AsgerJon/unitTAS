@@ -38,9 +38,6 @@ import java.util.List;
  */
 final class ModernPerceive {
 
-	/** A trapdoor's kind (protected), whose hand-opening it says. */
-	private static final java.lang.reflect.Method TRAPDOOR_TYPE = Members.method(TrapDoorBlock.class, "getType");
-
 	private ModernPerceive() {
 	}
 
@@ -80,7 +77,7 @@ final class ModernPerceive {
 			"sneaking", player.isShiftKeyDown(),
 			"sprinting", player.isSprinting(),
 			"flying", player.getAbilities().flying,
-			"reach", Json.object("block", player.blockInteractionRange(), "entity", player.entityInteractionRange()),
+			"reach", Json.object("block", Version.blockReach(player), "entity", Version.entityReach(player)),
 			"target", target(level, mc.hitResult),
 			"blocks", around(level, player, around, below, above));
 	}
@@ -93,9 +90,8 @@ final class ModernPerceive {
 		if (block instanceof DoorBlock door) {
 			return door.type().canOpenByHand();
 		}
-		if (block instanceof TrapDoorBlock) {
-			return Members.<net.minecraft.world.level.block.state.properties.BlockSetType>call(TRAPDOOR_TYPE, block)
-				.canOpenByHand();
+		if (block instanceof TrapDoorBlock trapdoor) {
+			return Version.trapdoorType(trapdoor).canOpenByHand();
 		}
 		return block instanceof FenceGateBlock;
 	}

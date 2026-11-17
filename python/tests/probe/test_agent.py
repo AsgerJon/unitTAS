@@ -18,17 +18,17 @@ import shutil
 import unittest
 
 from agentgame import HOOKED, AgentGame, buildAgent
-from ports import V1_21_1, V26_3, onlyOn, version
+from ports import V1_20_1, V1_21_1, V26_3, onlyOn, version
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.reset import reset
 
 TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
 #  what each version runs under, and on
-NAMES = {V26_3: 'mojang', V1_21_1: 'obfuscated'}
-JAVAS = {V26_3: '25', V1_21_1: '21'}
+NAMES = {V26_3: 'mojang', V1_21_1: 'obfuscated', V1_20_1: 'obfuscated'}
+JAVAS = {V26_3: '25', V1_21_1: '21', V1_20_1: '17'}
 
 
-@onlyOn(V26_3, V1_21_1, why="the agent's own port is a version from 1.20.1 on")
+@onlyOn(V26_3, V1_21_1, V1_20_1, why="the agent's own port is a version from 1.20.1 on")
 class AgentTests(unittest.TestCase):
 
   @classmethod

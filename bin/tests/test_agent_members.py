@@ -7,8 +7,10 @@ in a string isn't javac's to see, and a version that hasn't it fails only
 as the probe loads (1.21.1's pick is GameRenderer's, not Minecraft's). Each
 Members.field(X.class, "name") and Members.method(X.class, "name", ...) in
 a version's sources must be in that version's table of names, X by the
-file's imports. A version whose obfuscation log isn't in the download
-cache is skipped, saying so.
+file's imports. So must each of its hooks (hooks.txt), by its class, name
+and descriptor: the agent refuses one that isn't there only as the game
+starts. A version whose obfuscation log isn't in the download cache is
+skipped, saying so.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -52,18 +54,22 @@ def lookups(folders: tuple) -> list:
   return found
 
 
+def obfuscated() -> list:
+  """Each obfuscated version whose log is in the download cache: (version, its Version, its MojangNames)."""
+  found = []
+  for minecraft, version in sorted(build_agent.VERSIONS.items()):
+    log = os.path.join(defaultRoot(), 'versions', minecraft, 'client.txt')
+    if version.obfuscated and os.path.isfile(log):
+      with open(log, encoding='utf-8') as file:
+        found.append((minecraft, version, MojangNames.fromText(file.read())))
+  return found
+
+
 class MembersTests(unittest.TestCase):
 
   def test_each_obfuscated_version_has_every_name(self) -> None:
     checked = 0
-    for minecraft, version in sorted(build_agent.VERSIONS.items()):
-      if not version.obfuscated:
-        continue
-      log = os.path.join(defaultRoot(), 'versions', minecraft, 'client.txt')
-      if not os.path.isfile(log):
-        continue
-      with open(log, encoding='utf-8') as file:
-        names = MojangNames.fromText(file.read())
+    for minecraft, version, names in obfuscated():
       fields = {(owner, name) for owner, name, _ in names.fields}
       methods = {(owner, name) for owner, name, _ in names.methods}
       sources = tuple(each for each in version.sources if each != build_agent.CORE)
@@ -71,6 +77,21 @@ class MembersTests(unittest.TestCase):
         with self.subTest(minecraft=minecraft, file=file, member=owner + '.' + member):
           known = (owner, member) in (fields if kind == 'field' else methods)
           self.assertTrue(known, '%s has no %s %s.%s (%s reaches it by name)' % (minecraft, kind, owner, member, file))
+        checked += 1
+    if not checked:
+      self.skipTest('no obfuscated version\'s obfuscation log is in the download cache (%s)' % defaultRoot())
+
+  def test_each_obfuscated_version_has_every_hook(self) -> None:
+    checked = 0
+    for minecraft, version, names in obfuscated():
+      methods = {(owner, name) for owner, name, _ in names.methods}
+      with open(version.hooks, encoding='utf-8') as file:
+        hooks = [line.rstrip('\n').split('\t') for line in file if line[:6] in ('BEFORE', 'AFTER\t')]
+      for _, owner, name, descriptor, _ in hooks:
+        with self.subTest(minecraft=minecraft, hook=owner + '.' + name + descriptor):
+          known = ((owner, name) in methods if descriptor == '*'
+                   else (owner, name, descriptor) in names.methods)
+          self.assertTrue(known, '%s has no %s.%s%s (its hooks.txt hooks it)' % (minecraft, owner, name, descriptor))
         checked += 1
     if not checked:
       self.skipTest('no obfuscated version\'s obfuscation log is in the download cache (%s)' % defaultRoot())

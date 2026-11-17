@@ -27,7 +27,7 @@ import unittest
 
 from mcdex import MCBlocks, MCEntities
 
-from ports import V1_7_10, V1_21_1, V26_3, at, block, lift, probeGame, start, version
+from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, at, block, lift, probeGame, start, version
 from probegame import READY_SECONDS
 from unittas.api import Game
 from unittas.box import Box
@@ -42,7 +42,7 @@ EYE = 1.62
 WIDTH = 0.6
 HEIGHT = 1.8
 #  a creative player's reach, blocks and entities: 6 for entities in 1.7.10, 5 from 1.20.5's attributes on
-REACH = {V1_7_10: (5.0, 6.0), V1_21_1: (5.0, 5.0), V26_3: (5.0, 5.0)}
+REACH = {V1_7_10: (5.0, 6.0), V1_20_1: (5.0, 5.0), V1_21_1: (5.0, 5.0), V26_3: (5.0, 5.0)}
 
 
 class PerceiveTests(unittest.TestCase):

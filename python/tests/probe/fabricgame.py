@@ -1,7 +1,7 @@
 """
-A real client with Fabric Loader for the probe's game tests (SPEC.md 12, 19.7), of 26.3 or 1.21.1: the loader a mod
+A real client with Fabric Loader for the probe's game tests (SPEC.md 12, 19.7), of 26.3, 1.21.1 or 1.20.1: the loader a mod
 under test would bring, and unitTAS's probe beside it as a Java agent (SPEC.md 19.7 steps 5 and 6d: no Fabric mod of
-unitTAS's, mods/ empty; for 1.21.1 the table of intermediary's names, which the launcher gives), one launch by
+unitTAS's, mods/ empty; before 26.1 the table of intermediary's names, which the launcher gives), one launch by
 unitTAS's own launcher in run/fabric-VERSION. test_fabric's own and every test class on a Fabric port (ports.py)
 start it.
 """

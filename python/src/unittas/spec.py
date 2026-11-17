@@ -29,9 +29,9 @@ Paths are taken from the spec's own folder. Every mistake is a SpecError
 that names the file and the key, an unknown key too (with the key it
 likely meant): it is a file people write by hand. The versions are
 PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
-26.3 and 1.21.1 each with Fabric Loader 0.20.1 or no loader at all
-(SPEC.md 19.7 steps 4, 5 and 6d: the loader is the mod's, the probe a
-Java agent beside it), a real client only for now.
+26.3, 1.21.1 and 1.20.1 each with Fabric Loader 0.20.1 or no loader at
+all (SPEC.md 19.7 steps 4, 5, 6d and 6e: the loader is the mod's, the
+probe a Java agent beside it), a real client only for now.
 
 - SpecError: what is wrong with a spec, and where.
 - MavenLibrary: a library by its Maven coordinates.
@@ -58,11 +58,12 @@ if TYPE_CHECKING:  # pragma: no cover
 MINECRAFT = '1.7.10'
 FORGE = '10.13.4.1614'
 #  The versions this unitTAS runs, each with its one loader: (name, version) by Minecraft's version (SPEC.md 19.7)
-PORTS = {MINECRAFT: ('forge', FORGE), '26.3': ('fabric', '0.20.1'), '1.21.1': ('fabric', '0.20.1')}
+PORTS = {MINECRAFT: ('forge', FORGE), '26.3': ('fabric', '0.20.1'), '1.21.1': ('fabric', '0.20.1'),
+         '1.20.1': ('fabric', '0.20.1')}
 #  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet
-REAL_ONLY = ('26.3', '1.21.1')
+REAL_ONLY = ('26.3', '1.21.1', '1.20.1')
 #  The versions a spec may name with no loader: the game as Mojang ships it (the probe a Java agent needs none)
-NO_LOADER = ('26.3', '1.21.1')
+NO_LOADER = ('26.3', '1.21.1', '1.20.1')
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
