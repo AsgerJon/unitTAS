@@ -70,8 +70,10 @@ OLD_FORGE_MAVENS = ('http://files.minecraftforge.net/maven/', 'https://files.min
 ASSETS = 'https://resources.download.minecraft.net/'
 #  Fabric's meta server (fabric-meta's v2 API): the launcher profile for a game version and a loader version
 FABRIC_META = 'https://meta.fabricmc.net/v2/versions/loader/%s/%s/profile/json'
+#  NeoForge's maven: each NeoForge version's installer, which makes NeoForge's game (SPEC.md 19.7 step 7)
+NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/'
 #  The loaders versionCommand puts on a version (1.7.10 Forge is command's, below)
-LOADERS = ('fabric',)
+LOADERS = ('fabric', 'neoforge')
 #  What a version's default-user-jvm says of memory, which a run gives itself instead
 _MEMORY_FLAG = re.compile(r'^-Xm[sx]')
 #  Forge 10.13.4.1614's JSON pins these two Scala jars at sha1s its maven no longer serves. Found by the live
@@ -446,14 +448,54 @@ def _profile(sources: Sources, minecraft: str, loader: str, loaderVersion: str) 
     return json.load(file)
 
 
-def _jar(sources: Sources, library: versions.Library) -> str:
+def _neoForgeProfile(sources: Sources, minecraft: str, loaderVersion: str, java: str) -> dict:
   """
-  One library's jar: the Gradle cache's where it has it, else downloaded,
-  held to the sha1 its JSON gives, or else to its maven's .sha1. Forge's
-  old maven by plain HTTP is reached by HTTPS.
+  NeoForge's version JSON for that version (SPEC.md 19.7 step 7): what NeoForge's own installer writes, run headless
+  once into the download cache (--install-client), which is laid out as a launcher's folder (versions/, libraries/).
+  Its processors make the game NeoForge runs (the client jar split, renamed by Mojang's names, patched): they are
+  NeoForge's own, run by its installer, on the version's Java. The installer is fetched from NeoForge's maven and held
+  to its .sha1; the folder's launcher_profiles.json, which the installer asks for, written first. Installed when its
+  version JSON and its patched client are both there. Missing, naming the installer's output, when it fails, or when
+  the profile is for another version.
+  """
+  import subprocess
+  if sources.cache is None:
+    raise Missing('no NeoForge %s: there is no download cache to install it into' % loaderVersion)
+  name = 'neoforge-%s' % loaderVersion
+  profilePath = sources.cache.path('versions/%s/%s.json' % (name, name))
+  patched = sources.cache.path('libraries/net/neoforged/neoforge/%s/%s-client.jar' % (loaderVersion, name))
+  if not (os.path.isfile(profilePath) and os.path.isfile(patched)):
+    url = NEOFORGE_MAVEN + '%s/%s-installer.jar' % (loaderVersion, name)
+    installer = _fetched(sources, 'libraries/net/neoforged/neoforge/%s/%s-installer.jar' % (loaderVersion, name), url,
+                         "NeoForge %s's installer" % loaderVersion, sha1Url=url + '.sha1')
+    root = sources.cache.path('')
+    profiles = os.path.join(root, 'launcher_profiles.json')
+    if not os.path.isfile(profiles):
+      with open(profiles, 'w', encoding='utf-8') as file:
+        file.write('{"profiles": {}}\n')
+    log = sources.cache.path('versions/%s/install.log' % name)
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    with open(log, 'w', encoding='utf-8') as output:
+      done = subprocess.run([java, '-jar', installer, '--install-client', root], stdin=subprocess.DEVNULL,
+                            stdout=output, stderr=subprocess.STDOUT, cwd=os.path.dirname(installer))
+    if done.returncode != 0 or not (os.path.isfile(profilePath) and os.path.isfile(patched)):
+      raise Missing("NeoForge %s's installer didn't install it (exit %d): its output is in %s" % (
+        loaderVersion, done.returncode, log))
+  with open(profilePath, encoding='utf-8') as file:
+    profile = json.load(file)
+  if profile.get('inheritsFrom') != minecraft:
+    raise Missing('NeoForge %s is for %s, not %s' % (loaderVersion, profile.get('inheritsFrom'), minecraft))
+  return profile
+
+
+def _jar(sources: Sources, library: versions.Library, gradle: bool = True) -> str:
+  """
+  One library's jar: the Gradle cache's where it has it ('gradle' False:
+  never), else downloaded, held to the sha1 its JSON gives, or else to its
+  maven's .sha1. Forge's old maven by plain HTTP is reached by HTTPS.
   """
   parts = library.name.split(':')
-  found = _module(sources.gradleHome, ':'.join(parts[:3]), parts[3] if len(parts) > 3 else '')
+  found = _module(sources.gradleHome, ':'.join(parts[:3]), parts[3] if len(parts) > 3 else '') if gradle else None
   if found:
     return found
   url = library.url
@@ -470,7 +512,9 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   """
   The launch of a real client of any version, as Mojang ships it (loader
   None) or with a loader on top (SPEC.md 12.3, step 2; LOADERS names
-  them), in the game folder, on that Java: the version JSON and the
+  them: Fabric's profile from its meta server, NeoForge's from its own
+  installer, run once into the download cache, SPEC.md 19.7 step 7), in
+  the game folder, on that Java: the version JSON and the
   loader's profile resolved for this system (unittas.versions), every
   file from the Gradle cache or the download cache and held to its sha1.
   Its player 'username' (offline), its memory the run's ('-Xmx'), the
@@ -491,17 +535,29 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   if not MEMORY.match(memory or ''):
     raise ValueError("memory is as -Xmx takes it, '4G' or '3072M', not %r" % (memory,))
   vanilla = _versionJson(sources, minecraft)
-  profile = None if loader is None else _profile(sources, minecraft, loader, loaderVersion)
+  if loader == 'neoforge':
+    installing = java or findJavaFor(versions.resolve(vanilla).javaMajor, javaCandidates)
+    profile = _neoForgeProfile(sources, minecraft, loaderVersion, installing)
+  else:
+    profile = None if loader is None else _profile(sources, minecraft, loader, loaderVersion)
   version = versions.resolve(vanilla, profile, features={'has_custom_resolution': True})
   if java is None:
     java = findJavaFor(version.javaMajor, javaCandidates)
-  path = [_jar(sources, library) for library in version.libraries]
-  natives = [(_jar(sources, library), list(exclude)) for library, exclude in version.natives]
+  # a profile that names its libraries by their place in the library folder (NeoForge's module path) gets every one
+  # from there: its BootstrapLauncher refuses a module on the class path from another file (SPEC.md 19.7 step 7)
+  gradle = not any('${library_directory}' in argument for argument in version.jvm)
+  path = [_jar(sources, library, gradle) for library in version.libraries]
+  natives = [(_jar(sources, library, gradle), list(exclude)) for library, exclude in version.natives]
   client = version.client
   if not client:
     raise Missing('the %s version JSON names no client jar' % minecraft)
-  path.append(_fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
-                       'the %s client jar' % minecraft, [client['sha1']]))
+  jar = _fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
+                 'the %s client jar' % minecraft, [client['sha1']])
+  if loader == 'neoforge':
+    # as a launcher lays a profile out: the client jar by the version's own name, which NeoForge's BootstrapLauncher
+    # leaves alone (its -DignoreList names it); the game it runs is the installer's patched one
+    jar = sources.cache.store('versions/%s/%s.jar' % (version.id, version.id), jar)
+  path.append(jar)
   assets = _assetsOf(sources, version.assets, version.assetIndex, minecraft)
   values = {
     'auth_player_name': username, 'version_name': version.id, 'game_directory': game, 'assets_root': assets,
@@ -534,10 +590,14 @@ def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str
   written once into the download cache, and named to the agent by
   -Dunittas.names. In vanilla such a version runs obfuscated; beside
   Fabric under intermediary's names, from the intermediary jar its
-  profile names (Missing if it names none). None for a version under
-  Mojang's own names (no client_mappings in its JSON).
+  profile names (Missing if it names none); beside NeoForge under
+  Mojang's own, its installer having renamed the game so (step 7). None
+  for a version under Mojang's own names (no client_mappings in its JSON).
   """
   if not vanilla.get('downloads', {}).get('client_mappings'):
+    return []
+  if loader == 'neoforge':
+    # NeoForge's installer renames the game by Mojang's names (SPEC.md 19.7 step 7): the probe's own
     return []
   if loader is None:
     return ['-Dunittas.names=' + namesTable(sources, minecraft)]

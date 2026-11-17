@@ -167,7 +167,7 @@ public final class ModernHooks {
 	private static JsonObject ready(Snapshot snapshot) {
 		// the mods the loader beside the probe has (the mod under test's), none in vanilla
 		List<Object> mods = new ArrayList<>();
-		for (String[] mod : ModernPort.fabricMods()) {
+		for (String[] mod : ModernPort.mods()) {
 			mods.add(Json.object("id", mod[0], "name", mod[1], "version", mod[2]));
 		}
 		// the game's classes the agent hooks, rewritten as they loaded (each loaded as the probe wakes)

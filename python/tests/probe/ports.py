@@ -1,16 +1,16 @@
 """
 The port the probe's game tests run on (SPEC.md 19.7): a version and what
-runs it, named by the run ('on 26.3-fabric', 'on 26.3'; unittas.selftest
-puts it in UNITTAS_PROBE_PORT), 1.7.10 Forge's development client without
-one. A test class starts its port's game (probeGame: 26.3, 1.21.1 or
-1.20.1 as Mojang ships it, the probe a Java agent; or beside Fabric), puts
-the player where its flat test world's start is (start), says a command
-as that version reads it where the versions' texts differ (command), and
-skips what its version can't do yet, saying why (onlyOn). The tables are
-by version (V1_7_10, V1_20_1, V1_21_1, V26_3): each version's ports share its
-own, and 1.21.1 has 26.3's block states and command texts (the same from
-1.13 and 1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's); 1.20.1
-has 1.21.1's but for its items' data in a block entity (NBT, before 1.20.5's
+runs it, named by the run ('on 26.3-fabric', 'on 26.3'; unittas.selftest puts
+it in UNITTAS_PROBE_PORT), 1.7.10 Forge's development client without one. A
+test class starts its port's game (probeGame: 26.3, 1.21.1 or 1.20.1 as
+Mojang ships it, the probe a Java agent; or beside Fabric or NeoForge), puts
+the player where its flat test world's start is (start), says a command as
+that version reads it where the versions' texts differ (command), and skips
+what its version can't do yet, saying why (onlyOn). The tables are by version
+(V1_7_10, V1_20_1, V1_21_1, V26_3): each version's ports share its own, and
+1.21.1 has 26.3's block states and command texts (the same from 1.13 and
+1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's); 1.20.1 has
+1.21.1's but for its items' data in a block entity (NBT, before 1.20.5's
 components: Count, a byte).
 """
 #  Apache-2.0 license
@@ -23,19 +23,22 @@ from typing import Callable
 
 from agentgame import AgentGame, buildAgent
 from fabricgame import FabricGame
+from neoforgegame import NeoForgeGame
 from probegame import ROOT, results
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
 from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Item, Vec3
 
-FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1 = PORTS
+(FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1,
+ NEOFORGE_1_21_1) = PORTS
 #  the versions, which the tables are by
 V1_7_10, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.20.1', '1.21.1', '26.3'
 VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
-            FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1}
-#  the ports with Fabric Loader beside the probe
+            FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1, NEOFORGE_1_21_1: V1_21_1}
+#  the ports with Fabric Loader beside the probe, and with NeoForge
 FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1)
+NEOFORGE_PORTS = (NEOFORGE_1_21_1,)
 #  the versions whose items keep their data as NBT (data components from 1.20.5 on)
 NBT_ITEMS = (V1_7_10, V1_20_1)
 #  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
@@ -191,6 +194,11 @@ def damageable(item: Item) -> Item:
   return item.replace(snbt='{Damage:0}') if version() == V1_20_1 else item
 
 
+def neoForgeVersion() -> str:
+  """The version test_neoforge's NeoForge game is: the port's on a NeoForge port, 1.21.1 on any other."""
+  return version() if port() in NEOFORGE_PORTS else V1_21_1
+
+
 def onlyOn(*versions: str, why: str) -> Callable:
   """A test (or class) run on those versions' ports only; on another it skips, saying why."""
   return unittest.skipUnless(version() in versions, 'not on %s: %s' % (port(), why))
@@ -208,6 +216,9 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == FABRIC_1_21_1:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
                       minecraft=V1_21_1)
+  if port() == NEOFORGE_1_21_1:
+    return NeoForgeGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
+                        minecraft=V1_21_1)
   if port() == VANILLA_1_20_1:
     return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_20_1), name,
                      minecraft=V1_20_1)

@@ -31,7 +31,8 @@ likely meant): it is a file people write by hand. The versions are
 PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
 26.3, 1.21.1 and 1.20.1 each with Fabric Loader 0.20.1 or no loader at
 all (SPEC.md 19.7 steps 4, 5, 6d and 6e: the loader is the mod's, the
-probe a Java agent beside it), a real client only for now.
+probe a Java agent beside it), 1.21.1 with NeoForge 21.1.267 too (step
+7), a real client only for now.
 
 - SpecError: what is wrong with a spec, and where.
 - MavenLibrary: a library by its Maven coordinates.
@@ -57,9 +58,12 @@ if TYPE_CHECKING:  # pragma: no cover
 #  What phase 3 runs (SPEC.md 9.6, decision 5).
 MINECRAFT = '1.7.10'
 FORGE = '10.13.4.1614'
-#  The versions this unitTAS runs, each with its one loader: (name, version) by Minecraft's version (SPEC.md 19.7)
-PORTS = {MINECRAFT: ('forge', FORGE), '26.3': ('fabric', '0.20.1'), '1.21.1': ('fabric', '0.20.1'),
-         '1.20.1': ('fabric', '0.20.1')}
+#  The versions this unitTAS runs, each with its loaders, each loader at its one version: {name: version} by
+#  Minecraft's version (SPEC.md 19.7; NeoForge from step 7)
+PORTS = {MINECRAFT: {'forge': FORGE}, '26.3': {'fabric': '0.20.1'},
+         '1.21.1': {'fabric': '0.20.1', 'neoforge': '21.1.267'}, '1.20.1': {'fabric': '0.20.1'}}
+#  Each loader as its own people write its name
+LOADER_NAMES = {'forge': 'Forge', 'fabric': 'Fabric', 'neoforge': 'NeoForge'}
 #  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet
 REAL_ONLY = ('26.3', '1.21.1', '1.20.1')
 #  The versions a spec may name with no loader: the game as Mojang ships it (the probe a Java agent needs none)
@@ -282,20 +286,22 @@ def _server(reader: _Reader, body: dict, client: str) -> tuple:
 
 
 def _loader(reader: _Reader, body: dict, minecraft: str) -> tuple:
-  """The loader the version runs with, its one version (PORTS)."""
-  name, wanted = PORTS[minecraft]
+  """The loader the version runs with: one of its loaders (PORTS), at that loader's one version."""
+  loaders = PORTS[minecraft]
   if 'loader' not in body and minecraft in NO_LOADER:
     return '', ''
+  choices = ' or '.join('{ %s = "%s" }' % each for each in loaders.items())
   if 'loader' not in body:
-    raise reader.fail('"loader" is needed: { %s = "%s" } for %s' % (name, wanted, minecraft))
+    raise reader.fail('"loader" is needed: %s for %s' % (choices, minecraft))
   loader = reader.table(body, 'loader')
-  if list(loader) != [name]:
-    raise reader.fail('"loader" is { %s = "%s" }: this unitTAS runs %s with %s only, not %s' % (
-      name, wanted, minecraft, name.capitalize(), loader))
+  if len(loader) != 1 or list(loader)[0] not in loaders:
+    raise reader.fail('"loader" is one of %s: this unitTAS runs %s with %s only, not %s' % (
+      choices, minecraft, ' or '.join(LOADER_NAMES[name] for name in loaders), loader))
+  name = list(loader)[0]
   version = reader.string(loader, name, 'loader.')
-  if version != wanted:
+  if version != loaders[name]:
     raise reader.fail('"loader" is %s %s: this unitTAS runs %s with %s %s only' % (
-      name.capitalize(), version, minecraft, name.capitalize(), wanted))
+      LOADER_NAMES[name], version, minecraft, LOADER_NAMES[name], loaders[name]))
   return name, version
 
 

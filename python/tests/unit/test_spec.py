@@ -241,6 +241,29 @@ class SpecTests(unittest.TestCase):
         self.refused(real + '[server]\neula = true\n', '"server"',
                      minecraft)
 
+  def test_1_21_1_beside_neoforge(self) -> None:
+    """
+    1.21.1 with NeoForge 21.1.267 (SPEC.md 19.7 step 7), as with Fabric
+    Loader: a version takes either of its loaders, each at its one
+    version; another loader, or another version of one, said with both.
+    """
+    neoforge = REAL_1_21_1.replace('{ fabric = "0.20.1" }',
+                                   '{ neoforge = "21.1.267" }')
+    spec = InstanceSpec.read(self.write(neoforge))
+    self.assertEqual(('neoforge', '21.1.267'),
+                     (spec.loaderName, spec.loaderVersion))
+    self.refused(neoforge.replace('"21.1.267"', '"21.1.200"'), '"loader"',
+                 'NeoForge 21.1.200', '21.1.267')
+    self.refused(REAL_1_21_1.replace('{ fabric = "0.20.1" }',
+                                     '{ forge = "52.0.1" }'),
+                 '"loader"', 'fabric = "0.20.1"', 'neoforge = "21.1.267"')
+    self.refused(REAL_1_21_1.replace(
+      '{ fabric = "0.20.1" }', '{ fabric = "0.20.1", neoforge = "21.1.267" }'),
+      '"loader"', 'one')
+    self.refused(REAL_1_20_1.replace('{ fabric = "0.20.1" }',
+                                     '{ neoforge = "21.1.267" }'),
+                 '"loader"', '1.20.1', 'fabric')
+
   def test_an_unknown_key_says_which(self) -> None:
     self.refused(REAL.replace('mods =', 'mod ='), 'unknown key "mod"', 'did you mean "mods"')
     self.refused(REAL + '[gradle]\ntask = "runClient"\n', '"gradle"', 'client = "gradle"')

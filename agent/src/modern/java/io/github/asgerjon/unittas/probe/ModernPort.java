@@ -10,13 +10,16 @@ import java.util.Optional;
 /**
  * The 26.3 port (SPEC.md 12, 19.7 step 5): what this version gives the probe's version-free core. The probe is a Java
  * agent, needing no loader: its facts come from the game itself (its own version), and the loader beside it, if the
- * mod under test brought one, is said as that loader says itself (Fabric Loader, read by reflection: the probe depends
- * on no loader's API). Its game operations are declared here and given their bodies by the hooks (ModernHooks); one not
- * declared is Unsupported.
+ * mod under test brought one, is said as that loader says itself (Fabric Loader, or NeoForge's FML, read by
+ * reflection: the probe depends on no loader's API). Its game operations are declared here and given their bodies by
+ * the hooks (ModernHooks); one not declared is Unsupported.
  */
 public final class ModernPort implements Port {
 
 	private static final String FABRIC = "net.fabricmc.loader.api.FabricLoader";
+	/** NeoForge's loader (FML) and its list of mods, as FML 4 names them (SPEC.md 19.7 step 7). */
+	private static final String NEOFORGE = "net.neoforged.fml.loading.FMLLoader";
+	private static final String NEOFORGE_MODS = "net.neoforged.fml.ModList";
 
 	@Override
 	public String name() {
@@ -30,12 +33,18 @@ public final class ModernPort implements Port {
 
 	@Override
 	public String loaderName() {
-		return fabric().isPresent() ? "fabric" : "";
+		if (fabric().isPresent()) {
+			return "fabric";
+		}
+		return neoForge().isPresent() ? "neoforge" : "";
 	}
 
 	@Override
 	public String loaderVersion() {
-		return fabricVersion("fabricloader");
+		if (fabric().isPresent()) {
+			return fabricVersion("fabricloader");
+		}
+		return neoForgeVersion();
 	}
 
 	@Override
@@ -167,6 +176,53 @@ public final class ModernPort implements Port {
 		}
 	}
 
+	/** NeoForge's FMLLoader, when the mod under test brought NeoForge; empty otherwise. */
+	static Optional<Class<?>> neoForge() {
+		try {
+			return Optional.of(Class.forName(NEOFORGE, true, ModernPort.class.getClassLoader()));
+		} catch (ClassNotFoundException e) {
+			return Optional.empty();
+		}
+	}
+
+	/** NeoForge's version as FML says it (its version info); "" without NeoForge. */
+	static String neoForgeVersion() {
+		Optional<Class<?>> loader = neoForge();
+		if (loader.isEmpty()) {
+			return "";
+		}
+		try {
+			Object info = loader.get().getMethod("versionInfo").invoke(null);
+			return (String) info.getClass().getMethod("neoForgeVersion").invoke(info);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("NeoForge is here but doesn't say its version: " + e, e);
+		}
+	}
+
+	/** Each mod the loader beside the probe has, (id, name, version): Fabric Loader's or NeoForge's; none in vanilla. */
+	static java.util.List<String[]> mods() {
+		return fabric().isPresent() ? fabricMods() : neoForgeMods();
+	}
+
+	/** Each mod NeoForge has (its ModList, as IModInfo says each), (id, name, version); none without NeoForge. */
+	static java.util.List<String[]> neoForgeMods() {
+		java.util.List<String[]> out = new java.util.ArrayList<>();
+		if (neoForge().isEmpty()) {
+			return out;
+		}
+		try {
+			Class<?> list = Class.forName(NEOFORGE_MODS, true, ModernPort.class.getClassLoader());
+			Object mods = list.getMethod("get").invoke(null);
+			for (Object mod : (Collection<?>) list.getMethod("getMods").invoke(mods)) {
+				out.add(new String[] {(String) method(mod, "getModId").invoke(mod),
+					(String) method(mod, "getDisplayName").invoke(mod), String.valueOf(method(mod, "getVersion").invoke(mod))});
+			}
+			return out;
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("NeoForge doesn't list its mods: " + e, e);
+		}
+	}
+
 	/** Each mod Fabric Loader has, (id, name, version); none in vanilla. */
 	static java.util.List<String[]> fabricMods() {
 		java.util.List<String[]> out = new java.util.ArrayList<>();
@@ -193,7 +249,7 @@ public final class ModernPort implements Port {
 		return (String) method(version, "getFriendlyString").invoke(version);
 	}
 
-	/** A public method by name, through the object's public interfaces (Fabric's implementations are internal). */
+	/** A public method by name, through the object's public interfaces (the loaders' implementations are internal). */
 	private static Method method(Object on, String name) throws NoSuchMethodException {
 		for (Class<?> type : on.getClass().getInterfaces()) {
 			try {

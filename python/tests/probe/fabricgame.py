@@ -44,13 +44,18 @@ class FabricGame(LaunchedGame):
     self.__cache__ = cache or defaultRoot()
     self.__minecraft__ = minecraft
 
+  def loader(self) -> tuple:
+    """The loader on top of the version, and its version: Fabric Loader 0.20.1 (NeoForgeGame's NeoForge)."""
+    return LOADER, LOADER_VERSION
+
   def gameFolder(self) -> str:
-    return os.path.join(ROOT, 'run', 'fabric-' + self.__minecraft__)
+    return os.path.join(ROOT, 'run', '%s-%s' % (self.loader()[0], self.__minecraft__))
 
   def command(self) -> list:
+    loader, loaderVersion = self.loader()
     return [os.path.join(ROOT, 'unittas-display.sh'), sys.executable, '-I', os.path.join(ROOT, 'bin', 'launch_client.py'),
             '--game', self.gameFolder(), '--cache', self.__cache__, '--minecraft', self.__minecraft__, '--loader',
-            LOADER, '--loader-version', LOADER_VERSION, '--agent', self.__jar__]
+            loader, '--loader-version', loaderVersion, '--agent', self.__jar__]
 
   def outputName(self) -> str:
     return 'client.log'
