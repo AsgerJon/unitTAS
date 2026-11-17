@@ -6,7 +6,6 @@ import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -16,7 +15,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -27,22 +25,22 @@ import java.util.List;
  * by 26.3's calls and with its own parts: the off hand (cleared with the rest), the hidden HUD, the camera type. Its
  * three operations, which unittas.reset runs in 9.5's order.
  */
-final class V26Reset {
+final class ModernReset {
 
 	/** Where the player starts: on 26.3's flat world's grass (its surface y -61), at the spawn. */
 	static final double START_X = 0.5;
 	static final double START_Y = -60.0;
 	static final double START_Z = 0.5;
 
-	private V26Reset() {
+	private ModernReset() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("client.reset").does(V26Reset::client).settles((call, value) ->
-			V26Things.waitClient(call, call.number("settle_ticks", 3, 0, 1200), value));
-		probe.op("player.reset").does(V26Reset::player);
+		probe.op("client.reset").does(ModernReset::client).settles((call, value) ->
+			ModernThings.waitClient(call, call.number("settle_ticks", 3, 0, 1200), value));
+		probe.op("player.reset").does(ModernReset::player);
 		probe.op("world.reset").does(call -> {
-			world(V26Things.server());
+			world(ModernThings.server());
 			return new JsonObject();
 		});
 	}
@@ -54,15 +52,15 @@ final class V26Reset {
 			throw new ProbeException("NotReady", "client.reset needs a world: the client has no player",
 				Json.object("state", call.probe.snapshot.state));
 		}
-		if (mc.gui.screen() != null) {
-			mc.gui.setScreen(null);
+		if (Version.screen() != null) {
+			Version.setScreen(null);
 		}
 		KeyMapping.releaseAll();
 		// the first hotbar slot, so a given item is the held one
-		mc.player.getInventory().setSelectedSlot(0);
+		Version.selectSlot(mc.player.getInventory(), 0);
 		mc.options.setCameraType(CameraType.FIRST_PERSON);
-		if (mc.gui.hud.isHidden()) {
-			mc.gui.hud.toggle();
+		if (Version.hudHidden()) {
+			Version.toggleHud();
 		}
 		// the client's own rain and thunder, to match the server's clear weather (code on the client asks it)
 		mc.level.setRainLevel(0.0F);
@@ -76,7 +74,7 @@ final class V26Reset {
 	 * of its own yet, so "hooks" ("now" or "after") is checked and there are no resetPlayer hooks to run.
 	 */
 	private static JsonElement player(Call call) throws ProbeException {
-		ServerPlayer player = V26Things.serverPlayer(call.string("player", null));
+		ServerPlayer player = ModernThings.serverPlayer(call.string("player", null));
 		String hooks = call.string("hooks", "now");
 		if (!hooks.equals("now") && !hooks.equals("after")) {
 			throw ProbeException.badRequest("hooks", "hooks is now or after, not " + hooks);
@@ -94,11 +92,10 @@ final class V26Reset {
 		JsonObject look = call.object("look");
 		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : 0.0F;
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : 0.0F;
-		MinecraftServer server = V26Things.server();
+		MinecraftServer server = ModernThings.server();
 		if (player.level().dimension() != Level.OVERWORLD) {
 			// back to the overworld, where the reset puts it; the client arrives some ticks later
-			player.teleport(new TeleportTransition(server.overworld(), new Vec3(at[0], at[1], at[2]), Vec3.ZERO, yaw,
-				pitch, TeleportTransition.DO_NOTHING));
+			Version.teleport(player, server.overworld(), at[0], at[1], at[2], yaw, pitch);
 			return Json.object("respawned", true);
 		}
 		reset(player, at[0], at[1], at[2], yaw, pitch);
@@ -113,11 +110,11 @@ final class V26Reset {
 		if (player.isSleeping()) {
 			player.stopSleepInBed(true, true);
 		}
-		player.setRespawnPosition(null, false);
+		Version.clearRespawn(player);
 		// the first hotbar slot on the server too, as on the client, and told to it: set on one side only, the two
 		// disagree on what is held
-		player.getInventory().setSelectedSlot(0);
-		player.connection.send(new ClientboundSetHeldSlotPacket(0));
+		Version.selectSlot(player.getInventory(), 0);
+		Version.sendHeldSlot(player, 0);
 		// everything held: the main slots, the armour and the off hand, and the cursor's stack
 		player.getInventory().clearContent();
 		player.containerMenu.setCarried(ItemStack.EMPTY);
@@ -162,6 +159,6 @@ final class V26Reset {
 				each.discard();
 			}
 		}
-		new V26Worlds().setWeather(false, false, true);
+		Version.worlds().setWeather(false, false, true);
 	}
 }

@@ -13,19 +13,19 @@ import org.apache.logging.log4j.core.config.Property;
  * logger, every line at the threshold events.set asks for or above sent as a log event. 26.3 has one logger context
  * (Fabric's loader logs through the same Log4j), so the root is all of it.
  */
-final class V26Log extends AbstractAppender {
+final class ModernLog extends AbstractAppender {
 
 	private static final int MESSAGE_CHARS = 2000;
 
 	private final Probe probe;
 
-	private V26Log(Probe probe) {
+	private ModernLog(Probe probe) {
 		super("unitTAS probe log", null, null, true, Property.EMPTY_ARRAY);
 		this.probe = probe;
 	}
 
 	static void attach(Probe probe) {
-		V26Log appender = new V26Log(probe);
+		ModernLog appender = new ModernLog(probe);
 		appender.start();
 		((Logger) LogManager.getRootLogger()).addAppender(appender);
 	}

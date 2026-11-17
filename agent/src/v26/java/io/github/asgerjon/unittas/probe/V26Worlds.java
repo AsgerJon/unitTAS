@@ -59,7 +59,7 @@ import java.util.stream.Collectors;
  * game's own screen or command does it: a world made as createFreshLevel makes it (the Create New World screen's
  * settings), opened as the world list's Play opens it, left as the pause menu's Save and Quit leaves it; the rules,
  * the time, the weather and the difficulty as /gamerule, /time set, /weather and /difficulty set them. It keeps
- * nothing, so a new one is the same as any. Only a client makes one (V26Port.worlds): it names client classes.
+ * nothing, so a new one is the same as any. Only a client makes one (ModernPort.worlds): it names client classes.
  */
 final class V26Worlds implements GameWorlds {
 

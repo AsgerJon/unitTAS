@@ -136,6 +136,64 @@ final class Names {
 		return owner + "\t" + name + "\t" + descriptor;
 	}
 
+	/** The running classes back to Mojang's, and members by what reflection knows of them: built at the first lookup. */
+	private volatile Map<String, String> classesBack;
+	private volatile Map<String, String> fieldsByName;
+	private volatile Map<String, String> methodsByParameters;
+
+	/**
+	 * What the probe's reflection asks (its Members, through the bridge, in JDK types only: SPEC.md 19.7 step 6c), a
+	 * key to an answer, null where there is none:
+	 * - "kind": what the names run under (obfuscated, intermediary, srg);
+	 * - "c RUNNING": a running class's Mojang name (internal names), null for a class not the game's;
+	 * - "f OWNER NAME": a field's running name, by its Mojang owner and name (a class declares one field by a name);
+	 * - "m OWNER NAME (PARAMETERS)": a method's running name, by its Mojang owner, name and parameters' descriptors.
+	 * Another key is an IllegalArgumentException.
+	 */
+	String lookup(String key) {
+		String[] parts = key.split("\t", -1);
+		if (parts.length == 1 && parts[0].equals("kind")) {
+			return kind;
+		}
+		if (classesBack == null) {
+			index();
+		}
+		if (parts.length == 2 && parts[0].equals("c")) {
+			return classesBack.get(parts[1]);
+		}
+		if (parts.length == 3 && parts[0].equals("f")) {
+			return fieldsByName.get(parts[1] + "\t" + parts[2]);
+		}
+		if (parts.length == 4 && parts[0].equals("m")) {
+			return methodsByParameters.get(parts[1] + "\t" + parts[2] + "\t" + parts[3]);
+		}
+		throw new IllegalArgumentException("the names know no key " + key.replace('\t', ' '));
+	}
+
+	private synchronized void index() {
+		if (classesBack != null) {
+			return;
+		}
+		Map<String, String> back = new HashMap<>();
+		for (Map.Entry<String, String> each : classes.entrySet()) {
+			back.put(each.getValue(), each.getKey());
+		}
+		Map<String, String> byName = new HashMap<>();
+		for (Map.Entry<String, String> each : fields.entrySet()) {
+			String[] parts = each.getKey().split("\t", -1);
+			byName.put(parts[0] + "\t" + parts[1], each.getValue());
+		}
+		Map<String, String> byParameters = new HashMap<>();
+		for (Map.Entry<String, String> each : methods.entrySet()) {
+			String[] parts = each.getKey().split("\t", -1);
+			String parameters = parts[2].substring(0, parts[2].indexOf(')') + 1);
+			byParameters.put(parts[0] + "\t" + parts[1] + "\t" + parameters, each.getValue());
+		}
+		fieldsByName = byName;
+		methodsByParameters = byParameters;
+		classesBack = back;
+	}
+
 	private static String[] split(String line, Path table, int number) {
 		if (line == null) {
 			throw new IllegalArgumentException(table + " is empty");

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 
 /**
  * Where the game's hooked methods call (Rewriter), and the probe they reach. The hooks know the bridge only as a JDK
@@ -121,7 +122,9 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 			? new URLClassLoader("unittas-probe", new URL[] {jar.toURI().toURL()}, gameLoader)
 			: RenamingLoader.of(jar, gameLoader, names);
 		Class<?> started = Class.forName(entry, true, loader);
+		Function<String, String> lookup = names == null ? null : names::lookup;
 		return (BiFunction<String, Object[], Object>) started.getMethod("start", File.class, Object.class, Set.class,
-			Set.class).invoke(null, game, pass, hookedClasses(hooks), Collections.unmodifiableSet(REWRITTEN));
+			Set.class, Function.class).invoke(null, game, pass, hookedClasses(hooks), Collections.unmodifiableSet(REWRITTEN),
+			lookup);
 	}
 }

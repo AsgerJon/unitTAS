@@ -36,19 +36,19 @@ import java.util.List;
  * the game collides with them, each by its id and state (26.3 has no meta). The probe says what is there; it decides
  * nothing. block.ground too: the column's top block that stops movement or holds a fluid (MOTION_BLOCKING).
  */
-final class V26Perceive {
+final class ModernPerceive {
 
 	/** The game's own pick of what the crosshair meets (private), made afresh. */
 	private static final java.lang.reflect.Method PICK = Members.method(Minecraft.class, "pick", float.class);
 	/** A trapdoor's kind (protected), whose hand-opening it says. */
 	private static final java.lang.reflect.Method TRAPDOOR_TYPE = Members.method(TrapDoorBlock.class, "getType");
 
-	private V26Perceive() {
+	private ModernPerceive() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("player.perceive").does(V26Perceive::perceive);
-		probe.op("block.ground").does(V26Perceive::ground);
+		probe.op("player.perceive").does(ModernPerceive::perceive);
+		probe.op("block.ground").does(ModernPerceive::ground);
 	}
 
 	private static JsonElement perceive(Call call) throws ProbeException {
@@ -69,10 +69,10 @@ final class V26Perceive {
 		Vec3 motion = player.getDeltaMovement();
 		return Json.object(
 			"tick", Sides.get().ticks(Side.CLIENT),
-			"pos", V26Values.pos(player),
+			"pos", ModernValues.pos(player),
 			"eye", Arrays.asList(eye.x, eye.y, eye.z),
 			"box", box(player.getBoundingBox()),
-			"look", V26Values.look(player),
+			"look", ModernValues.look(player),
 			"motion", Arrays.asList(motion.x, motion.y, motion.z),
 			"on_ground", player.onGround(),
 			"collided", Json.object("horizontally", player.horizontalCollision, "vertically", player.verticalCollision),
@@ -114,7 +114,7 @@ final class V26Perceive {
 		Vec3 at = hit.getLocation();
 		List<Double> where = Arrays.asList(at.x, at.y, at.z);
 		if (hit instanceof EntityHitResult entity) {
-			return Json.object("entity", entity.getEntity().getId(), "type", V26Values.type(entity.getEntity()),
+			return Json.object("entity", entity.getEntity().getId(), "type", ModernValues.type(entity.getEntity()),
 				"hit", where);
 		}
 		BlockHitResult block = (BlockHitResult) hit;
@@ -124,7 +124,7 @@ final class V26Perceive {
 			"face", block.getDirection().getName(),
 			"hit", where);
 		// its id and state, as block.get gives them
-		V26Values.block(level.getBlockState(pos)).entrySet().forEach(each -> value.add(each.getKey(), each.getValue()));
+		ModernValues.block(level.getBlockState(pos)).entrySet().forEach(each -> value.add(each.getKey(), each.getValue()));
 		return value;
 	}
 
@@ -155,7 +155,7 @@ final class V26Perceive {
 						boxes.add(each);
 					}
 					JsonObject block = Json.object("pos", Arrays.asList(x, y, z));
-					V26Values.block(state).entrySet().forEach(each -> block.add(each.getKey(), each.getValue()));
+					ModernValues.block(state).entrySet().forEach(each -> block.add(each.getKey(), each.getValue()));
 					block.add("boxes", boxes);
 					block.addProperty("liquid", state.liquid());
 					block.addProperty("climbable", state.is(BlockTags.CLIMBABLE));
@@ -178,13 +178,13 @@ final class V26Perceive {
 		}
 		int x = (int) call.number("x", 0, -30000000, 30000000);
 		int z = (int) call.number("z", 0, -30000000, 30000000);
-		Level level = V26Things.player(call).level();
+		Level level = ModernThings.player(call).level();
 		int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
-		if (top < level.getMinY()) {
+		if (top < Version.minY(level)) {
 			throw new ProbeException("NotFound", "nothing at x " + x + ", z " + z + " stops movement or holds a fluid",
 				Json.object("what", "the ground at x " + x + ", z " + z));
 		}
 		BlockPos pos = new BlockPos(x, top, z);
-		return Json.object("pos", Arrays.asList(x, top, z), "block", V26Values.block(level.getBlockState(pos)));
+		return Json.object("pos", Arrays.asList(x, top, z), "block", ModernValues.block(level.getBlockState(pos)));
 	}
 }

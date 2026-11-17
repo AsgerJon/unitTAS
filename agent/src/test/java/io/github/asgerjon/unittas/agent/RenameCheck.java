@@ -156,6 +156,19 @@ public final class RenameCheck {
 			Files.writeString(bad, "unittas-names\t2\tobfuscated\tcheck\n");
 			refused(() -> Names.read(bad));
 		});
+		check("lookup", () -> {
+			// what the probe's Members asks the bridge, by Mojang's names, for what the game runs under
+			java.util.function.Function<String, String> lookup = names::lookup;
+			same("obfuscated", lookup.apply("kind"));
+			same(ENTITY, lookup.apply("c\t" + names.className(ENTITY)));
+			same(null, lookup.apply("c\tjava/lang/String"));
+			same(names.field(ENTITY, "x", "D"), lookup.apply("f\t" + ENTITY + "\tx"));
+			same(names.method(ENTITY, "tick", "()V"), lookup.apply("m\t" + ENTITY + "\ttick\t()"));
+			same(names.method(WORLD, "add", "(L" + ENTITY + ";)V"), lookup.apply("m\t" + WORLD + "\tadd\t(L" + ENTITY + ";)"));
+			same(null, lookup.apply("m\t" + ENTITY + "\tgone\t()"));
+			same(null, lookup.apply("f\t" + ENTITY + "\tgone"));
+			refused(() -> lookup.apply("x\twhat"));
+		});
 		check("hooks-renamed", () -> {
 			List<Hooks.Hook> renamedHooks = Hooks.renamed(List.of(
 				new Hooks.Hook(ENTITY, "tick", "()V", Hooks.When.BEFORE, "tick"),

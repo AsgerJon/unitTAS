@@ -14,7 +14,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.TagParser;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
@@ -36,9 +35,9 @@ import java.util.Optional;
  * no NBT); a block by its flattened id and its state's properties (no meta); an entity's type by its id
  * (minecraft:zombie). Read them on the thread of the side they belong to.
  */
-final class V26Values {
+final class ModernValues {
 
-	private V26Values() {
+	private ModernValues() {
 	}
 
 	// ---------------------------------------------------------------- items
@@ -81,8 +80,7 @@ final class V26Values {
 		if (given.has("nbt")) {
 			throw ProbeException.badRequest("item", "26.3's items have components, not NBT");
 		}
-		Identifier key = Identifier.tryParse(id);
-		Optional<Item> item = key == null ? Optional.empty() : BuiltInRegistries.ITEM.getOptional(key);
+		Optional<Item> item = Version.byId(BuiltInRegistries.ITEM, id);
 		if (item.isEmpty()) {
 			throw new ProbeException("NotFound", "this game has no item " + id, Json.object("what", id));
 		}
@@ -105,7 +103,7 @@ final class V26Values {
 	/** A compound from SNBT, as the game's own commands read it; a BadRequest naming the field for text that isn't one. */
 	static CompoundTag compound(String text, String field) throws ProbeException {
 		try {
-			return TagParser.parseCompoundFully(text);
+			return Version.parseCompound(text);
 		} catch (CommandSyntaxException e) {
 			throw ProbeException.badRequest(field, "not SNBT the game reads: " + e.getMessage());
 		}
@@ -117,7 +115,7 @@ final class V26Values {
 	static JsonObject block(BlockState state) {
 		JsonObject block = Json.object("id", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
 		JsonObject properties = new JsonObject();
-		state.getValues().forEach(each -> properties.addProperty(each.property().getName(), each.valueName()));
+		Version.properties(state, properties::addProperty);
 		if (properties.size() > 0) {
 			block.add("state", properties);
 		}
@@ -144,7 +142,7 @@ final class V26Values {
 	}
 
 	static String dimension(Entity entity) {
-		return entity.level().dimension().identifier().toString();
+		return Version.id(entity.level().dimension());
 	}
 
 	private static JsonElement riding(Entity entity) {
@@ -156,7 +154,7 @@ final class V26Values {
 		JsonObject summary = Json.object(
 			"entity", entity.getId(),
 			"type", type(entity),
-			"class", entity.getClass().getName(),
+			"class", Members.className(entity.getClass()),
 			"uuid", entity.getUUID().toString(),
 			"pos", pos(entity),
 			"look", look(entity),
@@ -182,7 +180,7 @@ final class V26Values {
 		List<Object> effects = new ArrayList<>();
 		for (MobEffectInstance effect : player.getActiveEffects()) {
 			effects.add(Json.object(
-				"effect", effect.getEffect().unwrapKey().map(key -> key.identifier().toString()).orElse(""),
+				"effect", effect.getEffect().unwrapKey().map(Version::id).orElse(""),
 				// 26.3's effects have no number of their own: their id is the name
 				"id", -1,
 				"amplifier", effect.getAmplifier(),

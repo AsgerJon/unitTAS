@@ -11,7 +11,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -20,31 +19,31 @@ import net.minecraft.world.level.block.entity.BlockEntity;
  * click on a slot of the open container's screen as the mouse's is (through the screen's own slotClicked, the game's
  * click packet included); block.items, the slots of the inventory at a block as the call's side holds them.
  */
-final class V26Verbs {
+final class ModernVerbs {
 
 	/** container.click's modes, as 26.3's ContainerInput names them (1.7.10's window click types, in the same order). */
-	private static final ContainerInput[] MODES = ContainerInput.values();
+	private static final Object[] MODES = Version.clickModes();
 	/** The screen's own slot click (protected): what a click on a slot does (SPEC.md 19.7 step 3b). */
 	private static final java.lang.reflect.Method SLOT_CLICKED = Members.method(AbstractContainerScreen.class,
-		"slotClicked", net.minecraft.world.inventory.Slot.class, int.class, int.class, ContainerInput.class);
+		"slotClicked", net.minecraft.world.inventory.Slot.class, int.class, int.class, Version.clickModeClass());
 	private static final java.util.List<String> MODE_NAMES = java.util.Arrays.asList(
 		"pickup", "quick_move", "swap", "clone", "throw", "quick_craft", "pickup_all");
 
-	private V26Verbs() {
+	private ModernVerbs() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("container.click").does(V26Verbs::click).settles((call, value) -> V26Things.waitClient(call, 2,
+		probe.op("container.click").does(ModernVerbs::click).settles((call, value) -> ModernThings.waitClient(call, 2,
 			value));
-		probe.op("block.items").does(V26Verbs::items);
+		probe.op("block.items").does(ModernVerbs::items);
 	}
 
 	/** container.click (8.5): NotReady without a container's screen; the slot's number in the open container. */
 	private static JsonElement click(Call call) throws ProbeException {
-		Screen screen = Minecraft.getInstance().gui.screen();
+		Screen screen = Version.screen();
 		if (!(screen instanceof AbstractContainerScreen<?> gui)) {
 			throw new ProbeException("NotReady", "container.click needs a container's screen open, not "
-				+ (screen == null ? "none" : screen.getClass().getName()), null);
+				+ (screen == null ? "none" : Members.className(screen.getClass())), null);
 		}
 		AbstractContainerMenu menu = gui.getMenu();
 		int size = menu.slots.size();
@@ -70,7 +69,7 @@ final class V26Verbs {
 		}
 		JsonArray at = given.getAsJsonArray();
 		BlockPos pos = new BlockPos(at.get(0).getAsInt(), at.get(1).getAsInt(), at.get(2).getAsInt());
-		Level level = V26Things.player(call).level();
+		Level level = ModernThings.player(call).level();
 		BlockEntity tile = level.getBlockEntity(pos);
 		if (!(tile instanceof Container inventory)) {
 			String there = BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString();
@@ -79,7 +78,7 @@ final class V26Verbs {
 		}
 		JsonArray slots = new JsonArray();
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
-			slots.add(V26Values.item(inventory.getItem(i), level.registryAccess()));
+			slots.add(ModernValues.item(inventory.getItem(i), level.registryAccess()));
 		}
 		return Json.object("slots", slots);
 	}

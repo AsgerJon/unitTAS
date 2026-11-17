@@ -7,7 +7,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
-import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 
 import java.util.Arrays;
@@ -17,24 +16,23 @@ import java.util.Arrays;
  * is a sound event when asked for, by its id, whether the game has it (one it hasn't plays nothing without a word, so
  * its event names who asked for it), its volume, pitch and place; sound.play plays one, as a button's click does.
  */
-public final class V26Sounds {
+public final class ModernSounds {
 
-	private V26Sounds() {
+	private ModernSounds() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("sound.play").does(V26Sounds::play);
+		probe.op("sound.play").does(ModernSounds::play);
 	}
 
 	private static JsonElement play(Call call) throws ProbeException {
 		String id = call.string("id", null);
-		Identifier key = id == null ? null : Identifier.tryParse(id);
-		if (key == null) {
+		SoundEvent event = id == null ? null : Version.soundEvent(id);
+		if (event == null) {
 			throw ProbeException.badRequest("id", "sound.play needs the sound's id");
 		}
 		float pitch = call.has("pitch") ? call.args.get("pitch").getAsFloat() : 1.0F;
-		Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(SoundEvent.createVariableRangeEvent(key),
-			pitch));
+		Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(event, pitch));
 		return new JsonObject();
 	}
 
@@ -47,13 +45,14 @@ public final class V26Sounds {
 		if (probe == null || sound == null || !probe.events.sound) {
 			return;
 		}
-		Identifier id = sound.getIdentifier();
-		if (id.getPath().isEmpty() || id.getPath().equals("intentionally_empty")) {
+		String id = Version.soundId(sound);
+		String path = id.substring(id.indexOf(':') + 1);
+		if (path.isEmpty() || path.equals("intentionally_empty")) {
 			// no sound, on purpose
 			return;
 		}
-		boolean known = sound.getOrResolve(manager) != null;
-		probe.event("sound", Json.object("id", id.toString(), "known", known, "from", known ? null : caller(),
+		boolean known = Version.soundKnown(sound, manager);
+		probe.event("sound", Json.object("id", id, "known", known, "from", known ? null : caller(),
 			"volume", (double) sound.getVolume(), "pitch", (double) sound.getPitch(),
 			"pos", Arrays.asList(sound.getX(), sound.getY(), sound.getZ())));
 	}
@@ -63,9 +62,9 @@ public final class V26Sounds {
 		StringBuilder calls = new StringBuilder();
 		int shown = 0;
 		for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
-			String owner = frame.getClassName();
+			String owner = Members.className(frame.getClassName());
 			if (owner.startsWith("java.") || owner.startsWith("net.minecraft.client.sounds.")
-				|| owner.contains("MixinSoundManager") || owner.equals(V26Sounds.class.getName())) {
+				|| owner.contains("MixinSoundManager") || owner.equals(ModernSounds.class.getName())) {
 				continue;
 			}
 			calls.append(shown == 0 ? "" : " < ").append(owner.substring(owner.lastIndexOf('.') + 1)).append('.')

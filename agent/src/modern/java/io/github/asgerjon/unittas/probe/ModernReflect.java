@@ -15,7 +15,7 @@ import net.minecraft.world.item.ItemStack;
  * stacks (with their components), entities and tags as the protocol writes them. Names are Mojang's: 26.x is
  * unobfuscated, so nothing is translated.
  */
-final class V26Reflect implements Reflect.Game {
+final class ModernReflect implements Reflect.Game {
 
 	@Override
 	public ClassLoader loader() {
@@ -24,7 +24,7 @@ final class V26Reflect implements Reflect.Game {
 
 	@Override
 	public Object player(Call call) throws ProbeException {
-		return V26Things.player(call);
+		return ModernThings.player(call);
 	}
 
 	@Override
@@ -40,7 +40,7 @@ final class V26Reflect implements Reflect.Game {
 
 	@Override
 	public Object entity(Call call, int id) throws ProbeException {
-		return V26Things.player(call).level().getEntity(id);
+		return ModernThings.player(call).level().getEntity(id);
 	}
 
 	@Override
@@ -50,16 +50,16 @@ final class V26Reflect implements Reflect.Game {
 
 	@Override
 	public Object stack(Call call, JsonObject item) throws ProbeException {
-		return V26Values.stack(item, V26Things.registries(call));
+		return ModernValues.stack(item, ModernThings.registries(call));
 	}
 
 	@Override
 	public JsonElement value(Call call, Object value) throws ProbeException {
 		if (value instanceof ItemStack) {
-			return V26Values.item((ItemStack) value, V26Things.registries(call));
+			return ModernValues.item((ItemStack) value, ModernThings.registries(call));
 		}
 		if (value instanceof Entity) {
-			return V26Values.entity((Entity) value);
+			return ModernValues.entity((Entity) value);
 		}
 		if (value instanceof Tag) {
 			// 26.3's tags write themselves as SNBT

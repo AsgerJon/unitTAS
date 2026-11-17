@@ -44,6 +44,8 @@ AGENT = os.path.join(ROOT, 'agent', 'src')
 OUT = os.path.join(ROOT, 'agent', 'build', 'unittas-probe-%s.jar')
 BOOTSTRAP = os.path.join(AGENT, 'bootstrap', 'java')
 CORE = os.path.join(ROOT, 'src', 'probe-core', 'java')
+#  the probe's code shared by the versions from 1.20.1 on, compiled for each against its own classes (19.7 step 6c)
+MODERN = os.path.join(AGENT, 'modern', 'java')
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,7 @@ class Version:
 
 
 VERSIONS = {
-  '26.3': Version('25', (CORE, os.path.join(AGENT, 'v26', 'java')), os.path.join(AGENT, 'v26', 'hooks.txt')),
+  '26.3': Version('25', (CORE, MODERN, os.path.join(AGENT, 'v26', 'java')), os.path.join(AGENT, 'v26', 'hooks.txt')),
 }
 #  the bootstrap's Java: the oldest a version runs on
 BOOTSTRAP_RELEASE = '17'

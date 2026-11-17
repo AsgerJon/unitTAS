@@ -72,7 +72,7 @@ final class V26Looks {
 		if (level == null) {
 			throw new ProbeException("NotReady", "block.faces needs a world", null);
 		}
-		BlockPos pos = V26Things.blockPos(call);
+		BlockPos pos = ModernThings.blockPos(call);
 		JsonElement asked = call.args.get("blocks");
 		if (asked == null || !asked.isJsonArray()) {
 			throw ProbeException.badRequest("blocks", "blocks is a list of {\"id\": ...}");

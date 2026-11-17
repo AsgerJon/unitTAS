@@ -9,7 +9,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.server.IntegratedServer;
-import org.lwjgl.sdl.SDLMouse;
 
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -19,40 +18,39 @@ import java.util.List;
  * The 26.3 client's side of the probe (SPEC.md 12.3, step 3), as 1.7.10's ClientHooks: at the end of each client tick
  * the snapshot is brought up to date and the client side's steps run; the first tick once the game has loaded (the
  * loading overlay gone, a screen up) sends "ready". The integrated server's tick runs the server side's steps. Called
- * from the agent's hooks (V26Entry), so no loader is needed. In 26.3 the screen and the overlay are Minecraft.gui's,
+ * from the agent's hooks (ModernEntry), so no loader is needed. In 26.3 the screen and the overlay are Minecraft.gui's,
  * not Minecraft's.
  */
-public final class V26Hooks {
+public final class ModernHooks {
 
 	private static volatile boolean readySent;
 
-	private V26Hooks() {
+	private ModernHooks() {
 	}
 
-	/** Minecraft is made: the client's own operations get their bodies (declared by V26Port), the worlds' too. */
+	/** Minecraft is made: the client's own operations get their bodies (declared by ModernPort), the worlds' too. */
 	static void register(Probe probe) {
 		WorldOps.bind(probe);
-		V26Things.bind(probe);
-		V26Reset.bind(probe);
-		V26Input.bind(probe);
-		V26Chat.bind(probe);
-		V26Sounds.bind(probe);
-		V26Pictures.bind(probe);
-		V26Perceive.bind(probe);
-		V26Verbs.bind(probe);
-		V26View.bind(probe);
-		V26Looks.bind(probe);
+		ModernThings.bind(probe);
+		ModernReset.bind(probe);
+		ModernInput.bind(probe);
+		ModernChat.bind(probe);
+		ModernSounds.bind(probe);
+		ModernPictures.bind(probe);
+		ModernPerceive.bind(probe);
+		ModernVerbs.bind(probe);
+		Version.bindOwn(probe);
 		// reflection (PROTOCOL.md 5.9; SPEC.md 19.7 step 4): the core's, by Mojang's names
-		Reflect.game = new V26Reflect();
+		Reflect.game = new ModernReflect();
 		probe.op("reflect.get").does(Reflect::get);
 		probe.op("reflect.set").does(Reflect::set);
 		probe.op("screen.get").does(call -> {
-			Screen screen = Minecraft.getInstance().gui.screen();
+			Screen screen = Version.screen();
 			if (screen == null) {
 				return null;
 			}
 			return Json.object(
-				"class", screen.getClass().getName(),
+				"class", Members.className(screen.getClass()),
 				"chat", screen instanceof ChatScreen,
 				"container", screen instanceof AbstractContainerScreen,
 				"pauses", screen.isPauseScreen());
@@ -100,23 +98,23 @@ public final class V26Hooks {
 		}
 		snapshot.serverStopped = stopped;
 		snapshot.serverRunning = !stopped && sides.tickedAt(Side.SERVER) > 0;
-		Screen screen = mc.gui.screen();
+		Screen screen = Version.screen();
 		snapshot.inWorld = inWorld(mc, server, screen);
-		snapshot.worldFolder = stopped ? null : V26Worlds.folder(server);
-		snapshot.dimension = mc.level == null ? null : mc.level.dimension().identifier().toString();
+		snapshot.worldFolder = stopped ? null : Version.worldFolder(server);
+		snapshot.dimension = mc.level == null ? null : Version.id(mc.level.dimension());
 		snapshot.menu = screen instanceof TitleScreen;
-		snapshot.screen = screen == null ? null : screen.getClass().getName();
+		snapshot.screen = screen == null ? null : Members.className(screen.getClass());
 		snapshot.paused = mc.isPaused();
 		snapshot.width = mc.getWindow().getWidth();
 		snapshot.height = mc.getWindow().getHeight();
 		// whether the window holds the pointer (SDL3's relative mouse mode, which the game's grab sets), as 1.7.10's
 		// Mouse.isGrabbed(): never, while the probe is awake (PROTOCOL.md 2.5)
-		snapshot.pointerGrabbed = SDLMouse.SDL_GetWindowRelativeMouseMode(mc.getWindow().handle());
+		snapshot.pointerGrabbed = Version.pointerGrabbed();
 		if (!probe.quitting()) {
 			snapshot.state = snapshot.changing ? "changing" : mc.level == null ? "menu" : "world";
 		}
 		if (!readySent) {
-			if (mc.gui.overlay() != null || screen == null) {
+			if (Version.loading() || screen == null) {
 				// still loading (the loading overlay is up): not ready, and no tick counted
 				return;
 			}
@@ -147,8 +145,8 @@ public final class V26Hooks {
 		Probe probe = Probe.get();
 		if (probe != null && probe.events.screen) {
 			probe.event("screen", Json.object(
-				"from", was == null ? null : was.getClass().getName(),
-				"to", to == null ? null : to.getClass().getName()));
+				"from", was == null ? null : Members.className(was.getClass()),
+				"to", to == null ? null : Members.className(to.getClass())));
 		}
 	}
 
@@ -169,12 +167,19 @@ public final class V26Hooks {
 	private static JsonObject ready(Snapshot snapshot) {
 		// the mods the loader beside the probe has (the mod under test's), none in vanilla
 		List<Object> mods = new ArrayList<>();
-		for (String[] mod : V26Port.fabricMods()) {
+		for (String[] mod : ModernPort.fabricMods()) {
 			mods.add(Json.object("id", mod[0], "name", mod[1], "version", mod[2]));
 		}
 		// the game's classes the agent hooks, rewritten as they loaded (each loaded as the probe wakes)
-		List<String> hooked = new ArrayList<>(V26Entry.hooked());
-		List<String> rewritten = new ArrayList<>(V26Entry.rewritten());
+		// by their Mojang names, whatever the game runs under
+		List<String> hooked = new ArrayList<>();
+		for (String each : ModernEntry.hooked()) {
+			hooked.add(Members.mojang(each));
+		}
+		List<String> rewritten = new ArrayList<>();
+		for (String each : ModernEntry.rewritten()) {
+			rewritten.add(Members.mojang(each));
+		}
 		List<String> missing = new ArrayList<>(hooked);
 		missing.removeAll(rewritten);
 		java.util.Collections.sort(rewritten);

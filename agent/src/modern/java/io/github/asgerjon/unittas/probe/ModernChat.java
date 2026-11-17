@@ -14,7 +14,6 @@ import net.minecraft.client.gui.components.CommandSuggestions;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.multiplayer.chat.GuiMessageSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.chat.Style;
@@ -31,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
  * player's; system, the game's); chat.read reads the open chat's text, the suggestions as the text they were made for
  * would be after each, and the usage it shows; chat.send sends a line as typed into the chat and sent.
  */
-public final class V26Chat {
+public final class ModernChat {
 
 	/** The chat screen's text box and its suggestions; the suggestions' pending, usage and shown list (all private). */
 	private static final java.lang.reflect.Field INPUT = Members.field(ChatScreen.class, "input");
@@ -45,16 +44,16 @@ public final class V26Chat {
 	private static final java.lang.reflect.Field LIST = Members.field(CommandSuggestions.SuggestionsList.class,
 		"suggestionList");
 
-	private V26Chat() {
+	private ModernChat() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("chat.read").does(V26Chat::read);
-		probe.op("chat.send").does(V26Chat::send).settles(V26Chat::lines);
+		probe.op("chat.read").does(ModernChat::read);
+		probe.op("chat.send").does(ModernChat::send).settles(ModernChat::lines);
 	}
 
 	/** A chat line the client was given (ChatComponent.addMessage, through MixinChatComponent). */
-	public static void heard(Component message, GuiMessageSource source) {
+	public static void heard(Component message, String kind) {
 		Probe probe = Probe.get();
 		if (probe == null || message == null) {
 			return;
@@ -65,7 +64,7 @@ public final class V26Chat {
 		probe.chat.add(plain, formatted, json);
 		if (probe.events.chat) {
 			probe.event("chat", Json.object("plain", plain, "formatted", formatted, "json", json,
-				"kind", source == GuiMessageSource.PLAYER ? "chat" : "system"));
+				"kind", kind));
 		}
 	}
 
@@ -97,10 +96,10 @@ public final class V26Chat {
 	}
 
 	private static JsonElement read(Call call) throws ProbeException {
-		Screen screen = Minecraft.getInstance().gui.screen();
+		Screen screen = Version.screen();
 		if (!(screen instanceof ChatScreen)) {
 			throw new ProbeException("NotReady", "the chat isn't open (the screen is "
-				+ (screen == null ? "none" : screen.getClass().getName()) + ")", null);
+				+ (screen == null ? "none" : Members.className(screen.getClass())) + ")", null);
 		}
 		String text = Members.<net.minecraft.client.gui.components.EditBox>get(INPUT, screen).getValue();
 		CommandSuggestions shown = Members.get(SUGGESTIONS, screen);
@@ -143,7 +142,7 @@ public final class V26Chat {
 			throw new ProbeException("NotReady", "chat.send needs a world", null);
 		}
 		call.mark = call.probe.chat.mark();
-		mc.gui.hud.getChat().addRecentChat(text);
+		Version.chat().addRecentChat(text);
 		if (text.startsWith("/")) {
 			connection.sendCommand(text.substring(1));
 		} else {
@@ -154,7 +153,7 @@ public final class V26Chat {
 
 	/** chat.send's rest: settle_ticks client ticks, then the lines that came meanwhile, the red ones its errors. */
 	private static JsonElement lines(Call call, JsonElement value) throws ProbeException, InterruptedException {
-		V26Things.waitClient(call, call.number("settle_ticks", 4, 0, 1200), value);
+		ModernThings.waitClient(call, call.number("settle_ticks", 4, 0, 1200), value);
 		JsonArray lines = new JsonArray();
 		JsonArray errors = new JsonArray();
 		for (JsonObject line : call.probe.chat.since(call.mark)) {

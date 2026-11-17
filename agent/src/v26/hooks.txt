@@ -3,7 +3,7 @@
 # (Hooks.read), the same bootstrap for every version: tab apart, the probe's entry class first, then each hook's
 # when (BEFORE: called as the method is, and may end it there, its value the method's; AFTER: once it has returned),
 # its class, method and descriptor ("*" for every method by the name), and the name the probe knows it by.
-entry	io.github.asgerjon.unittas.probe.V26Entry
+entry	io.github.asgerjon.unittas.probe.ModernEntry
 # the game made: the probe dials (as 1.7.10's does from Minecraft's constructor); Main calls run right after
 # constructing it, on the same thread
 BEFORE	net/minecraft/client/Minecraft	run	()V	minecraft.made

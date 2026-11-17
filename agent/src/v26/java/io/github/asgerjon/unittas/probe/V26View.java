@@ -78,7 +78,7 @@ final class V26View {
 		if (mc.player == null || mc.level == null) {
 			throw new ProbeException("NotReady", "view.block needs a world", null);
 		}
-		V26Things.blockPos(call);
+		ModernThings.blockPos(call);
 		String file = call.string("file", null);
 		if (file == null || !new File(file).isAbsolute()) {
 			throw ProbeException.badRequest("file", "view.block needs the file to write the frame to, an absolute path");
@@ -103,14 +103,14 @@ final class V26View {
 	private static JsonElement take(Call call, JsonElement value) throws ProbeException, InterruptedException {
 		long changed = call.mark;
 		try {
-			BlockPos pos = V26Things.blockPos(call);
+			BlockPos pos = ModernThings.blockPos(call);
 			File file = new File(call.string("file", null));
 			rebuilt(call, pos, value);
-			V26Things.waitClient(call, call.number("settle_ticks", 2, 1, 1200), value);
+			ModernThings.waitClient(call, call.number("settle_ticks", 2, 1, 1200), value);
 			CompletableFuture<int[]> written = new CompletableFuture<>();
 			JsonObject answer = on(call, Side.CLIENT, () -> view(Minecraft.getInstance(), pos, file, written));
 			for (int tick = 0; tick < PICTURE_TICKS && !written.isDone(); tick++) {
-				V26Things.waitClient(call, 1, value);
+				ModernThings.waitClient(call, 1, value);
 			}
 			if (!written.isDone()) {
 				throw new ProbeException("ProbeError", "the frame didn't come back in " + PICTURE_TICKS + " client ticks", null);
@@ -159,7 +159,7 @@ final class V26View {
 			if (on(call, Side.CLIENT, () -> rebuilt(Minecraft.getInstance(), pos, served))) {
 				return;
 			}
-			V26Things.waitClient(call, 1, value);
+			ModernThings.waitClient(call, 1, value);
 		}
 		throw new ProbeException("ProbeError", "the block at " + pos.toShortString() + " wasn't drawn anew in "
 			+ REBUILT_TICKS + " client ticks: its chunk section wasn't built again from it", null);
@@ -241,7 +241,7 @@ final class V26View {
 		double[] toClip = Matrices.multiply(Matrices.of(projection), Matrices.of(modelview));
 		JsonObject cameraValue = Json.object(
 			"pos", Arrays.asList(eye[0], eye[1], eye[2]),
-			"look", V26Values.look(mc.getCameraEntity()),
+			"look", ModernValues.look(mc.getCameraEntity()),
 			"modelview", ViewMask.floats(modelview),
 			"projection", ViewMask.floats(projection),
 			"viewport", Arrays.asList(viewport[0], viewport[1], viewport[2], viewport[3]));

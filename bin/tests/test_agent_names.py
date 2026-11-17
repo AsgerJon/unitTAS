@@ -34,7 +34,7 @@ EXPECTED = [
   'renamed', 'renamed-run', 'renaming-loader', 'no-mojang-names-left',
   'stubs', 'signatures',
   'refuses-unknown-member', 'refuses-unresolved', 'refuses-bad-table',
-  'hooks-renamed',
+  'lookup', 'hooks-renamed',
 ]
 
 

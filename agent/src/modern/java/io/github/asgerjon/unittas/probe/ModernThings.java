@@ -25,14 +25,12 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
@@ -45,9 +43,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.portal.TeleportTransition;
-import net.minecraft.world.level.storage.TagValueInput;
-import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
@@ -59,10 +54,10 @@ import java.util.Optional;
 /**
  * The game's things in 26.3 (SPEC.md 12.3, step 5): the bodies of command.run, the players, the inventory and
  * containers, the blocks, the entities, the screens and hooks.run (PROTOCOL.md 8.4 to 8.9), as 1.7.10's GameOps and
- * ThingOps have them, by 26.3's own calls and values (V26Values). Each body runs on the side its request named;
+ * ThingOps have them, by 26.3's own calls and values (ModernValues). Each body runs on the side its request named;
  * what an operation waits for after (the client arriving, a tick) is its settle phase, on the probe's thread.
  */
-final class V26Things {
+final class ModernThings {
 
 	/** How long the client may take to arrive in another dimension, in its ticks (as the reset allows). */
 	private static final int ARRIVE_TICKS = 200;
@@ -71,34 +66,32 @@ final class V26Things {
 	private static final EquipmentSlot[] ARMOR_SLOTS = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST,
 		EquipmentSlot.HEAD};
 
-	private V26Things() {
+	private ModernThings() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("command.run").does(V26Things::command).settles(V26Things::settled);
+		probe.op("command.run").does(ModernThings::command).settles(ModernThings::settled);
 		probe.op("player.get").does(call -> {
-			JsonObject value = V26Values.player(player(call));
+			JsonObject value = ModernValues.player(player(call));
 			if (call.side == Side.CLIENT) {
 				// the client's own: its camera (0 first person, 1 from behind, 2 from the front)
 				value.addProperty("camera", Minecraft.getInstance().options.getCameraType().ordinal());
 			}
 			return value;
 		});
-		probe.op("player.teleport").does(V26Things::teleport).settles(V26Things::arrive);
-		probe.op("inventory.get").does(V26Things::inventory);
-		probe.op("inventory.set").does(V26Things::inventorySet);
-		probe.op("container.get").does(V26Things::container);
-		probe.op("block.get").does(V26Things::blockGet);
-		probe.op("block.set").does(V26Things::blockSet);
-		probe.op("entity.list").does(V26Things::entities);
-		probe.op("entity.spawn").does(V26Things::spawn);
+		probe.op("player.teleport").does(ModernThings::teleport).settles(ModernThings::arrive);
+		probe.op("inventory.get").does(ModernThings::inventory);
+		probe.op("inventory.set").does(ModernThings::inventorySet);
+		probe.op("container.get").does(ModernThings::container);
+		probe.op("block.get").does(ModernThings::blockGet);
+		probe.op("block.set").does(ModernThings::blockSet);
+		probe.op("entity.list").does(ModernThings::entities);
+		probe.op("entity.spawn").does(ModernThings::spawn);
 		probe.op("entity.get").does(call -> {
 			Entity entity = entity(call);
-			JsonObject value = V26Values.entity(entity);
+			JsonObject value = ModernValues.entity(entity);
 			if (call.flag("nbt", false)) {
-				TagValueOutput data = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registries(call));
-				entity.saveWithoutId(data);
-				value.addProperty("nbt", data.buildResult().toString());
+				value.addProperty("nbt", Version.save(entity, registries(call)).toString());
 			}
 			return value;
 		});
@@ -106,9 +99,9 @@ final class V26Things {
 			entity(call).discard();
 			return new JsonObject();
 		});
-		probe.op("screen.open").does(V26Things::openScreen).settles(V26Things::oneTick);
-		probe.op("screen.close").does(V26Things::closeScreen).settles(V26Things::oneTick);
-		probe.op("hooks.run").does(V26Things::hooks);
+		probe.op("screen.open").does(ModernThings::openScreen).settles(ModernThings::oneTick);
+		probe.op("screen.close").does(ModernThings::closeScreen).settles(ModernThings::oneTick);
+		probe.op("hooks.run").does(ModernThings::hooks);
 	}
 
 	// ---------------------------------------------------------------- the sides
@@ -200,14 +193,14 @@ final class V26Things {
 		if (as == null || as.isJsonNull() || (as.isJsonPrimitive() && "player".equals(as.getAsString()))) {
 			ServerPlayer player = serverPlayer(call.string("player", null));
 			source = player.createCommandSourceStack();
-			said = player.commandSource();
+			said = Version.commandSource(player);
 		} else if (as.isJsonPrimitive() && "server".equals(as.getAsString())) {
 			source = server.createCommandSourceStack();
 			said = server;
 		} else if (as.isJsonObject() && Json.string(as.getAsJsonObject(), "player") != null) {
 			ServerPlayer player = serverPlayer(Json.string(as.getAsJsonObject(), "player"));
 			source = player.createCommandSourceStack();
-			said = player.commandSource();
+			said = Version.commandSource(player);
 		} else {
 			throw ProbeException.badRequest("as", "as is \"player\", {\"player\": name} or \"server\", not " + as);
 		}
@@ -270,8 +263,9 @@ final class V26Things {
 
 	/** The level a protocol name names; NotFound for none. */
 	static ServerLevel level(MinecraftServer server, JsonElement dimension) throws ProbeException {
-		Identifier id = dimension.isJsonPrimitive() ? Identifier.tryParse(dimension.getAsString()) : null;
-		ServerLevel level = id == null ? null : server.getLevel(ResourceKey.create(Registries.DIMENSION, id));
+		ResourceKey<Level> key = dimension.isJsonPrimitive() ? Version.key(Registries.DIMENSION, dimension.getAsString())
+			: null;
+		ServerLevel level = key == null ? null : server.getLevel(key);
 		if (level == null) {
 			throw new ProbeException("NotFound", "no dimension " + dimension, Json.object("what", dimension));
 		}
@@ -284,15 +278,15 @@ final class V26Things {
 		JsonObject look = call.object("look");
 		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : player.getYRot();
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : player.getXRot();
-		ServerLevel to = call.has("dimension") ? level(server(), call.args.get("dimension")) : player.level();
+		ServerLevel to = call.has("dimension") ? level(server(), call.args.get("dimension")) : Version.level(player);
 		call.note = null;
-		if (to != player.level()) {
+		if (to != Version.level(player)) {
 			if (call.inBatch) {
 				throw ProbeException.badRequest("dimension", "a teleport to another dimension waits for the client: it can't be in a batch");
 			}
 			Vec3 at = pos == null ? player.position() : new Vec3(pos[0], pos[1], pos[2]);
-			player.teleport(new TeleportTransition(to, at, Vec3.ZERO, yaw, pitch, TeleportTransition.DO_NOTHING));
-			call.note = to.dimension().identifier().toString();
+			Version.teleport(player, to, at.x, at.y, at.z, yaw, pitch);
+			call.note = Version.id(to.dimension());
 			return new JsonObject();
 		}
 		if (pos == null) {
@@ -328,30 +322,30 @@ final class V26Things {
 		HolderLookup.Provider registries = registries(call);
 		String slot = call.string("slot", null);
 		if (slot != null) {
-			return V26Values.item(slot(player, slot), registries);
+			return ModernValues.item(slot(player, slot), registries);
 		}
 		Inventory inventory = player.getInventory();
 		JsonArray main = new JsonArray();
-		for (ItemStack stack : inventory.getNonEquipmentItems()) {
-			main.add(V26Values.item(stack, registries));
+		for (ItemStack stack : Version.mainItems(inventory)) {
+			main.add(ModernValues.item(stack, registries));
 		}
 		return Json.object(
-			"selected", inventory.getSelectedSlot(),
+			"selected", Version.selectedSlot(inventory),
 			"main", main,
 			"armor", Json.object(
-				"feet", V26Values.item(player.getItemBySlot(EquipmentSlot.FEET), registries),
-				"legs", V26Values.item(player.getItemBySlot(EquipmentSlot.LEGS), registries),
-				"chest", V26Values.item(player.getItemBySlot(EquipmentSlot.CHEST), registries),
-				"head", V26Values.item(player.getItemBySlot(EquipmentSlot.HEAD), registries)),
-			"offhand", V26Values.item(player.getItemBySlot(EquipmentSlot.OFFHAND), registries),
-			"cursor", V26Values.item(player.containerMenu.getCarried(), registries));
+				"feet", ModernValues.item(player.getItemBySlot(EquipmentSlot.FEET), registries),
+				"legs", ModernValues.item(player.getItemBySlot(EquipmentSlot.LEGS), registries),
+				"chest", ModernValues.item(player.getItemBySlot(EquipmentSlot.CHEST), registries),
+				"head", ModernValues.item(player.getItemBySlot(EquipmentSlot.HEAD), registries)),
+			"offhand", ModernValues.item(player.getItemBySlot(EquipmentSlot.OFFHAND), registries),
+			"cursor", ModernValues.item(player.containerMenu.getCarried(), registries));
 	}
 
 	/** The stack in a named slot (PROTOCOL.md 8.5): main.N, armor.feet ... head, offhand, held, cursor. */
 	static ItemStack slot(Player player, String name) throws ProbeException {
 		Inventory inventory = player.getInventory();
 		if (name.equals("held")) {
-			return inventory.getSelectedItem();
+			return Version.selectedItem(inventory);
 		}
 		if (name.equals("cursor")) {
 			return player.containerMenu.getCarried();
@@ -361,7 +355,7 @@ final class V26Things {
 		}
 		int main = mainIndex(inventory, name);
 		if (main >= 0) {
-			return inventory.getNonEquipmentItems().get(main);
+			return Version.mainItems(inventory).get(main);
 		}
 		for (int i = 0; i < ARMOR.length; i++) {
 			if (ARMOR[i].equals(name)) {
@@ -378,7 +372,7 @@ final class V26Things {
 		}
 		try {
 			int index = Integer.parseInt(name.substring(5));
-			return index >= 0 && index < inventory.getNonEquipmentItems().size() ? index : -1;
+			return index >= 0 && index < Version.mainItems(inventory).size() ? index : -1;
 		} catch (NumberFormatException e) {
 			return -1;
 		}
@@ -398,7 +392,7 @@ final class V26Things {
 		List<Object[]> changes = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> entry : items.entrySet()) {
 			slot(player, entry.getKey());
-			changes.add(new Object[]{entry.getKey(), V26Values.stack(entry.getValue(), player.registryAccess())});
+			changes.add(new Object[]{entry.getKey(), ModernValues.stack(entry.getValue(), player.registryAccess())});
 		}
 		for (Object[] change : changes) {
 			set(player, (String) change[0], (ItemStack) change[1]);
@@ -412,7 +406,7 @@ final class V26Things {
 	static void set(ServerPlayer player, String slot, ItemStack stack) {
 		Inventory inventory = player.getInventory();
 		if (slot.equals("held")) {
-			inventory.setItem(inventory.getSelectedSlot(), stack);
+			inventory.setItem(Version.selectedSlot(inventory), stack);
 		} else if (slot.equals("cursor")) {
 			player.containerMenu.setCarried(stack);
 		} else if (slot.equals("offhand")) {
@@ -436,7 +430,7 @@ final class V26Things {
 		int first = -1;
 		int last = -1;
 		for (Slot slot : open.slots) {
-			slots.add(Json.object("index", slot.index, "item", V26Values.item(slot.getItem(), registries)));
+			slots.add(Json.object("index", slot.index, "item", ModernValues.item(slot.getItem(), registries)));
 			if (slot.container == player.getInventory()) {
 				first = first < 0 ? slot.index : Math.min(first, slot.index);
 				last = Math.max(last, slot.index);
@@ -448,7 +442,7 @@ final class V26Things {
 			own.add(last);
 		}
 		return Json.object(
-			"class", open.getClass().getName(),
+			"class", Members.className(open.getClass()),
 			"window", open.containerId,
 			"player_own", open == player.inventoryMenu,
 			"slots", slots,
@@ -469,7 +463,7 @@ final class V26Things {
 	private static JsonElement blockGet(Call call) throws ProbeException {
 		BlockPos pos = blockPos(call);
 		Level level = player(call).level();
-		JsonObject value = V26Values.block(level.getBlockState(pos));
+		JsonObject value = ModernValues.block(level.getBlockState(pos));
 		if (call.flag("tile", false)) {
 			BlockEntity tile = level.getBlockEntity(pos);
 			if (tile == null) {
@@ -496,8 +490,7 @@ final class V26Things {
 			throw ProbeException.badRequest("block", "26.3's blocks have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), the rest is the state's properties");
 		}
-		Identifier key = Identifier.tryParse(id);
-		if (key == null || !BuiltInRegistries.BLOCK.containsKey(key)) {
+		if (!Version.known(BuiltInRegistries.BLOCK, id)) {
 			throw new ProbeException("NotFound", "this game has no block " + id, Json.object("what", id));
 		}
 		StringBuilder text = new StringBuilder(id);
@@ -512,11 +505,11 @@ final class V26Things {
 		}
 		BlockState state;
 		try {
-			state = BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, text.toString(), false).blockState();
+			state = Version.parseBlock(text.toString());
 		} catch (CommandSyntaxException e) {
 			throw ProbeException.badRequest("block", "the game doesn't read " + text + ": " + e.getMessage());
 		}
-		CompoundTag tileData = call.has("tile") ? V26Values.compound(call.string("tile", null), "tile") : null;
+		CompoundTag tileData = call.has("tile") ? ModernValues.compound(call.string("tile", null), "tile") : null;
 		String update = call.string("update", "default");
 		int flags;
 		switch (update) {
@@ -538,7 +531,7 @@ final class V26Things {
 			if (tile == null) {
 				throw ProbeException.badRequest("tile", id + " has no block entity to take the data");
 			}
-			tile.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), tileData));
+			Version.loadTile(tile, tileData, level.registryAccess());
 			tile.setChanged();
 			level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
 		}
@@ -567,9 +560,8 @@ final class V26Things {
 			throw ProbeException.badRequest("type", "entity.spawn needs the type");
 		}
 		double[] at = vec(call, "pos");
-		ServerLevel level = serverPlayer(call.string("player", null)).level();
-		Identifier key = Identifier.tryParse(type);
-		Optional<EntityType<?>> kind = key == null ? Optional.empty() : BuiltInRegistries.ENTITY_TYPE.getOptional(key);
+		ServerLevel level = Version.level(serverPlayer(call.string("player", null)));
+		Optional<EntityType<?>> kind = Version.byId(BuiltInRegistries.ENTITY_TYPE, type);
 		if (kind.isEmpty()) {
 			throw new ProbeException("NotFound", "this game has no entity " + type, Json.object("what", type));
 		}
@@ -577,7 +569,7 @@ final class V26Things {
 			throw new ProbeException("NotReady", "no chunk is loaded at " + at[0] + " " + at[1] + " " + at[2]
 				+ ": the " + type + " would have nowhere to be", Json.object("what", type));
 		}
-		Entity entity = kind.get().create(level, EntitySpawnReason.COMMAND);
+		Entity entity = Version.create(kind.get(), level);
 		if (entity == null) {
 			throw ProbeException.badRequest("type", type + " can't be made by a command");
 		}
@@ -586,21 +578,19 @@ final class V26Things {
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : 0.0F;
 		if (call.has("nbt")) {
 			// the given data over the entity's own, as /summon's does
-			CompoundTag given = V26Values.compound(call.string("nbt", null), "nbt");
-			TagValueOutput own = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
-			entity.saveWithoutId(own);
-			CompoundTag data = own.buildResult().merge(given);
-			entity.load(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), data));
+			CompoundTag given = ModernValues.compound(call.string("nbt", null), "nbt");
+			CompoundTag data = Version.save(entity, level.registryAccess()).merge(given);
+			Version.load(entity, data, level.registryAccess());
 		}
-		entity.snapTo(at[0], at[1], at[2], yaw, pitch);
+		Version.place(entity, at[0], at[1], at[2], yaw, pitch);
 		if (call.flag("initialize", false) && entity instanceof Mob mob) {
-			mob.finalizeSpawn(level, level.getCurrentDifficultyAt(entity.blockPosition()), EntitySpawnReason.COMMAND, null);
+			Version.finalizeSpawn(mob, level);
 		}
 		if (!level.addFreshEntity(entity)) {
 			throw new ProbeException("NotReady", "the world refused the " + type + " at " + at[0] + " " + at[1] + " "
 				+ at[2], null);
 		}
-		return V26Values.entity(entity);
+		return ModernValues.entity(entity);
 	}
 
 	private static JsonElement entities(Call call) throws ProbeException {
@@ -648,7 +638,7 @@ final class V26Things {
 			if (entity.isRemoved() || (!players && entity instanceof Player)) {
 				continue;
 			}
-			if (!types.isEmpty() && !types.contains(V26Values.type(entity))) {
+			if (!types.isEmpty() && !types.contains(ModernValues.type(entity))) {
 				continue;
 			}
 			if (kind != null && !kind.isInstance(entity)) {
@@ -662,7 +652,7 @@ final class V26Things {
 		found.sort(Comparator.comparingDouble(entity -> distance(entity, from)));
 		JsonArray summaries = new JsonArray();
 		for (Entity entity : found) {
-			summaries.add(V26Values.entity(entity));
+			summaries.add(ModernValues.entity(entity));
 		}
 		return summaries;
 	}
@@ -682,9 +672,9 @@ final class V26Things {
 		if (given != null && given.isJsonObject()) {
 			Object made = Reflect.make(call, given.getAsJsonObject());
 			if (!(made instanceof Screen)) {
-				throw ProbeException.badRequest("screen", made.getClass().getName() + " is no screen");
+				throw ProbeException.badRequest("screen", Members.className(made.getClass()) + " is no screen");
 			}
-			mc.gui.setScreen((Screen) made);
+			Version.setScreen((Screen) made);
 			return new JsonObject();
 		}
 		String name = call.string("screen", null);
@@ -693,7 +683,7 @@ final class V26Things {
 		}
 		Screen screen;
 		if ("chat".equals(name)) {
-			screen = new ChatScreen(call.string("text", ""), false);
+			screen = Version.chatScreen(call.string("text", ""));
 		} else if ("inventory".equals(name)) {
 			screen = new InventoryScreen(mc.player);
 		} else if ("creative".equals(name)) {
@@ -704,17 +694,17 @@ final class V26Things {
 		} else {
 			throw ProbeException.badRequest("screen", "screen is chat, inventory, creative or pause, not " + name);
 		}
-		mc.gui.setScreen(screen);
+		Version.setScreen(screen);
 		return new JsonObject();
 	}
 
 	/** As Esc closes it: a container's screen through the player's own close, which tells the server too (8.9). */
 	private static JsonElement closeScreen(Call call) {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.gui.screen() instanceof AbstractContainerScreen && mc.player != null) {
+		if (Version.screen() instanceof AbstractContainerScreen && mc.player != null) {
 			mc.player.closeContainer();
 		} else {
-			mc.gui.setScreen(null);
+			Version.setScreen(null);
 		}
 		return new JsonObject();
 	}

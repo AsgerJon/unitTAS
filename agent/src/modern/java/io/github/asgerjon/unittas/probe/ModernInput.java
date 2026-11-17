@@ -8,8 +8,6 @@ import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 
 /**
@@ -20,13 +18,13 @@ import net.minecraft.client.player.LocalPlayer;
  * every binding on it and presses each once. A screen is given a key as SDL3 gives it (its scancode, and its keycode:
  * the character for a key that types one, the scancode with bit 30 for the others), then the character it types.
  */
-final class V26Input {
+final class ModernInput {
 
-	private V26Input() {
+	private ModernInput() {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("player.look").does(V26Input::look).settles((call, value) -> V26Things.waitClient(call, 1, value));
+		probe.op("player.look").does(ModernInput::look).settles((call, value) -> ModernThings.waitClient(call, 1, value));
 		probe.op("key.down").does(call -> {
 			down(key(call));
 			return new JsonObject();
@@ -35,14 +33,14 @@ final class V26Input {
 			KeyMapping.set(key(call), false);
 			return new JsonObject();
 		});
-		probe.op("key.tap").does(V26Input::tapDown).settles(V26Input::tapUp);
-		probe.op("camera.set").does(V26Input::camera).settles((call, value) -> V26Things.waitClient(call, 2, value));
-		probe.op("screen.type").does(V26Input::type).settles(V26Input::settle4);
-		probe.op("screen.key").does(V26Input::screenKey).settles(V26Input::settle4);
+		probe.op("key.tap").does(ModernInput::tapDown).settles(ModernInput::tapUp);
+		probe.op("camera.set").does(ModernInput::camera).settles((call, value) -> ModernThings.waitClient(call, 2, value));
+		probe.op("screen.type").does(ModernInput::type).settles(ModernInput::settle4);
+		probe.op("screen.key").does(ModernInput::screenKey).settles(ModernInput::settle4);
 	}
 
 	private static JsonElement settle4(Call call, JsonElement value) throws ProbeException, InterruptedException {
-		return V26Things.waitClient(call, call.number("settle_ticks", 4, 0, 1200), value);
+		return ModernThings.waitClient(call, call.number("settle_ticks", 4, 0, 1200), value);
 	}
 
 	/** Turns the client player to look this way (degrees; yaw 0 is south, pitch 90 down), this tick and the last. */
@@ -67,13 +65,13 @@ final class V26Input {
 	private static InputConstants.Key key(Call call) throws ProbeException {
 		JsonElement key = call.args.get("key");
 		if (key != null && key.isJsonObject() && key.getAsJsonObject().has("code")) {
-			return InputConstants.Type.KEYBOARD.getOrCreate(key.getAsJsonObject().get("code").getAsInt());
+			return Version.rawKey(key.getAsJsonObject().get("code").getAsInt());
 		}
 		if (key == null || !key.isJsonPrimitive()) {
 			throw ProbeException.badRequest("key", "key is a binding's name (\"key.jump\") or {\"code\": n}, n an SDL3"
 				+ " scancode");
 		}
-		KeyMapping binding = KeyMapping.get(key.getAsString());
+		KeyMapping binding = Version.binding(key.getAsString());
 		if (binding == null) {
 			throw ProbeException.badRequest("key", "this game has no key binding " + key.getAsString());
 		}
@@ -100,14 +98,14 @@ final class V26Input {
 		long held = call.number("ticks", 1, 1, 72000);
 		InputConstants.Key key = InputConstants.Type.values()[(int) (call.mark >>> 32)].getOrCreate((int) call.mark);
 		try {
-			V26Things.waitClient(call, held, value);
+			ModernThings.waitClient(call, held, value);
 		} finally {
 			Sides.get().post(Side.CLIENT, () -> {
 				KeyMapping.set(key, false);
 				return null;
 			});
 		}
-		return V26Things.waitClient(call, 1, value);
+		return ModernThings.waitClient(call, 1, value);
 	}
 
 	/** The camera: 0 first person, 1 third person from behind, 2 from the front. */
@@ -123,7 +121,7 @@ final class V26Input {
 	// ---------------------------------------------------------------- typing into a screen
 
 	private static Screen openScreen() throws ProbeException {
-		Screen screen = Minecraft.getInstance().gui.screen();
+		Screen screen = Version.screen();
 		if (screen == null) {
 			throw new ProbeException("NotReady", "no screen is open to type into", null);
 		}
@@ -135,8 +133,8 @@ final class V26Input {
 		try {
 			handling.run();
 		} catch (RuntimeException | Error e) {
-			throw new ProbeException("GameError", screen.getClass().getName() + " threw " + e, Json.object(
-				"exception", e.getClass().getName(), "trace", Probe.trace(e)));
+			throw new ProbeException("GameError", Members.className(screen.getClass()) + " threw " + e, Json.object(
+				"exception", Members.className(e.getClass()), "trace", Probe.trace(e)));
 		}
 	}
 
@@ -147,7 +145,7 @@ final class V26Input {
 			throw ProbeException.badRequest("text", "screen.type needs the text");
 		}
 		for (int character : text.codePoints().toArray()) {
-			typed(screen, () -> screen.charTyped(new CharacterEvent(character)));
+			typed(screen, () -> Version.charTyped(screen, character));
 		}
 		return new JsonObject();
 	}
@@ -155,62 +153,17 @@ final class V26Input {
 	private static JsonElement screenKey(Call call) throws ProbeException {
 		Screen screen = openScreen();
 		String name = call.string("key", null);
-		int[] key = name == null ? null : portableKey(name.toLowerCase(java.util.Locale.ROOT));
+		int[] key = name == null ? null : Version.portableKey(name.toLowerCase(java.util.Locale.ROOT));
 		if (key == null) {
 			throw ProbeException.badRequest("key", "key is a letter, a digit, space, enter, escape, tab, backspace, delete,"
 				+ " up, down, left, right, home, end, page_up, page_down or f1 to f12, not " + name);
 		}
 		typed(screen, () -> {
-			screen.keyPressed(new KeyEvent(key[0], key[1], 0));
+			Version.keyPressed(screen, key[0], key[1]);
 			if (key[2] != 0) {
-				screen.charTyped(new CharacterEvent(key[2]));
+				Version.charTyped(screen, key[2]);
 			}
 		});
 		return new JsonObject();
-	}
-
-	/** SDL3's keycode for a key that types nothing: its scancode with bit 30 (SDLK_SCANCODE_MASK). */
-	private static int sdl(int scancode) {
-		return scancode | (1 << 30);
-	}
-
-	/** A portable key's {scancode, keycode, the character it types or 0}, or null for a name that isn't one. */
-	private static int[] portableKey(String name) {
-		if (name.length() == 1) {
-			char c = name.charAt(0);
-			if (c >= 'a' && c <= 'z') {
-				return new int[] {InputConstants.KEY_A + (c - 'a'), c, c};
-			}
-			if (c >= '1' && c <= '9') {
-				return new int[] {InputConstants.KEY_1 + (c - '1'), c, c};
-			}
-			if (c == '0') {
-				return new int[] {InputConstants.KEY_0, c, c};
-			}
-			return null;
-		}
-		switch (name) {
-			case "space": return new int[] {InputConstants.KEY_SPACE, ' ', ' '};
-			case "enter": return new int[] {InputConstants.KEY_RETURN, '\r', 0};
-			case "escape": return new int[] {InputConstants.KEY_ESCAPE, 27, 0};
-			case "tab": return new int[] {InputConstants.KEY_TAB, '\t', 0};
-			case "backspace": return new int[] {InputConstants.KEY_BACKSPACE, '\b', 0};
-			case "delete": return new int[] {InputConstants.KEY_DELETE, 127, 0};
-			case "up": return new int[] {InputConstants.KEY_UP, sdl(InputConstants.KEY_UP), 0};
-			case "down": return new int[] {InputConstants.KEY_DOWN, sdl(InputConstants.KEY_DOWN), 0};
-			case "left": return new int[] {InputConstants.KEY_LEFT, sdl(InputConstants.KEY_LEFT), 0};
-			case "right": return new int[] {InputConstants.KEY_RIGHT, sdl(InputConstants.KEY_RIGHT), 0};
-			case "home": return new int[] {InputConstants.KEY_HOME, sdl(InputConstants.KEY_HOME), 0};
-			case "end": return new int[] {InputConstants.KEY_END, sdl(InputConstants.KEY_END), 0};
-			case "page_up": return new int[] {InputConstants.KEY_PAGEUP, sdl(InputConstants.KEY_PAGEUP), 0};
-			case "page_down": return new int[] {InputConstants.KEY_PAGEDOWN, sdl(InputConstants.KEY_PAGEDOWN), 0};
-			default:
-				break;
-		}
-		if (name.matches("f([1-9]|1[0-2])")) {
-			int scancode = InputConstants.KEY_F1 + Integer.parseInt(name.substring(1)) - 1;
-			return new int[] {scancode, sdl(scancode), 0};
-		}
-		return null;
 	}
 }

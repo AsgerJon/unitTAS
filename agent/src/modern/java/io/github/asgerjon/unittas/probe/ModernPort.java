@@ -1,6 +1,5 @@
 package io.github.asgerjon.unittas.probe;
 
-import net.minecraft.SharedConstants;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -12,21 +11,21 @@ import java.util.Optional;
  * The 26.3 port (SPEC.md 12, 19.7 step 5): what this version gives the probe's version-free core. The probe is a Java
  * agent, needing no loader: its facts come from the game itself (its own version), and the loader beside it, if the
  * mod under test brought one, is said as that loader says itself (Fabric Loader, read by reflection: the probe depends
- * on no loader's API). Its game operations are declared here and given their bodies by the hooks (V26Hooks); one not
+ * on no loader's API). Its game operations are declared here and given their bodies by the hooks (ModernHooks); one not
  * declared is Unsupported.
  */
-public final class V26Port implements Port {
+public final class ModernPort implements Port {
 
 	private static final String FABRIC = "net.fabricmc.loader.api.FabricLoader";
 
 	@Override
 	public String name() {
-		return "26.3";
+		return Version.port();
 	}
 
 	@Override
 	public String minecraft() {
-		return SharedConstants.getCurrentVersion().name();
+		return Version.minecraft();
 	}
 
 	@Override
@@ -41,8 +40,8 @@ public final class V26Port implements Port {
 
 	@Override
 	public String names() {
-		// 26.x is unobfuscated: the game names its members as Mojang does
-		return "mojang";
+		// mojang in 26.x (unobfuscated); else what the bridge's table of names says the game runs under
+		return Members.namesKind();
 	}
 
 	@Override
@@ -53,7 +52,7 @@ public final class V26Port implements Port {
 	@Override
 	public String probeVersion() {
 		// the probe's own jar's manifest, as the agent's build writes it
-		String version = V26Port.class.getPackage().getImplementationVersion();
+		String version = ModernPort.class.getPackage().getImplementationVersion();
 		return version == null ? "" : version;
 	}
 
@@ -64,7 +63,7 @@ public final class V26Port implements Port {
 	@Override
 	public void woken(Probe probe) {
 		// the game's log as log events (PROTOCOL.md 7), as 1.7.10's ProbeLog
-		V26Log.attach(probe);
+		ModernLog.attach(probe);
 	}
 
 	@Override
@@ -74,12 +73,12 @@ public final class V26Port implements Port {
 
 	@Override
 	public GameWorlds worlds() {
-		return new V26Worlds();
+		return Version.worlds();
 	}
 
 	@Override
 	public void declare(Probe probe) {
-		// the client's own (step 3), given its body when Minecraft is made (V26Hooks.register)
+		// the client's own (step 3), given its body when Minecraft is made (ModernHooks.register)
 		probe.register(Op.onSide("screen.get", Side.CLIENT).reading());
 		// worlds (step 4; PROTOCOL.md 8.3), the core's bodies (WorldOps) on 26.3's calls (V26Worlds), bound there too
 		probe.register(Op.probe("world.create"));
@@ -91,7 +90,7 @@ public final class V26Port implements Port {
 		probe.register(Op.onSide("world.weather.set", Side.SERVER));
 		probe.register(Op.onSide("world.difficulty.set", Side.SERVER));
 		probe.register(Op.onSide("world.prepare", Side.SERVER));
-		// the game's things and the reset (step 5; PROTOCOL.md 8.4 to 8.9), 26.3's bodies (V26Things, V26Reset)
+		// the game's things and the reset (step 5; PROTOCOL.md 8.4 to 8.9), 26.3's bodies (ModernThings, ModernReset)
 		probe.register(Op.onSide("command.run", Side.SERVER));
 		probe.register(Op.onSide("player.get", Side.SERVER, Side.CLIENT).reading());
 		probe.register(Op.onSide("player.teleport", Side.SERVER));
@@ -110,7 +109,7 @@ public final class V26Port implements Port {
 			String hook = io.github.asgerjon.unittas.probe.link.Json.string(args, "hook");
 			return "beforeRun".equals(hook) || "afterRun".equals(hook) ? Side.CLIENT : Side.SERVER;
 		}));
-		// input (SPEC.md 19.7 step 2; PROTOCOL.md 8.9), V26Input's bodies
+		// input (SPEC.md 19.7 step 2; PROTOCOL.md 8.9), ModernInput's bodies
 		probe.register(Op.onSide("player.look", Side.CLIENT));
 		probe.register(Op.onSide("key.down", Side.CLIENT));
 		probe.register(Op.onSide("key.up", Side.CLIENT));
@@ -118,18 +117,18 @@ public final class V26Port implements Port {
 		probe.register(Op.onSide("camera.set", Side.CLIENT));
 		probe.register(Op.onSide("screen.type", Side.CLIENT));
 		probe.register(Op.onSide("screen.key", Side.CLIENT));
-		// the chat, sounds and pictures (19.7 step 2; PROTOCOL.md 8.6, 8.10, 8.11): V26Chat's, V26Sounds', V26Pictures'
+		// the chat, sounds and pictures (19.7 step 2; PROTOCOL.md 8.6, 8.10, 8.11): ModernChat's, ModernSounds', ModernPictures'
 		probe.register(Op.onSide("chat.read", Side.CLIENT).reading());
 		probe.register(Op.onSide("chat.send", Side.CLIENT));
 		probe.register(Op.onSide("sound.play", Side.CLIENT));
 		probe.register(Op.onSide("screenshot", Side.CLIENT));
-		// the agent's (19.7 step 3; PROTOCOL.md 8.4): V26Perceive's
+		// the agent's (19.7 step 3; PROTOCOL.md 8.4): ModernPerceive's
 		probe.register(Op.onSide("player.perceive", Side.CLIENT).reading());
 		probe.register(Op.onSide("block.ground", Side.SERVER, Side.CLIENT).reading());
-		// the agent's verbs' parts (19.7 step 3b; PROTOCOL.md 8.5, 8.7): V26Verbs'
+		// the agent's verbs' parts (19.7 step 3b; PROTOCOL.md 8.5, 8.7): ModernVerbs'
 		probe.register(Op.onSide("container.click", Side.CLIENT));
 		probe.register(Op.onSide("block.items", Side.SERVER, Side.CLIENT).reading());
-		// reflection (19.7 step 4; PROTOCOL.md 5.9): the core's Reflect with V26Reflect
+		// reflection (19.7 step 4; PROTOCOL.md 5.9): the core's Reflect with ModernReflect
 		probe.register(Op.onSide("reflect.get", Side.SERVER, Side.CLIENT).reading().needingASide());
 		probe.register(Op.onSide("reflect.set", Side.SERVER, Side.CLIENT).needingASide());
 		// observing (19.7 step 3c; PROTOCOL.md 8.10): V26View's and V26Looks'
@@ -144,7 +143,7 @@ public final class V26Port implements Port {
 	/** Fabric Loader's own instance, when the mod under test brought it; empty in vanilla. */
 	static Optional<Object> fabric() {
 		try {
-			Class<?> loader = Class.forName(FABRIC, true, V26Port.class.getClassLoader());
+			Class<?> loader = Class.forName(FABRIC, true, ModernPort.class.getClassLoader());
 			return Optional.of(loader.getMethod("getInstance").invoke(null));
 		} catch (ClassNotFoundException e) {
 			return Optional.empty();
