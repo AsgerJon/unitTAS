@@ -1,19 +1,17 @@
 """
-This script locks every safety file beside it. The four files
-'rc.safety', 'micro.safety', 'minor.safety' and 'major.safety' guard the
-release workflows that publish something irreversible: a release
-candidate, which closes the dev window of its version for good, and the
-three official releases. A locked safety holds the sole word 'STOP'. The
-author arms one by hand, replacing 'STOP' with 'ALLOW' and committing,
-right before pressing the button of the workflow it guards.
+This script locks every safety file beside it, by hand. Each of the nine
+release buttons has one, carrying the name of its button and listed in
+'release_state.SAFETY_NAMES', as 'minor-dev.safety' for 'minor-dev'. A
+locked safety holds the sole word 'STOP'. The author arms one by hand,
+replacing 'STOP' with 'ALLOW' and committing, right before pressing a
+button whose press the release state machine arms.
 
-Every release workflow, the dev workflow included, locks the safeties in
-its first job, so no run of any workflow leaves one armed: an arming is
-spent by the next press of any button, whatever that press goes on to do.
-The dev workflow runs this script, since it answers to no safety. The
-guarded workflows run 'safety_check.py', which reads the one safety it
-answers to and then performs this same lock. The files are written whether
-or not they exist, so a missing safety comes back locked.
+Every release workflow locks all nine safeties in its first job, through
+'safety_check.py', so no run of any workflow leaves one armed: an arming
+is spent by the next press of any button, whatever that press goes on to
+do. No workflow runs this script; it locks the safeties outside a press,
+as after an arming that is no longer wanted. The files are written
+whether or not they exist, so a missing safety comes back locked.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -22,7 +20,8 @@ from __future__ import annotations
 import sys
 import os
 
-SAFETY_CHANNELS = ('rc', 'micro', 'minor', 'major',)
+import release_state
+
 LOCKED = 'STOP'
 ARMED = 'ALLOW'
 
@@ -87,13 +86,13 @@ def _badLocation() -> int:
 
 def safetyPath(channel: str) -> str:
   """
-  This function resolves the path of the safety file guarding 'channel',
-  which sits beside this script as '<channel>.safety'.
+  This function resolves the path of the safety file of the stem
+  'channel', which sits beside this script as '<channel>.safety'.
 
   Parameters
   ----------
   channel : str
-    One of 'rc', 'micro', 'minor' or 'major'.
+    One of 'release_state.SAFETY_NAMES'.
 
   Returns
   -------
@@ -132,15 +131,16 @@ def _writeText(path: str, text: str) -> None:
 def lockAll() -> list[str]:
   """
   This function writes 'STOP' as the sole content of the safety file of
-  every channel, creating any that is missing.
+  every button, creating any that is missing.
 
   Returns
   -------
   list[str]
-    The absolute paths of the files written, in channel order.
+    The absolute paths of the files written, in the order of the
+    buttons.
   """
   out = []
-  for channel in SAFETY_CHANNELS:
+  for channel in release_state.SAFETY_NAMES:
     path = safetyPath(channel)
     _writeText(path, '%s\n' % LOCKED)
     out.append(path)

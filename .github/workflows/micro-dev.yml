@@ -1,0 +1,204 @@
+# micro-dev: the dev-release button of the micro level. Publishes the next dev version of the next micro release
+# (X.Y.Z-devN) as a GitHub pre-release with the 1.7.10 jars and every version's probe. The press opening a dev
+# cycle, and one climbing to this level from a lower one, run only when 'bin/release_tooling/micro-dev.safety'
+# read 'ALLOW' in the commit the button was pressed on; a later press of the locked level needs no safety.
+# Manual trigger only (the Actions tab, "Run workflow"), from 'main' alone. The release state machine
+# (bin/release_tooling/release_state.py, WorkToy's) decides every press from bin/release_tooling/VERSION; see the
+# 'safety' job. README.md, "Building and releasing", says how the buttons work together.
+name: micro-dev
+
+on:
+  workflow_dispatch:
+
+# One release at a time, whichever button: two runs reading the same counters would make the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  safety:
+    # The guard. It refuses a press on any branch but 'main' before it reads or writes anything. On 'main' it decides
+    # the press from VERSION and, for a press that needs one, from the safety of this button, both as committed in the
+    # commit the button was pressed on; locks every safety back to 'STOP'; pushes the lock; tests the release tooling;
+    # and only then fails or lets the tests start. A refused run therefore still leaves every safety locked in the
+    # repository, and an arming is spent by the press of the button whatever the run does next.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the locked safeties
+    steps:
+      # The default checkout is the commit the button was pressed on, so the state of VERSION and of the safety at
+      # that moment decides.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Decide and lock
+        run: python bin/release_tooling/safety_check.py micro-dev SAFETY_VERDICT
+      - name: Push the lock
+        run: |
+          git config user.name "Asger Jon Vistisen"
+          git config user.email "asgerjon2@gmail.com"
+          git add bin/release_tooling/*.safety
+          git diff --cached --quiet || git commit -m "micro-dev: safeties locked, verdict ${SAFETY_VERDICT}"
+          git push origin "HEAD:$GITHUB_REF"
+      - name: Test the release tooling
+        working-directory: bin/release_tooling
+        run: python -B -m unittest discover -s tests -t .
+      - name: Enforce the verdict
+        run: |
+          echo "$SAFETY_VERDICT_MESSAGE"
+          if [ "$SAFETY_VERDICT" != "ALLOW" ]; then
+            echo "::error::$SAFETY_VERDICT_MESSAGE"
+            exit 1
+          fi
+
+  test:
+    # What can be checked without a display: the tools' own tests, that the stamped files agree on the
+    # version, and the build. The game's own tests (./unittas.sh self) are run on the desktop before pressing.
+    needs: safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # the Python package's floor (python/pyproject.toml), so nothing newer slips in
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: The other tools' tests
+        run: python -m unittest discover -s bin/tests
+      - name: The Python package, with what it needs
+        run: python -m pip install ./python
+      - name: The Python package's tests that need no game
+        run: python -m unittest discover -s python/tests/unit
+      - name: The stamped files agree on the version
+        run: python bin/release_tooling/version_stamp.py --check
+      # Java 21 runs Gradle and Unimined (the last listed is the default); Java 8 is the game's own (the
+      # development run's toolchain); Java 25 builds every version's probe (javac)
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            25
+            21
+          cache: gradle
+      - name: Build
+        run: ./gradlew --console=plain build
+      # each version's probe (SPEC.md 12 D6, 19.7 steps 5 and 6f): a Java agent, built by Java 25's javac against the
+      # version's own jars (bin/build_agent.py, no Gradle; an obfuscated version's against stubs made from its jar)
+      - name: Build the probes
+        run: |
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 26.3
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 1.21.1
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 1.20.1
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the version commit and its tag
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # The branch tip rather than the commit the button was pressed on: the version commit below has to sit on top
+      # of the lock commit the 'safety' job pushed.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            25
+            21
+          cache: gradle
+
+      # Name the version this press publishes from VERSION, deciding the press again from the branch tip (a press
+      # another run made obsolete since the 'safety' job is refused here too), and expose it as VERSION_INFO to the
+      # steps below.
+      - name: Resolve next version
+        run: python bin/release_tooling/version_get.py micro-dev VERSION_INFO
+      - name: Hand the version to the release job
+        id: version
+        run: echo "version=$VERSION_INFO" >> "$GITHUB_OUTPUT"
+
+      # Write VERSION_INFO into gradle.properties (the build names both jars and mcmod.info from it), into
+      # UnitTasMod.VERSION (the @Mod's version) and into README.md's recipe. It refuses if they disagree now.
+      - name: Stamp the version
+        run: python bin/release_tooling/version_stamp.py VERSION_INFO
+
+      - name: Build
+        run: ./gradlew --console=plain build
+      # each version's probe (SPEC.md 12 D6, 19.7 steps 5 and 6f): a Java agent, built by Java 25's javac against the
+      # version's own jars (bin/build_agent.py, no Gradle), by the name the release carries
+      - name: Build the probes
+        run: |
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 26.3 \
+            --out "build/libs/unittas-probe-26.3-$VERSION_INFO.jar"
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 1.21.1 \
+            --out "build/libs/unittas-probe-1.21.1-$VERSION_INFO.jar"
+          python bin/build_agent.py --java25 "$JAVA_HOME_25_X64" --minecraft 1.20.1 \
+            --out "build/libs/unittas-probe-1.20.1-$VERSION_INFO.jar"
+      - name: The jars
+        run: |
+          ls -l build/libs
+          test -f "build/libs/unittas-$VERSION_INFO.jar"
+          test -f "build/libs/unittas-$VERSION_INFO-dev.jar"
+          test -f "build/libs/unittas-probe-26.3-$VERSION_INFO.jar"
+          test -f "build/libs/unittas-probe-1.21.1-$VERSION_INFO.jar"
+          test -f "build/libs/unittas-probe-1.20.1-$VERSION_INFO.jar"
+
+      # Advance the counters in VERSION by the state machine, then commit VERSION and the stamped files, and tag that
+      # commit. The commit and its tag are pushed together or not at all (--atomic): if the branch moved meanwhile, or
+      # the tag is taken, nothing is pushed and the run fails here, before any release.
+      - name: Bump version counters
+        run: python bin/release_tooling/version_bump.py micro-dev
+      - name: Commit, tag and push
+        run: |
+          git config user.name "Asger Jon Vistisen"
+          git config user.email "asgerjon2@gmail.com"
+          git add bin/release_tooling/VERSION gradle.properties README.md \
+            src/main/java/io/github/asgerjon/unittas/UnitTasMod.java
+          git commit -m "dev $VERSION_INFO"
+          git tag "$VERSION_INFO"
+          git push --atomic origin "HEAD:$GITHUB_REF" "refs/tags/$VERSION_INFO"
+
+      - name: Keep the jars for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: jars
+          path: |
+            build/libs/unittas-${{ env.VERSION_INFO }}.jar
+            build/libs/unittas-${{ env.VERSION_INFO }}-dev.jar
+            build/libs/unittas-probe-26.3-${{ env.VERSION_INFO }}.jar
+            build/libs/unittas-probe-1.21.1-${{ env.VERSION_INFO }}.jar
+            build/libs/unittas-probe-1.20.1-${{ env.VERSION_INFO }}.jar
+          if-no-files-found: error
+
+  release:
+    # A job of its own: should it fail (the tag is pushed by then), re-running only this job ("Re-run failed jobs")
+    # makes the release from the same tag and jars. Pressing the button again would make the next version instead.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jars
+          path: jars
+      - name: GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_INFO: ${{ needs.publish.outputs.version }}
+        run: |
+          gh release create "$VERSION_INFO" \
+            "jars/unittas-$VERSION_INFO.jar" "jars/unittas-$VERSION_INFO-dev.jar" \
+            "jars/unittas-probe-26.3-$VERSION_INFO.jar" \
+            "jars/unittas-probe-1.21.1-$VERSION_INFO.jar" \
+            "jars/unittas-probe-1.20.1-$VERSION_INFO.jar" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "dev $VERSION_INFO" --prerelease --generate-notes

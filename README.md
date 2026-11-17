@@ -737,39 +737,49 @@ the coremods FML doesn't find there on its own: UniMixins' (`AllCore`) and unitT
 
 ## Releasing
 
-A release is a button: one workflow per kind, run from GitHub's Actions tab ("Run workflow", on `main`). Nobody sets
-the version or tags by hand. `bin/release_tooling/VERSION` holds the counters for the next version of each kind:
+A release is a button: nine workflows, each a level (`micro`, `minor`, `major`) and a kind (`dev`, `rc`, `lts`),
+run from GitHub's Actions tab ("Run workflow", on `main`: a press on any other branch is refused before anything is
+read or written). Nobody sets the version or tags by hand. `bin/release_tooling/VERSION` holds what the buttons read:
+the line of the last full release, the level locked for the next one (`LEVEL`), and its next dev and rc numbers. One
+table, `release_state.py`, decides every press from it:
 
-| Button      | Makes                                          | Guarded by     |
-|-------------|------------------------------------------------|----------------|
-| `dev`       | `0.1.0-devN`: a pre-release                    | nothing        |
-| `rc`        | `0.1.0-rcN`: a pre-release                     | `rc.safety`    |
-| `lts-micro` | `0.1.0`, then `0.1.1`, ...: the latest release | `micro.safety` |
-| `lts-minor` | `0.2.0`, then `0.2.1` for the next micro       | `minor.safety` |
-| `lts-major` | `1.0.0`, then `1.0.1` for the next micro       | `major.safety` |
+| State                         | Accepted                                                    | Needs its safety |
+|-------------------------------|-------------------------------------------------------------|------------------|
+| no cycle open (`LEVEL=none`)  | a level's `dev`: its version's `dev0`, the level locked     | yes              |
+| a dev cycle open              | the locked level's `dev`: the next `devN`                   | no               |
+|                               | a higher level's `dev`: its version's `dev0`, relocked      | yes              |
+|                               | the locked level's `rc`: `rc0`, the dev cycle closed        | yes              |
+| an rc cycle open              | the locked level's `rc`: the next `rcN`                     | no               |
+|                               | the locked level's `lts`: the release, `LEVEL=none` again   | yes              |
 
-Once an rc of a version is out, `dev` refuses until that version's official release (a dev version sorts below an
-rc); an official release (micro, minor or major) starts the next version with its dev and rc counters at 0.
+A level leads to its version from the last full release `X.Y.Z`: micro to `X.Y.(Z+1)`, minor to `X.(Y+1).0`, major
+to `(X+1).0.0`; a release always has an rc before it. Every other press is refused in the run's first job, which says
+the state, why, and which buttons are accepted now, with the version each would make. Before the first full release
+the counters stand at 0.0.1, so minor leads to 0.1.0: `minor-dev` makes its `0.1.0-devN`, then `minor-rc` and
+`minor-lts` release it.
 
-**Arming.** The four `.safety` files in `bin/release_tooling/` say `STOP`. To press a guarded button, write `ALLOW` in
-its file, commit, push, then press. The run's first job reads that file as it stood in the commit the button was
-pressed on, sets all four back to `STOP` and pushes that whatever it read, and only then stops the run unless it read
-`ALLOW`. So every press of any button, `dev` included, spends every arming.
+**Arming.** Each button has its own `.safety` file in `bin/release_tooling/` (`minor-rc.safety`, ...), all saying
+`STOP`. For a press that needs its safety, write `ALLOW` in that button's file, commit, push, then press. The run's
+first job decides the press from `VERSION` and that file as they stood in the commit the button was pressed on, sets
+all nine back to `STOP` and pushes that whatever it decided, tests the release tooling (`python -B -m unittest discover
+-s tests -t .` in `bin/release_tooling`), and only then stops the run unless the press may go on. So every press of
+any button spends every arming.
 
 **A run**, after the lock:
 
-1. What can be checked without a display: the tools' own tests (`bin/release_tooling/tests`, `bin/tests`), that the
-   version agrees across the tree (`version_stamp.py --check`), `./gradlew build`, and the 26.3 probe's build
-   (`bin/build_agent.py` on Java 25). The game's own tests can't
-   run there: run `./unittas.sh self` before pressing.
-2. The version is stamped into `gradle.properties` (`mod_version`, which names both jars and goes into
-   `mcmod.info`), `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and the 26.3
-   probe's; the counters advance. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag `X` are pushed together,
-   or neither is (if `main` moved meanwhile, or the tag is taken).
-3. A GitHub release of that tag with both 1.7.10 jars, the 26.3 probe's (`unittas-probe-26.3-<version>.jar`), and
-   GitHub's generated notes (the commits and pull requests since the
-   last release), titled `dev X`, `rc X` or `X`. For a draft you write yourself instead, the release step's
-   `--generate-notes` becomes `--draft --notes ""`.
+1. What can be checked without a display: the other tools' tests (`bin/tests`), the Python package's, that the version
+   agrees across the tree (`version_stamp.py --check`), `./gradlew build`, and every version's probe
+   (`bin/build_agent.py` on Java 25, for each version it knows). The game's own tests can't run there: run
+   `./unittas.sh self` before pressing.
+2. The version is named again from the branch tip (a press another run made obsolete meanwhile is refused there too)
+   and stamped into `gradle.properties` (`mod_version`, which names both jars and goes into `mcmod.info`),
+   `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and every version's probe; the
+   counters advance by the same table. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag
+   `X` are pushed together, or neither is (if `main` moved meanwhile, or the tag is taken).
+3. A GitHub release of that tag with both 1.7.10 jars, each version's probe (`unittas-probe-26.3-<version>.jar`, and
+   1.21.1's and 1.20.1's the same way), and GitHub's generated notes (the commits and pull requests since the last
+   release), titled `dev X` or `rc X` (pre-releases) or `X` (the latest release). For a draft you write yourself
+   instead, the release step's `--generate-notes` becomes `--draft --notes ""`.
 
 Pull after every press. If only the last job fails (the tag is pushed by then), "Re-run failed jobs" makes the
 release from the same tag and jars; pressing the button again would make the next version. The buttons run one at a
@@ -778,8 +788,9 @@ the runner's `gh`.
 
 `mod_version` isn't edited by hand: the stamp refuses when `gradle.properties`, `UnitTasMod.VERSION` and this
 README's recipes disagree. JitPack builds a tag the first time someone asks for `com.github.AsgerJon:unitTAS:<tag>`
-(`jitpack.yml` gives it Java 21); the tag's commit already carries its version. The scheme, the scripts and the
-safeties are WorkToy's, adapted.
+(`jitpack.yml` gives it Java 21); the tag's commit already carries its version. The state machine, the scripts and the
+safeties are WorkToy's, adapted: unitTAS's runs also push the version commit and its tag together, make the release in
+a job of its own, and paste no expression into a script.
 
 ## Other tools
 

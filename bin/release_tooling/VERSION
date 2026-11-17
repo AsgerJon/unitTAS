@@ -1,25 +1,33 @@
-#  VERSION holds the counters the release workflows read to compute the
-#  next version each channel publishes. It is not the currently released
-#  version: that lives in gradle.properties (mod_version), in
-#  UnitTasMod.VERSION and in the jar names README.md's recipe gives, all
-#  stamped from here at release time.
+#  VERSION holds what the release buttons read to name the version each
+#  press publishes. It is not the currently released version: that lives
+#  in gradle.properties (mod_version), in UnitTasMod.VERSION and in the
+#  jar names README.md's recipes give, all stamped from here at publish
+#  time. The state machine reading it is release_state.py.
 #
-#  MICRO, RC and DEV each hold the next value to publish directly:
-#    next lts -> MAJOR.MINOR.MICRO
-#    next rc  -> MAJOR.MINOR.MICRO-rc<RC>
-#    next dev -> MAJOR.MINOR.MICRO-dev<DEV>
-#  MAJOR and MINOR instead hold the current line, so the next minor and
-#  major releases add one rather than reading the field directly:
-#    next minor -> MAJOR.(MINOR+1).0
-#    next major -> (MAJOR+1).0.0
+#  MAJOR and MINOR hold the line of the last full release, and MICRO the
+#  next micro after it, so the last full release is MAJOR.MINOR.(MICRO-1).
+#  LEVEL holds the level locked for the next release: none, micro, minor or
+#  major. Each level leads to a target counted from the last full release:
+#    micro -> MAJOR.MINOR.MICRO
+#    minor -> MAJOR.(MINOR+1).0
+#    major -> (MAJOR+1).0.0
+#  DEV and RC hold the next dev and rc number of the target of LEVEL.
+#  Before unitTAS's first full release the counters stand at 0.0.1, so
+#  minor leads to 0.1.0.
 #
-#  Within one MAJOR.MINOR.MICRO line every dev release must precede the
-#  first rc, since a dev version sorts below an rc. version_get.py enforces
-#  this by refusing a dev version once RC is non-zero. A lts, minor or
-#  major release resets RC and DEV to zero, reopening the dev window for
-#  the next line.
+#  LEVEL=none: no cycle is open. Only a dev button runs; it needs its
+#    safety, locks its level and publishes the dev0 of its target.
+#  A level locked, RC=0: a dev cycle is open. A dev press of the locked
+#    level publishes the next devN with no safety; one of a higher level
+#    needs its safety, relocks and publishes its dev0. The rc of the locked
+#    level needs its safety and publishes rc0, closing the dev cycle.
+#  A level locked, RC above 0: an rc cycle is open. The rc of the locked
+#    level publishes the next rcN with no safety; its lts needs its safety,
+#    publishes the release and sets LEVEL back to none.
+#  Every other press is refused in the first job of its workflow.
 MAJOR=0
-MINOR=1
-MICRO=0
+MINOR=0
+MICRO=1
 RC=0
 DEV=18
+LEVEL=minor
