@@ -9,6 +9,8 @@ channels:
 dependencies:
   - python>=3.14
   - pip
+  - warp
   - pip:
       - -e ./python
       - worktoy>=1.2.2
+      - mcdex>=0.2.0
