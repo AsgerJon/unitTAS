@@ -24,7 +24,7 @@ tasks.withType(JavaCompile).configureEach {
 
 sourceSets {
     // the probe's version-free core (SPEC.md 12, D5): one source, compiled into this 1.7.10 jar and into the 26.3
-    // Fabric probe (fabric/)
+    // probe (agent/, bin/build_agent.py)
     main {
         java {
             srcDir 'src/probe-core/java'

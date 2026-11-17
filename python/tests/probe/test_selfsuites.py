@@ -5,7 +5,7 @@ ones by the same names.
   bin/self_red_check.py --python. Its table is the Java run's, less what Python doesn't twin.
 - In the real client (unitTAS's release jar from an instance spec): the green suite, every line ok.
 - On 26.3 (SPEC.md 19.7 step 4): 'unittas run' as a user runs it (python -m unittas, a process of its own) with a 26.3
-  Fabric spec, the probe fabric/'s jar: the green suite, every line ok.
+  Fabric spec (the mod's loader), the probe the agent's jar beside it: the green suite, every line ok.
 
   python -m unittas.selftest test_selfsuites.      (through the watcher: "probe test_selfsuites.")
   python -m unittas.selftest test_selfsuites on 26.3-fabric      ("probe test_selfsuites on 26.3-fabric")
@@ -21,7 +21,7 @@ import subprocess
 import sys
 import unittest
 
-from fabricgame import buildFabric
+from agentgame import buildAgent
 from ports import V1_7_10, V26_3, onlyOn
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
@@ -95,7 +95,7 @@ class SelfSuitesTests(unittest.TestCase):
 class SelfSuites26Tests(unittest.TestCase):
 
   def test_1_unittas_run_on_a_26_3_spec(self) -> None:
-    jar = buildFabric(os.path.join(results(), 'fabric-build', 'build.log'))
+    jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'))
     folder = os.path.join(results(), 'specs')
     os.makedirs(folder, exist_ok=True)
     spec = os.path.join(folder, 'self-26.3.toml')

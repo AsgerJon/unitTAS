@@ -19,6 +19,11 @@ from unittas.release import gameJvms
 
 MINECRAFT = '26.3'
 JAR = os.path.join(ROOT, 'agent', 'build', 'unittas-probe-26.3.jar')
+#  the game's classes the agent hooks (its Hooks), by their internal names, as ready names them rewritten
+HOOKED = ['net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
+          'net/minecraft/client/MouseHandler', 'net/minecraft/client/gui/Gui',
+          'net/minecraft/client/gui/components/ChatComponent', 'net/minecraft/client/sounds/SoundManager',
+          'net/minecraft/server/MinecraftServer']
 
 #  the jar this run built: built once a run, whichever class asks first
 _BUILT = []

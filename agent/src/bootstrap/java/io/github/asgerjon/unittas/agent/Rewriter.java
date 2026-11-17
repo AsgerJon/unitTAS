@@ -25,19 +25,23 @@ import java.util.Map;
 
 /**
  * Puts the hooks into the game's classes as they load, by the JDK's own class-file API (java.lang.classfile): a BEFORE
- * hook's call at the method's start, which returns at once with the hook's value unless that is Bridge.PASS; an AFTER
- * hook's call before each of its returns. A call gives the bridge the hook's name, the hooked class, the instance (null
- * for a static method) and the method's arguments, boxed. A class the game loads under Fabric is seen after Mixin has
- * made it. A class that can't be rewritten is said on the error stream and left as it was; the probe then reports the
- * hook as missing.
+ * hook's call at the method's start, which returns at once with the hook's value unless that is the pass mark; an
+ * AFTER hook's call before each of its returns. The code put in names JDK classes only, never one of unitTAS's: a
+ * loader may keep the game from seeing the agent's jar (Fabric's Knot does), so the hooks reach the bridge as a
+ * java.util.function.BiFunction kept in the JVM's system properties (Bridge.HOOKS), the pass mark beside it
+ * (Bridge.PASS). A call gives it the hook's name and an array: the hooked class, the instance (null for a static
+ * method) and the method's arguments, boxed. A class the game loads under Fabric is seen after Mixin has made it. A
+ * class that can't be rewritten is said on the error stream and left as it was; the probe then reports it missing.
  */
 final class Rewriter implements ClassFileTransformer {
 
-	private static final ClassDesc BRIDGE = ClassDesc.of("io.github.asgerjon.unittas.agent.Bridge");
-	private static final MethodTypeDesc BEFORE = MethodTypeDesc.of(ConstantDescs.CD_Object, ConstantDescs.CD_String,
-		ConstantDescs.CD_Class, ConstantDescs.CD_Object, ConstantDescs.CD_Object.arrayType());
-	private static final MethodTypeDesc AFTER = MethodTypeDesc.of(ConstantDescs.CD_void, ConstantDescs.CD_String,
-		ConstantDescs.CD_Class, ConstantDescs.CD_Object, ConstantDescs.CD_Object.arrayType());
+	private static final ClassDesc SYSTEM = ClassDesc.of("java.lang.System");
+	private static final ClassDesc PROPERTIES = ClassDesc.of("java.util.Properties");
+	private static final ClassDesc FUNCTION = ClassDesc.of("java.util.function.BiFunction");
+	private static final MethodTypeDesc GET_PROPERTIES = MethodTypeDesc.of(PROPERTIES);
+	private static final MethodTypeDesc GET = MethodTypeDesc.of(ConstantDescs.CD_Object, ConstantDescs.CD_Object);
+	private static final MethodTypeDesc APPLY = MethodTypeDesc.of(ConstantDescs.CD_Object, ConstantDescs.CD_Object,
+		ConstantDescs.CD_Object);
 
 	private final Map<String, List<Hooks.Hook>> byOwner = new HashMap<>();
 
@@ -116,11 +120,11 @@ final class Rewriter implements ClassFileTransformer {
 		@Override
 		public void atStart(CodeBuilder code) {
 			for (Hooks.Hook hook : before) {
-				call(code, hook, BEFORE);
-				// the hook's value: Bridge.PASS goes on; anything else is the method's, returned at once
+				call(code, hook);
+				// the hook's value: the pass mark goes on; anything else is the method's, returned at once
 				Label pass = code.newLabel();
 				code.dup();
-				code.getstatic(BRIDGE, "PASS", ConstantDescs.CD_Object);
+				property(code, Bridge.PASS);
 				code.if_acmpeq(pass);
 				returnValue(code, type.returnType());
 				code.labelBinding(pass);
@@ -132,36 +136,55 @@ final class Rewriter implements ClassFileTransformer {
 		public void accept(CodeBuilder code, CodeElement element) {
 			if (!after.isEmpty() && element instanceof ReturnInstruction) {
 				for (Hooks.Hook hook : after) {
-					call(code, hook, AFTER);
+					call(code, hook);
+					code.pop();
 				}
 			}
 			code.with(element);
 		}
 
-		/** Bridge.before or after(id, the hooked class, this or null, the arguments boxed). */
-		private void call(CodeBuilder code, Hooks.Hook hook, MethodTypeDesc bridge) {
+		/** A system property's value: System.getProperties().get(key). */
+		private static void property(CodeBuilder code, String key) {
+			code.invokestatic(SYSTEM, "getProperties", GET_PROPERTIES);
+			code.ldc(key);
+			code.invokevirtual(PROPERTIES, "get", GET);
+		}
+
+		/**
+		 * The bridge's apply(the hook's name, [the hooked class, this or null, the arguments boxed]), its value left on
+		 * the stack.
+		 */
+		private void call(CodeBuilder code, Hooks.Hook hook) {
+			property(code, Bridge.HOOKS);
+			code.checkcast(FUNCTION);
 			code.ldc(hook.id());
+			List<ClassDesc> parameters = type.parameterList();
+			code.loadConstant(parameters.size() + 2);
+			code.anewarray(ConstantDescs.CD_Object);
+			code.dup();
+			code.loadConstant(0);
 			code.ldc(owner);
+			code.aastore();
+			code.dup();
+			code.loadConstant(1);
 			if (statics) {
 				code.aconst_null();
 			} else {
 				code.aload(0);
 			}
-			List<ClassDesc> parameters = type.parameterList();
-			code.loadConstant(parameters.size());
-			code.anewarray(ConstantDescs.CD_Object);
+			code.aastore();
 			int slot = statics ? 0 : 1;
 			for (int i = 0; i < parameters.size(); i++) {
 				ClassDesc parameter = parameters.get(i);
 				TypeKind kind = TypeKind.from(parameter);
 				code.dup();
-				code.loadConstant(i);
+				code.loadConstant(i + 2);
 				code.loadLocal(kind, slot);
 				box(code, parameter);
 				code.aastore();
 				slot += kind.slotSize();
 			}
-			code.invokestatic(BRIDGE, bridge == BEFORE ? "before" : "after", bridge);
+			code.invokeinterface(FUNCTION, "apply", APPLY);
 		}
 
 		/** The hook's value, on the stack as an Object, returned as the method returns its type. */

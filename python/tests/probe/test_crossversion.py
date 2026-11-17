@@ -1,7 +1,7 @@
 """
 The first test on two versions at once (SPEC.md 12.3 step 9, 19.7 step 4): one class with two games, 1.7.10 Forge's
-development client and a real 26.3 Fabric client, both up together, and one scene on both: red wool placed by its
-mcdex member, a step from each world's start, and read back. The reads differ as the versions do (1.7.10's
+development client and a real vanilla 26.3 client (the probe a Java agent), both up together, and one scene on both:
+red wool placed by its mcdex member, a step from each world's start, and read back. The reads differ as the versions do (1.7.10's
 minecraft:wool with meta 14, 26.3's minecraft:red_wool with no meta); compared through a small helper, by the mcdex
 members each version reads its block as, they are the same thing. The model for record and compare (SPEC.md 16).
 Two games at once: asked for before it is run.
@@ -19,7 +19,7 @@ from typing import Any
 
 from mcdex import MCBlocks
 
-from fabricgame import FabricGame, buildFabric
+from agentgame import AgentGame, buildAgent
 from ports import STARTS, V1_7_10, V26_3
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
@@ -44,8 +44,8 @@ class CrossVersionTests(unittest.TestCase):
     cls.launched = {}
     cls.games = {}
     for port, launched in ((V1_7_10, lambda: DevGame(ROOT, results(), 'cross-1.7.10')),
-                           (V26_3, lambda: FabricGame(results(), buildFabric(
-                             os.path.join(results(), 'fabric-build', 'build.log')), 'cross-26.3'))):
+                           (V26_3, lambda: AgentGame(results(), buildAgent(
+                             os.path.join(results(), 'agent-build', 'build.log')), 'cross-26.3'))):
       game = launched()
       cls.launched[port] = game
       shutil.rmtree(os.path.join(game.gameDir, 'saves', 'unittas'), ignore_errors=True)

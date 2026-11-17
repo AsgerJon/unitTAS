@@ -7,7 +7,8 @@ import java.lang.instrument.Instrumentation;
  * unitTAS's probe as a Java agent (SPEC.md 19.7 step 5): no loader, no library, only the JDK. Given the game's folder
  * (-javaagent:unittas-probe.jar=GAME), it wakes only if an orchestrator left its start file there (PROTOCOL.md 2.1):
  * then it rewrites the game's few hooked methods as their classes load (Hooks, Rewriter), and the probe itself, packed
- * inside this jar, is loaded under the game's own class loader at the first hook (Bridge). Without a start file it
+ * inside this jar, is loaded under the game's own class loader at the first hook (Bridge). The game's code reaches
+ * the bridge through JDK types only, so a loader that hides the agent's jar from the game (Fabric's) doesn't matter. Without a start file it
  * does nothing at all: an ordinary game runs as it would without it.
  */
 public final class Agent {
@@ -28,7 +29,7 @@ public final class Agent {
 		if (!new File(game, START_FILE).isFile()) {
 			return;
 		}
-		Bridge.prepare(game);
+		Bridge.install(game);
 		instrumentation.addTransformer(new Rewriter(Hooks.TABLE));
 		System.err.println("[unitTAS] the probe wakes: " + Hooks.TABLE.size() + " hooks to put into the game's classes");
 	}

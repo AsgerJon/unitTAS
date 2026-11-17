@@ -63,14 +63,15 @@ class WorkflowTests(unittest.TestCase):
     self.assertEqual([], pasted, 'expressions pasted into shell scripts (use the environment):\n' + '\n'.join(pasted))
 
 
-class FabricProbeReleasedTests(unittest.TestCase):
+class ProbeReleasedTests(unittest.TestCase):
   """
-  Every release button builds the 26.3 Fabric probe too (SPEC.md 12, D6): fabric/ with its own wrapper on Java 25,
-  while Java 21 stays the default (the root's Gradle 8.10.2 doesn't run on 25), and the release carries its jar
-  beside the 1.7.10 ones, by a name with the version in it.
+  Every release button builds the 26.3 probe too (SPEC.md 12 D6, 19.7 step 5): the loader-free agent, by
+  bin/build_agent.py with Java 25's javac (no Gradle, no fabric/ any more), while Java 21 stays the default (the root's
+  Gradle 8.10.2 doesn't run on 25), and the release carries its jar beside the 1.7.10 ones, by a name with the version
+  in it.
   """
 
-  JAR = 'unittas-probe-26.3-fabric'
+  JAR = 'unittas-probe-26.3'
 
   def workflows(self) -> list:
     out = []
@@ -86,16 +87,18 @@ class FabricProbeReleasedTests(unittest.TestCase):
         self.assertIn('25', listed, name)
         self.assertEqual('21', listed[-1], '%s: the last one listed is the default JAVA_HOME' % name)
 
-  def test_fabric_is_built_on_java_25(self) -> None:
+  def test_the_agent_is_built_on_java_25(self) -> None:
     for name, text in self.workflows():
-      self.assertEqual(2, text.count('working-directory: fabric'), '%s: in the test job and the publish job' % name)
-      self.assertEqual(2, text.count('JAVA_HOME: ${{ env.JAVA_HOME_25_X64 }}'), name)
+      self.assertEqual(2, text.count('python bin/build_agent.py --java25 "$JAVA_HOME_25_X64"'),
+                       '%s: in the test job and the publish job' % name)
+      self.assertNotIn('working-directory: fabric', text, '%s: fabric/ is gone' % name)
 
   def test_the_release_carries_its_jar(self) -> None:
     for name, text in self.workflows():
-      self.assertIn('test -f fabric/build/libs/%s.jar' % self.JAR, text, name)
+      self.assertIn('--out "build/libs/%s-$VERSION_INFO.jar"' % self.JAR, text, name)
       self.assertIn('build/libs/%s-${{ env.VERSION_INFO }}.jar' % self.JAR, text, '%s: kept for the release' % name)
       self.assertIn('"jars/%s-$VERSION_INFO.jar"' % self.JAR, text, '%s: in the release' % name)
+      self.assertNotIn('26.3-fabric', text, name)
 
 
 if __name__ == '__main__':

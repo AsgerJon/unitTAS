@@ -16,16 +16,11 @@ import os
 import shutil
 import unittest
 
-from agentgame import MINECRAFT, AgentGame, buildAgent
+from agentgame import HOOKED, MINECRAFT, AgentGame, buildAgent
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.reset import reset
 
 TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
-#  the game's classes the agent hooks (its Hooks), by their internal names
-HOOKED = ['net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
-          'net/minecraft/client/MouseHandler', 'net/minecraft/client/gui/Gui',
-          'net/minecraft/client/gui/components/ChatComponent', 'net/minecraft/client/sounds/SoundManager',
-          'net/minecraft/server/MinecraftServer']
 
 
 class AgentTests(unittest.TestCase):

@@ -1,18 +1,18 @@
 """
-Phase 4 (SPEC.md section 12.3): the 26.3 Fabric probe.
-- Step 1, no game: fabric/ builds (its own Gradle build and wrapper, Fabric Loom, Java 25, Mojang's names; no
-  daemon left), and its jar is the probe's: fabric.mod.json names its entrypoint and its mixins, and depends on Fabric
-  Loader, Minecraft 26.3 and Java 25 only, never on Fabric API (D3); the probe's version-free core (shared with the
-  1.7.10 probe as source, D5) is compiled into it.
+Phase 4 (SPEC.md section 12.3) and 19.7 step 5: unitTAS's 26.3 probe beside Fabric Loader.
+- Since SPEC.md 19.7 step 5 the probe is no Fabric mod: it is unitTAS's loader-free probe, a Java agent beside Fabric
+  Loader (the loader a mod under test brings), mods/ empty. Its jar's build is bin/build_agent.py's (its own tests);
+  these check that it lives beside Fabric: its hooks put into classes Fabric's Mixin has made, the loader said.
 - Step 2, one game: a real 26.3 Fabric client from unitTAS's own launcher (any version with a loader on top:
   bin/launch_client.py --minecraft 26.3 --loader fabric --loader-version 0.20.1, its Java the one 26.3's JSON asks
-  for), in a game folder of its own with the probe in mods/, in the test display. The probe wakes before Minecraft
-  loads, dials from the end of Minecraft's constructor, and its hello says what really runs: the port 26.3-fabric,
-  Minecraft 26.3, Fabric Loader 0.20.1, Mojang's names, a client. Its first run downloads 26.3 (the client, its
+  for), in a game folder of its own, the probe a Java agent (--agent), in the test display. The probe wakes at the
+  game's first hook, dials from the end of Minecraft's constructor, and its hello says what really runs: the port
+  26.3, Minecraft 26.3, Fabric Loader 0.20.1 beside it, Mojang's names, a client. Its first run downloads 26.3 (the client, its
   libraries and assets, several hundred MB) into the download cache, once. Asked to quit, it does, as the Quit
   button does.
-- Step 3, the same game: its hooks (mixins on Minecraft's tick and screen and the server's tick, no Fabric API).
-  Ready once it has loaded (the loading overlay gone, the title screen up), naming its mods; status in the menu,
+- Step 3, the same game: its hooks (the agent's, on Minecraft's tick and screen and the server's tick, among others).
+  Ready once it has loaded (the loading overlay gone, the title screen up), naming Fabric's mods (not unitTAS: no mod)
+  and every hooked class rewritten; status in the menu,
   its ticks counted; ticks.wait counts exactly; wait.until on screen.get; the heartbeat's client ticks. Its window
   is titled unitTAS, as the 1.7.10 probe's is (PROTOCOL.md 2.5). Its game folder's options.txt is a returning
   player's (onboardAccessibility:false, tutorialStep:none): a first launch of 26.3 opens on its accessibility
@@ -25,54 +25,20 @@ Phase 4 (SPEC.md section 12.3): the 26.3 Fabric probe.
   states, entities by their ids, screens; the reset from anything a command reaches, and from the End.
 
   python -m unittas.selftest test_fabric.      (through the watcher: "probe test_fabric.")
-  python -m unittest test_fabric.FabricJarTests (here: it builds, nothing more)
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import unittest
-import zipfile
 
-from fabricgame import (COPY, CORE, LAYERS_26, LOADER, LOADER_VERSION, MINECRAFT, SEED, START_26, TERRAIN, TITLE,
-                        FabricGame, buildFabric)
-from probegame import GONE_SECONDS, READY_SECONDS, results
+from agentgame import HOOKED, buildAgent
+from fabricgame import COPY, LAYERS_26, LOADER, LOADER_VERSION, MINECRAFT, SEED, START_26, TERRAIN, TITLE, FabricGame
+from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.errors import BadRequest, Exists, NotFound, NotReady
 from unittas.reset import reset
-
-
-class FabricJarTests(unittest.TestCase):
-
-  @classmethod
-  def setUpClass(cls) -> None:
-    cls.jar = buildFabric(os.path.join(results(), 'fabric-build', 'build.log'))
-    with zipfile.ZipFile(cls.jar) as jar:
-      cls.names = set(jar.namelist())
-      cls.mod = json.loads(jar.read('fabric.mod.json').decode('utf-8'))
-
-  def test_1_the_mod(self) -> None:
-    self.assertEqual('unittas', self.mod['id'])
-    self.assertEqual('*', self.mod.get('environment', '*'))
-    entry = self.mod['entrypoints']['client'][0]
-    self.assertIn(entry.replace('.', '/') + '.class', self.names, 'the entrypoint is in the jar')
-
-  def test_2_what_it_needs(self) -> None:
-    depends = self.mod['depends']
-    self.assertEqual({'fabricloader', 'minecraft', 'java'}, set(depends), 'no Fabric API (D3)')
-    self.assertEqual('26.3', depends['minecraft'])
-    self.assertEqual('>=25', depends['java'])
-
-  def test_3_its_mixins(self) -> None:
-    for config in self.mod['mixins']:
-      name = config if isinstance(config, str) else config['config']
-      self.assertIn(name, self.names)
-
-  def test_4_the_shared_core(self) -> None:
-    for name in CORE:
-      self.assertIn(name, self.names)
 
 
 class FabricGameTests(unittest.TestCase):
@@ -80,7 +46,7 @@ class FabricGameTests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
     folder = os.path.join(results(), 'fabric')
-    jar = buildFabric(os.path.join(folder, 'build.log'))
+    jar = buildAgent(os.path.join(folder, 'build.log'))
     cls.game = FabricGame(results(), jar)
     cls.connection = cls.game.start(READY_SECONDS)
     cls.ready = cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
@@ -91,13 +57,13 @@ class FabricGameTests(unittest.TestCase):
 
   def test_1_its_hello_says_what_runs(self) -> None:
     hello = self.connection.hello
-    self.assertEqual('26.3-fabric', hello.probePort)
+    self.assertEqual('26.3', hello.probePort, "the agent's port: the same beside any loader")
     self.assertEqual(MINECRAFT, hello.minecraft)
     self.assertEqual((LOADER, LOADER_VERSION), (hello.loaderName, hello.loaderVersion))
     self.assertEqual('mojang', hello.names, '26.x is unobfuscated: no mappings')
     self.assertEqual('client', hello.role.value if hasattr(hello.role, 'value') else str(hello.role))
     self.assertFalse(hello.development, 'a real client, not a development run')
-    self.assertTrue(hello.probeVersion, "the probe's version from its fabric.mod.json")
+    self.assertEqual(modVersion(), hello.probeVersion, "the probe's version from its own jar")
     self.assertTrue(hello.javaVersion.startswith('25'), hello.javaVersion)
 
   def test_2_the_probe_s_own_operations(self) -> None:
@@ -115,7 +81,9 @@ class FabricGameTests(unittest.TestCase):
   def test_2b_ready_once_loaded(self) -> None:
     self.assertEqual(TITLE, self.ready['screen'])
     mods = {mod['id'] for mod in self.ready['mods']}
-    self.assertTrue({'unittas', 'minecraft', 'fabricloader'} <= mods, mods)
+    self.assertTrue({'minecraft', 'fabricloader'} <= mods, mods)
+    self.assertNotIn('unittas', mods, 'the probe is no Fabric mod')
+    self.assertEqual(HOOKED, self.ready['mixins']['applied'], "each hooked class rewritten after Fabric's Mixin")
     self.assertEqual((854, 480), (self.ready['window']['width'], self.ready['window']['height']))
     self.assertEqual('unitTAS', self.ready['window']['title'], "the window's behaviours (PROTOCOL.md 2.5)")
     self.assertEqual([], self.ready['mixins']['missing'])
@@ -178,7 +146,7 @@ class FabricWorldTests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
     folder = os.path.join(results(), 'fabric-worlds')
-    jar = buildFabric(os.path.join(folder, 'build.log'))
+    jar = buildAgent(os.path.join(folder, 'build.log'))
     cls.game = FabricGame(results(), jar, name='fabric-worlds')
     cls.saves = os.path.join(cls.game.gameFolder(), 'saves')
     #  the orchestrator's part: the folders this test makes are cleared before it, with no world open
@@ -387,7 +355,7 @@ class FabricThingTests(unittest.TestCase):
   @classmethod
   def setUpClass(cls) -> None:
     folder = os.path.join(results(), 'fabric-things')
-    jar = buildFabric(os.path.join(folder, 'build.log'))
+    jar = buildAgent(os.path.join(folder, 'build.log'))
     cls.game = FabricGame(results(), jar, name='fabric-things')
     shutil.rmtree(os.path.join(cls.game.gameFolder(), 'saves', 'unittas'), ignore_errors=True)
     cls.connection = cls.game.start(READY_SECONDS)

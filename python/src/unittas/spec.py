@@ -29,8 +29,9 @@ Paths are taken from the spec's own folder. Every mistake is a SpecError
 that names the file and the key, an unknown key too (with the key it
 likely meant): it is a file people write by hand. The versions are
 PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
-26.3 with Fabric Loader 0.20.1 (SPEC.md 19.7 step 4), a real client
-only for now.
+26.3 with Fabric Loader 0.20.1 or no loader at all (SPEC.md 19.7 steps
+4 and 5: the loader is the mod's, the probe a Java agent beside it), a
+real client only for now.
 
 - SpecError: what is wrong with a spec, and where.
 - MavenLibrary: a library by its Maven coordinates.
@@ -60,6 +61,8 @@ FORGE = '10.13.4.1614'
 PORTS = {MINECRAFT: ('forge', FORGE), '26.3': ('fabric', '0.20.1')}
 #  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet
 REAL_ONLY = ('26.3',)
+#  The versions a spec may name with no loader: the game as Mojang ships it (the probe a Java agent needs none)
+NO_LOADER = ('26.3',)
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
@@ -278,6 +281,8 @@ def _server(reader: _Reader, body: dict, client: str) -> tuple:
 def _loader(reader: _Reader, body: dict, minecraft: str) -> tuple:
   """The loader the version runs with, its one version (PORTS)."""
   name, wanted = PORTS[minecraft]
+  if 'loader' not in body and minecraft in NO_LOADER:
+    return '', ''
   if 'loader' not in body:
     raise reader.fail('"loader" is needed: { %s = "%s" } for %s' % (name, wanted, minecraft))
   loader = reader.table(body, 'loader')

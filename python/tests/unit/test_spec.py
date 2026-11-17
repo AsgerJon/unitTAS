@@ -204,6 +204,12 @@ class SpecTests(unittest.TestCase):
                  'fabric')
     self.refused(REAL_26.replace('"0.20.1"', '"0.19.2"'), '"loader"', '0.19.2', '0.20.1')
 
+  def test_26_3_with_no_loader(self) -> None:
+    """26.3 as Mojang ships it (SPEC.md 19.7 step 5): the loader is the mod's, and with no mod there is none."""
+    spec = InstanceSpec.read(self.write(REAL_26.replace('loader = { fabric = "0.20.1" }\n', '')))
+    self.assertEqual(('', ''), (spec.loaderName, spec.loaderVersion))
+    self.refused(REAL.replace('loader = { forge = "10.13.4.1614" }\n', ''), '"loader"', 'forge')
+
   def test_26_3_s_clients(self) -> None:
     """26.3's game is a real client for now: no Gradle run of a Fabric mod's yet, no dedicated server's probe."""
     gradle = REAL_26.replace('client = "real"', 'client = "gradle"') + '[gradle]\ngame = "run"\n'

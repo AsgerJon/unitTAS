@@ -161,10 +161,26 @@ class SpecGameTests(unittest.TestCase):
     return InstanceSpec.read(path)
 
   def test_a_26_3_client_s_command(self) -> None:
-    """The launcher told the version and its loader: 1.7.10 Forge is its default, 26.3 Fabric is said."""
+    """
+    The launcher told the version and its loader (1.7.10 Forge is its default, 26.3 Fabric is said), and in 26.3 the
+    probe joins as a Java agent (SPEC.md 19.7 step 5): on the command line, never in mods/.
+    """
     game = RealGame(self.spec26('probe = "probe/unittas-probe.jar"\n'), self.results, 'real', cache=self.cache)
     self.assertEqual([sys.executable, '-I', '-m', 'unittas.launcher', '--game', game.gameDir, '--cache', self.cache.root,
-                      '--minecraft', '26.3', '--loader', 'fabric', '--loader-version', '0.20.1'], game.command())
+                      '--minecraft', '26.3', '--loader', 'fabric', '--loader-version', '0.20.1', '--agent', self.probe],
+                     game.command())
+    game.prepare()
+    self.assertEqual([], os.listdir(os.path.join(game.gameDir, 'mods')), 'no mods: the probe is an agent')
+
+  def test_a_vanilla_26_3_client_s_command(self) -> None:
+    """A 26.3 spec with no loader: the game as Mojang ships it, the probe still an agent."""
+    path = os.path.join(self.folder, 'unittas.toml')
+    with open(path, 'w', encoding='utf-8') as file:
+      file.write('minecraft = "26.3"\nclient = "real"\nprobe = "probe/unittas-probe.jar"\n'
+                 'window = { display = "plain" }\n')
+    game = RealGame(InstanceSpec.read(path), self.results, 'real', cache=self.cache)
+    self.assertEqual([sys.executable, '-I', '-m', 'unittas.launcher', '--game', game.gameDir, '--cache', self.cache.root,
+                      '--minecraft', '26.3', '--agent', self.probe], game.command())
 
   def test_26_3_s_first_launch(self) -> None:
     """
@@ -181,7 +197,7 @@ class SpecGameTests(unittest.TestCase):
     """With both probes bundled, each version's game gets its own."""
     bundled = os.path.join(self.folder, 'probes')
     old = touch(os.path.join(bundled, 'unittas-0.1.0.jar'), b'1.7.10')
-    new = touch(os.path.join(bundled, 'unittas-probe-26.3-fabric-0.1.0.jar'), b'26.3')
+    new = touch(os.path.join(bundled, 'unittas-probe-26.3-0.1.0.jar'), b'26.3')
     forge = RealGame(self.spec('mods = []\nwindow = { display = "plain" }\n'), self.results, 'real', cache=self.cache,
                      bundled=bundled)
     fabric = RealGame(self.spec26(), self.results, 'real', cache=self.cache, bundled=bundled)

@@ -173,8 +173,8 @@ public final class V26Hooks {
 			mods.add(Json.object("id", mod[0], "name", mod[1], "version", mod[2]));
 		}
 		// the game's classes the agent hooks, rewritten as they loaded (each loaded as the probe wakes)
-		List<String> hooked = new ArrayList<>(io.github.asgerjon.unittas.agent.Bridge.hookedClasses());
-		List<String> rewritten = new ArrayList<>(io.github.asgerjon.unittas.agent.Bridge.rewrittenClasses());
+		List<String> hooked = new ArrayList<>(V26Entry.hooked());
+		List<String> rewritten = new ArrayList<>(V26Entry.rewritten());
 		List<String> missing = new ArrayList<>(hooked);
 		missing.removeAll(rewritten);
 		java.util.Collections.sort(rewritten);

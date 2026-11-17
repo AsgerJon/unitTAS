@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * What one Minecraft version and loader give the probe's version-free core (SPEC.md 12, D5): the facts its hello
  * says, the moments around its waking, the game's own trace, and the game's operations. The core (this folder) is
- * compiled into every probe; a port (the 1.7.10 Forge one in the root's src/main, the 26.3 Fabric one in fabric/)
+ * compiled into every probe; a port (the 1.7.10 Forge one in the root's src/main, the 26.3 one in agent/src/v26)
  * implements this, and nothing else in the core names a version.
  */
 public interface Port {

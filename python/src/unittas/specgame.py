@@ -50,8 +50,11 @@ if TYPE_CHECKING:  # pragma: no cover
 #  Where a built package keeps the probe jars it carries (SPEC.md 9.6, decision 1); none in a development install.
 BUNDLED = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'probes')
 #  each version's probe among the bundled ones, by its file's name: 1.7.10's is the release jar (unittas-0.1.0.jar),
-#  26.3's the Fabric probe's (unittas-probe-26.3-fabric-0.1.0.jar)
-PROBES = {MINECRAFT: 'unittas-[0-9]*.jar', '26.3': 'unittas-probe-26.3-fabric*.jar'}
+#  26.3's the agent's (unittas-probe-26.3-0.1.0.jar)
+PROBES = {MINECRAFT: 'unittas-[0-9]*.jar', '26.3': 'unittas-probe-26.3*.jar'}
+#  the versions whose probe is a Java agent, given on the game's command line rather than put in mods/ (SPEC.md 19.7
+#  step 5): it needs no loader, and stands beside the one the mod under test brings
+AGENTS = ('26.3',)
 #  a returning player's options for each version's first launch: 26.3 opens on its accessibility onboarding, and a
 #  world's first minutes show the movement tutorial's hints; the spec's own options are set after
 RETURNING = {MINECRAFT: {}, '26.3': {'onboardAccessibility': False, 'tutorialStep': 'none'}}
@@ -215,8 +218,11 @@ class RealGame(LaunchedGame):
       self.spec.path, library.group, library.artifact, library.version, '; '.join(problems)))
 
   def modJars(self) -> list:
-    """The jars its mods/ holds: the probe, the spec's mods (checked as built from their sources), its libraries."""
-    jars = [self.probeJar()]
+    """
+    The jars its mods/ holds: the probe (where it is a mod: 1.7.10's), the spec's mods (checked as built from their
+    sources), its libraries.
+    """
+    jars = [] if self.spec.minecraft in AGENTS else [self.probeJar()]
     for jar in list(_checkedJars(self.spec)) + [self.library(each) for each in self.spec.libraries]:
       if os.path.abspath(jar) not in [os.path.abspath(each) for each in jars]:
         jars.append(jar)
@@ -239,9 +245,12 @@ class RealGame(LaunchedGame):
     self.displayNote = why
     launch = [sys.executable, '-I', '-m', 'unittas.launcher', '--game', self.gameDir, '--cache', self.cache.root]
     if self.spec.minecraft != MINECRAFT:
-      #  1.7.10 Forge is the launcher's own; another version and its loader are said
-      launch += ['--minecraft', self.spec.minecraft, '--loader', self.spec.loaderName, '--loader-version',
-                 self.spec.loaderVersion]
+      #  1.7.10 Forge is the launcher's own; another version and its loader, if it has one, are said
+      launch += ['--minecraft', self.spec.minecraft]
+      if self.spec.loaderName:
+        launch += ['--loader', self.spec.loaderName, '--loader-version', self.spec.loaderVersion]
+    if self.spec.minecraft in AGENTS:
+      launch += ['--agent', self.probeJar()]
     if self.spec.java:
       launch += ['--java', self.spec.java]
     if self.username:

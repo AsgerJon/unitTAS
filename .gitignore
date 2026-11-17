@@ -14,7 +14,6 @@
 *.jar
 # but the Gradle wrapper's own jar belongs in the repository (a clone builds with ./gradlew alone)
 !/gradle/wrapper/gradle-wrapper.jar
-!/fabric/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.nar
 *.ear
@@ -29,7 +28,8 @@ replay_pid*
 # Gradle's own: its output, its project cache, and the shared cache the scripts and sessions use
 /build/
 /.gradle/
-# the 26.3 Fabric probe's own build (SPEC.md 12, D5)
+# the 26.3 probe's build (bin/build_agent.py, SPEC.md 19.7 step 5); the retired Fabric probe's build, if left on disk
+/agent/build/
 /fabric/build/
 /fabric/.gradle/
 /.gradle-home/

@@ -326,11 +326,12 @@ window = { width = 854, height = 480, display = "nested" }   # or "headless", "p
   Java 8 is never downloaded: `java = "/path/to/java"`, `UNITTAS_JAVA8`, or the usual JDK folders.
 - `client = "gradle"` is the mod's own development run, in a `[gradle]` table: `project` (its folder), `task`
   (`runClient`) and `game` (its run folder).
-- **26.3** with Fabric Loader 0.20.1 is the other version a spec may name (`minecraft = "26.3"`, `loader = { fabric =
-  "0.20.1" }`), a real client only for now (no `client = "gradle"` and no `[server]` yet). The probe is the 26.3
-  Fabric probe's jar (`probe = "path/to/unittas-probe-26.3-fabric.jar"`); Java 25 is found as the version asks;
-  the first launch's onboarding and tutorial hints are switched off in its `options.txt`. Tests that name things by
-  mcdex member and places from `self.start` run on both versions unchanged.
+- **26.3** is the other version a spec may name (`minecraft = "26.3"`), with Fabric Loader 0.20.1 for a Fabric mod
+  (`loader = { fabric = "0.20.1" }`), or with no loader at all, as Mojang ships it; a real client only for now (no
+  `client = "gradle"` and no `[server]` yet). The probe is the 26.3 agent's jar
+  (`probe = "path/to/unittas-probe-26.3.jar"`), on the game's command line, never in `mods/`; Java 25 is found as the
+  version asks; the first launch's onboarding and tutorial hints are switched off in its `options.txt`. Tests that name things by mcdex member and
+  places from `self.start` run on both versions unchanged.
 - Paths are taken from the spec's own folder. A mod jar of the spec's own project that is older than the newest file
   under its `src/` is refused, as not built from those sources. Every mistake names the file and the key.
 
@@ -692,22 +693,21 @@ The scripts use the project's own Gradle cache, `.gradle-home/`; a session build
 `GRADLE_USER_HOME` to it too, so Minecraft is set up once, and runs `./gradlew --stop` before asking the watcher for
 a run (a daemon left inside the sandbox could hold the cache's locks).
 
-The 26.3 Fabric probe is a Gradle build of its own in `fabric/`, with its own wrapper: `cd fabric && ./gradlew build`
-on Java 25 (Gradle 9.8.2, Fabric Loom, Mojang's names) makes `fabric/build/libs/unittas-probe-26.3-fabric.jar`. Its
-version is the root's `mod_version`. The probe's version-free core, `src/probe-core/java`, is compiled into both.
-
-The loader-free 26.3 probe is a Java agent, built without Gradle: `python3 bin/build_agent.py` compiles it with Java
-25's `javac` against 26.3's own client jar and libraries (from unitTAS's download cache, each held to its sha1) and
-makes `agent/build/unittas-probe-26.3.jar`. It needs no loader and no library: the game is started with
+The 26.3 probe is a Java agent, built without Gradle: `python3 bin/build_agent.py` compiles it with Java 25's `javac`
+against 26.3's own client jar and libraries (from unitTAS's download cache, each held to its sha1) and makes
+`agent/build/unittas-probe-26.3.jar`. It needs no loader and no library: the game is started with
 `-javaagent:unittas-probe-26.3.jar=GAME` (the launcher's `--agent JAR`), and the probe puts its few hooks into the
-game's classes itself, by the JDK's own class-file API. It runs in 26.3 as Mojang ships it, and beside whatever loader
-the mod under test brings.
+game's classes itself, by the JDK's own class-file API, naming only the JDK's classes in them (a loader may hide the
+agent's jar from the game, as Fabric's does). It runs in 26.3 as Mojang ships it, and beside whatever loader the mod
+under test brings: a mod and its loader are the user's, taken as working. Its version is the root's `mod_version`.
+The probe's version-free core, `src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
 
 The probe's own game tests (`python/tests/probe`) run with `python -m unittas.selftest [filter] [on PORT]` from the
 root (through the watcher: `probe [filter] [on PORT]`). The port is a version and what runs it: `1.7.10-forge` (the
-development client, the default), `26.3-fabric` (a real client from unitTAS's own launcher, `fabric/`'s jar in its
-`mods/`) or `26.3` (26.3 as Mojang ships it, the probe a Java agent). A test written for every port names things by mcdex member and places from the port's start; one its port
-can't do yet skips, saying which step brings it (`ports.py`).
+development client, the default), `26.3` (a real client from unitTAS's own launcher, as Mojang ships it) or
+`26.3-fabric` (the same with Fabric Loader, as a Fabric mod's tests would have it); on both 26.3 ports the probe is
+the Java agent. A test written for every port names things by mcdex member and places from the port's start; one its
+version can't do yet skips, saying which step brings it (`ports.py`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the
@@ -739,15 +739,15 @@ pressed on, sets all four back to `STOP` and pushes that whatever it read, and o
 **A run**, after the lock:
 
 1. What can be checked without a display: the tools' own tests (`bin/release_tooling/tests`, `bin/tests`), that the
-   version agrees across the tree (`version_stamp.py --check`), `./gradlew build`, and the 26.3 Fabric probe's build
-   in `fabric/` on Java 25. The game's own tests can't
+   version agrees across the tree (`version_stamp.py --check`), `./gradlew build`, and the 26.3 probe's build
+   (`bin/build_agent.py` on Java 25). The game's own tests can't
    run there: run `./unittas.sh self` before pressing.
 2. The version is stamped into `gradle.properties` (`mod_version`, which names both jars and goes into
-   `mcmod.info`), `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and the 26.3 Fabric
+   `mcmod.info`), `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and the 26.3
    probe's; the counters advance. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag `X` are pushed together,
    or neither is (if `main` moved meanwhile, or the tag is taken).
-3. A GitHub release of that tag with both 1.7.10 jars, the 26.3 Fabric probe's
-   (`unittas-probe-26.3-fabric-<version>.jar`), and GitHub's generated notes (the commits and pull requests since the
+3. A GitHub release of that tag with both 1.7.10 jars, the 26.3 probe's (`unittas-probe-26.3-<version>.jar`), and
+   GitHub's generated notes (the commits and pull requests since the
    last release), titled `dev X`, `rc X` or `X`. For a draft you write yourself instead, the release step's
    `--generate-notes` becomes `--draft --notes ""`.
 

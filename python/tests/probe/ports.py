@@ -18,7 +18,7 @@ import unittest
 from typing import Callable
 
 from agentgame import AgentGame, buildAgent
-from fabricgame import FabricGame, buildFabric
+from fabricgame import FabricGame
 from probegame import ROOT, results
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
@@ -160,7 +160,7 @@ def onlyOn(*versions: str, why: str) -> Callable:
 def probeGame(name: str) -> LaunchedGame:
   """The port's game for a test class, its output in '<results>/<name>/'."""
   if port() == FABRIC_26_3:
-    return FabricGame(results(), buildFabric(os.path.join(results(), 'fabric-build', 'build.log')), name)
+    return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log')), name)
   if port() == VANILLA_26_3:
     return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log')), name)
   return DevGame(ROOT, results(), name)
