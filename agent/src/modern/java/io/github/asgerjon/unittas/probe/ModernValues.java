@@ -5,7 +5,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
@@ -45,7 +44,7 @@ final class ModernValues {
 		JsonObject item = Json.object(
 			"id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
 			"count", stack.getCount());
-		Version.itemData(stack, registries, item);
+		VersionCommon.itemData(stack, registries, item);
 		return item;
 	}
 
@@ -64,23 +63,23 @@ final class ModernValues {
 		JsonObject given = value.getAsJsonObject();
 		String id = Json.string(given, "id");
 		if (given.has("meta")) {
-			throw ProbeException.badRequest("item", Version.port() + "'s items have no meta: a colour is in the id"
+			throw ProbeException.badRequest("item", VersionName.port() + "'s items have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), damage is the item's data");
 		}
-		Optional<Item> item = Version.byId(BuiltInRegistries.ITEM, id);
+		Optional<Item> item = VersionCommon.byId(BuiltInRegistries.ITEM, id);
 		if (item.isEmpty()) {
 			throw new ProbeException("NotFound", "this game has no item " + id, Json.object("what", id));
 		}
 		int count = given.has("count") ? given.get("count").getAsInt() : 1;
 		ItemStack stack = new ItemStack(item.get(), count);
-		Version.applyItemData(stack, given, id, registries);
+		VersionCommon.applyItemData(stack, given, id, registries);
 		return stack;
 	}
 
 	/** A compound from SNBT, as the game's own commands read it; a BadRequest naming the field for text that isn't one. */
 	static CompoundTag compound(String text, String field) throws ProbeException {
 		try {
-			return Version.parseCompound(text);
+			return VersionCommon.parseCompound(text);
 		} catch (CommandSyntaxException e) {
 			throw ProbeException.badRequest(field, "not SNBT the game reads: " + e.getMessage());
 		}
@@ -92,7 +91,7 @@ final class ModernValues {
 	static JsonObject block(BlockState state) {
 		JsonObject block = Json.object("id", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
 		JsonObject properties = new JsonObject();
-		Version.properties(state, properties::addProperty);
+		VersionCommon.properties(state, properties::addProperty);
 		if (properties.size() > 0) {
 			block.add("state", properties);
 		}
@@ -119,7 +118,7 @@ final class ModernValues {
 	}
 
 	static String dimension(Entity entity) {
-		return Version.id(entity.level().dimension());
+		return VersionCommon.id(entity.level().dimension());
 	}
 
 	private static JsonElement riding(Entity entity) {
@@ -153,11 +152,11 @@ final class ModernValues {
 	/** A player (8.4's player.get): the server's player, or the client's own view of itself. */
 	static JsonObject player(Player player) {
 		String mode = player instanceof ServerPlayer server ? server.gameMode.getGameModeForPlayer().getName()
-			: Minecraft.getInstance().gameMode == null ? "" : Minecraft.getInstance().gameMode.getPlayerMode().getName();
+			: ModernThings.client().gameMode();
 		List<Object> effects = new ArrayList<>();
 		for (MobEffectInstance effect : player.getActiveEffects()) {
 			effects.add(Json.object(
-				"effect", Version.effectId(effect),
+				"effect", VersionCommon.effectId(effect),
 				// 26.3's effects have no number of their own: their id is the name
 				"id", -1,
 				"amplifier", effect.getAmplifier(),

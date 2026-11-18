@@ -32,9 +32,15 @@ public final class ModernHooks {
 	static void register(Probe probe) {
 		// the game's state, first in debug.threads (and a hang's dump), as 1.7.10's TasHang.state says it
 		probe.gameState = ModernHooks::state;
+		// the server the shared bodies act on: the integrated one, while a world is open; the client's own side
+		ModernServer.foundBy(() -> Minecraft.getInstance().getSingleplayerServer());
+		ModernThings.client = new ModernClientLookup();
 		WorldOps.bind(probe);
 		ModernThings.bind(probe);
+		ModernScreens.bind(probe);
 		ModernReset.bind(probe);
+		ModernClientReset.bind(probe);
+		ModernJoin.bind(probe);
 		ModernInput.bind(probe);
 		ModernChat.bind(probe);
 		ModernSounds.bind(probe);
@@ -85,16 +91,6 @@ public final class ModernHooks {
 	}
 
 	/** The end of a client tick: the snapshot, then "ready" once, then the client side's steps (PROTOCOL.md 4.1). */
-	/**
-	 * A crash report saved (the hook crash.saved, after CrashReport.saveToFile): the game is crashing (the client's own
-	 * crash, or the integrated server's, which crashes the client with it), so the orchestrator hears it, with the
-	 * report's file and what it says, before the JVM goes, and then the quit, with reason crash (Probe.crashed, as
-	 * 1.7.10's MixinMinecraft says it).
-	 */
-	static void crashSaved(net.minecraft.CrashReport report) {
-		Probe.crashed(Version.crashFile(report), report.getTitle(), report.getException());
-	}
-
 	public static void clientTickEnd(Minecraft mc) {
 		Probe probe = Probe.get();
 		if (probe == null) {
@@ -118,8 +114,10 @@ public final class ModernHooks {
 		snapshot.serverRunning = !stopped && sides.tickedAt(Side.SERVER) > 0;
 		Screen screen = Version.screen();
 		snapshot.inWorld = inWorld(mc, server, screen);
-		snapshot.worldFolder = stopped ? null : Version.worldFolder(server);
-		snapshot.dimension = mc.level == null ? null : Version.id(mc.level.dimension());
+		// a server joined (SPEC.md 19.7 step 10c): in its world, a disconnected screen's reason, its leaving
+		ModernJoin.ticked(probe, mc, screen);
+		snapshot.worldFolder = stopped ? null : VersionCommon.worldFolder(server);
+		snapshot.dimension = mc.level == null ? null : VersionCommon.id(mc.level.dimension());
 		snapshot.menu = screen instanceof TitleScreen;
 		snapshot.screen = screen == null ? null : Members.className(screen.getClass());
 		snapshot.paused = mc.isPaused();
@@ -210,7 +208,7 @@ public final class ModernHooks {
 	private static JsonObject ready(Snapshot snapshot) {
 		// the mods the loader beside the probe has (the mod under test's), none in vanilla
 		List<Object> mods = new ArrayList<>();
-		for (String[] mod : ModernPort.mods()) {
+		for (String[] mod : ModernLoaders.mods()) {
 			mods.add(Json.object("id", mod[0], "name", mod[1], "version", mod[2]));
 		}
 		// the game's classes the agent hooks, rewritten as they loaded (each loaded as the probe wakes)

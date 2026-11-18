@@ -202,6 +202,39 @@ class LoadTests(unittest.TestCase):
     with self.assertRaises(Missing):
       MojangNames.load(self.sources(), '1.21.1')
 
+  def test_a_server_s_log_its_own(self) -> None:
+    """
+    A dedicated server's names (SPEC.md 19.7 step 10, V21): its own log
+    (the version JSON's server_mappings), the server jar obfuscated apart
+    from the client's; kept beside the client's, never in its place.
+    """
+    server = LOG.replace('-> bvh:', '-> zzq:').encode('utf-8')
+    self.version['downloads']['server_mappings'] = {
+      'url': 'https://piston-data.mojang.com/server.txt',
+      'sha1': sha1(server), 'size': len(server)}
+    fetch = self.fetch
+
+    def withServer(url: str) -> bytes:
+      if url == 'https://piston-data.mojang.com/server.txt':
+        self.fetched.append(url)
+        return server
+      return fetch(url)
+
+    self.fetch = withServer
+    entity = 'net/minecraft/world/entity/Entity'
+    self.assertEqual('zzq', MojangNames.load(self.sources(), '1.21.1',
+                                             side='server').classes[entity])
+    self.assertEqual('bvh', MojangNames.load(self.sources(),
+                                             '1.21.1').classes[entity])
+    MojangNames.load(self.sources(), '1.21.1', side='server')
+    self.assertEqual(1, self.fetched.count(
+      'https://piston-data.mojang.com/server.txt'), 'once, then kept')
+    del self.version['downloads']['server_mappings']
+    shutil.rmtree(os.path.join(self.folder, 'cache'))
+    with self.assertRaises(Missing) as said:
+      MojangNames.load(self.sources(), '1.21.1', side='server')
+    self.assertIn('no server_mappings', str(said.exception))
+
   def test_a_version_with_no_log_is_said(self) -> None:
     del self.version['downloads']['client_mappings']
     with self.assertRaises(Missing) as said:

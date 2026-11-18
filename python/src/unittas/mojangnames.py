@@ -121,23 +121,29 @@ class MojangNames:
     return cls(classes, fields, methods)
 
   @classmethod
-  def load(cls, sources: Sources, minecraft: str) -> MojangNames:
+  def load(cls, sources: Sources, minecraft: str,
+           side: str = 'client') -> MojangNames:
     """
     The version's names from its log: fetched by its version JSON into
-    the download cache once, held to its sha1. Missing when the version
-    has no log (26.1 and later run under Mojang's own names) or it can't
-    be had.
+    the download cache once, held to its sha1. The client's, or with
+    'side' server a dedicated server's own (its server_mappings: the
+    server jar is obfuscated apart from the client's; SPEC.md 19.7 step
+    10, V21). Missing when the version has no log (26.1 and later run
+    under Mojang's own names) or it can't be had.
     """
     from .launcher import Missing, _fetched, _versionJson
+    if side not in ('client', 'server'):
+      raise ValueError('a log is the client\'s or the server\'s, not %r'
+                       % (side,))
     vanilla = _versionJson(sources, minecraft)
-    entry = vanilla.get('downloads', {}).get('client_mappings')
+    entry = vanilla.get('downloads', {}).get(side + '_mappings')
     if not entry:
-      raise Missing('the %s version JSON names no client_mappings: no '
+      raise Missing('the %s version JSON names no %s_mappings: no '
                     'obfuscation log (26.1 and later run under Mojang\'s '
-                    'own names)' % minecraft)
-    path = _fetched(sources, 'versions/%s/client.txt' % minecraft,
-                    entry['url'], 'the %s client\'s obfuscation log'
-                    % minecraft, [entry['sha1']])
+                    'own names)' % (minecraft, side))
+    path = _fetched(sources, 'versions/%s/%s.txt' % (minecraft, side),
+                    entry['url'], 'the %s %s\'s obfuscation log'
+                    % (minecraft, side), [entry['sha1']])
     with open(path, encoding='utf-8') as file:
       return cls.fromText(file.read())
 

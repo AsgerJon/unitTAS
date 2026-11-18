@@ -60,6 +60,8 @@ SERVER_MAIN = 'cpw.mods.fml.relauncher.ServerLaunchWrapper'
 PLAYER_NAME = re.compile(r'^[A-Za-z0-9_]{1,16}$')
 #  A JVM's memory as -Xmx takes it: '2G', '1536M'.
 MEMORY = re.compile(r'^[1-9][0-9]*[MG]$')
+#  A modern client's memory unless asked otherwise (--memory)
+MODERN_CLIENT_MEMORY = '4G'
 USERNAME = 'unitTAS'
 OS_NAME = 'linux'
 MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
@@ -413,6 +415,35 @@ def serverCommand(folder: str, java: str, sources: Sources, memory: str = '2G') 
   return Launch(javaCommand, [], '')
 
 
+def serverVersionCommand(folder: str, java: Optional[str], sources: Sources, minecraft: str, memory: str = '2G',
+                         javaCandidates: Optional[dict] = None, agents: tuple = ()) -> Launch:
+  """
+  The launch of a modern dedicated server as Mojang ships it (SPEC.md 19.7 step 10a), in its folder: the version's
+  server jar (its JSON's downloads.server, held to its sha1, into the download cache), run as its bundler runs it
+  (from 1.18 on it carries its libraries and the real server jar, unpacked as it starts), unpacked into the download
+  cache once (bundlerRepoDir: servers/VERSION), so a run's folder holds only the world and its files. On the Java the
+  version's JSON asks for unless 'java' names one; each of 'agents' a -javaagent before the jar, its argument the
+  server's folder (where the start file is); a server obfuscated apart from its client (before 26.1), its own table
+  of names named to them first (-Dunittas.names, from its server_mappings: 19.7 step 10, V21). No window: no
+  natives, no assets. Missing naming what can't be had; ValueError for memory -Xmx wouldn't take.
+  """
+  if not MEMORY.match(memory or ''):
+    raise ValueError("a server's memory is as -Xmx takes it, '2G' or '1536M', not %r" % (memory,))
+  vanilla = _versionJson(sources, minecraft)
+  server = (vanilla.get('downloads') or {}).get('server')
+  if not server:
+    raise Missing('the %s version JSON names no server jar' % minecraft)
+  jar = _fetched(sources, 'versions/%s/server-%s.jar' % (minecraft, minecraft), server['url'],
+                 'the %s server jar' % minecraft, [server['sha1']])
+  if java is None:
+    java = findJavaFor(versions.resolve(vanilla).javaMajor, javaCandidates)
+  words = [java, '-Xmx' + memory, '-DbundlerRepoDir=' + sources.cache.path('servers/' + minecraft)]
+  if agents and vanilla.get('downloads', {}).get('server_mappings'):
+    words.append('-Dunittas.names=' + namesTable(sources, minecraft, side='server'))
+  words += ['-javaagent:%s=%s' % (agent, folder) for agent in agents]
+  return Launch(words + ['-jar', jar, 'nogui'], [], '')
+
+
 # ---------------------------------------------------------------- any version, with a loader on top (SPEC.md 12)
 
 
@@ -655,7 +686,8 @@ def _jar(sources: Sources, library: versions.Library, gradle: bool = True) -> st
 
 
 def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: str, loader: Optional[str],
-                   loaderVersion: Optional[str], username: str = USERNAME, memory: str = '4G', width: int = 854,
+                   loaderVersion: Optional[str], username: str = USERNAME, memory: str = MODERN_CLIENT_MEMORY,
+                   width: int = 854,
                    height: int = 480, javaCandidates: Optional[dict] = None, agents: tuple = ()) -> Launch:
   """
   The launch of a real client of any version, as Mojang ships it (loader
@@ -764,7 +796,7 @@ def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str
 
 
 def namesTable(sources: Sources, minecraft: str, intermediary: Optional[str] = None,
-               client: Optional[str] = None, srg: Optional[str] = None) -> str:
+               client: Optional[str] = None, srg: Optional[str] = None, side: str = 'client') -> str:
   """
   The version's table of names (SPEC.md 19.7 steps 6b, 6d and 8), Mojang's
   to the ones the game runs under: the obfuscated ones in vanilla, with
@@ -773,15 +805,19 @@ def namesTable(sources: Sources, minecraft: str, intermediary: Optional[str] = N
   (a tsrg2 file, 'srg') on to SRG's members (beside Forge). Written once into the
   download cache from the version's obfuscation log, which is fetched
   there once and held to its sha1. Missing for a version with no log, or
-  when it can't be had.
+  when it can't be had. With 'side' server, a vanilla dedicated server's
+  own (its server_mappings: SPEC.md 19.7 step 10, V21), obfuscated alone.
   """
   from .mojangnames import TABLE_FORMAT, MojangNames
   if sources.cache is None:
     raise Missing('no %s table of names: there is no download cache to write it into' % minecraft)
+  if side == 'server' and (srg is not None or intermediary is not None):
+    raise ValueError("a server's table is its vanilla obfuscated names': a loader's server comes after vanilla's")
   kind = 'srg' if srg is not None else 'obfuscated' if intermediary is None else 'intermediary'
-  table = sources.cache.path('names/%s-%s-%s.txt' % (minecraft, kind, TABLE_FORMAT))
+  where = '' if side == 'client' else side + '-'
+  table = sources.cache.path('names/%s-%s%s-%s.txt' % (minecraft, where, kind, TABLE_FORMAT))
   if not os.path.isfile(table):
-    names = MojangNames.load(sources, minecraft)
+    names = MojangNames.load(sources, minecraft, side)
     if srg is not None:
       from .srgnames import SrgNames
       names = names.onSrg(SrgNames.fromFile(srg))
@@ -940,7 +976,7 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
       agents = (os.path.abspath(taken['--agent']),) if '--agent' in taken else ()
       launch = versionCommand(game, findJava(taken['--java']) if '--java' in taken else None, sources,
                               taken['--minecraft'], taken.get('--loader'), taken.get('--loader-version'),
-                              taken.get('--username', USERNAME), taken.get('--memory', '4G'),
+                              taken.get('--username', USERNAME), taken.get('--memory', MODERN_CLIENT_MEMORY),
                               int(taken.get('--width', 854)), int(taken.get('--height', 480)), agents=agents)
     else:
       launch = command(game, findJava(taken['--java']) if '--java' in taken else java8(), sources,

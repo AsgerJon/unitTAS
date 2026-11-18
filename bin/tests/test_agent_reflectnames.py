@@ -1,7 +1,7 @@
 """
 Reflection's names beside each kind of renaming (SPEC.md 19.7 step 8),
 with no game: the probe's own Members (agent/src/modern/java), compiled on
-its own with a stand-in Version, asked through the agent's own Names
+its own with a stand-in VersionName, asked through the agent's own Names
 lookup, handed over as the bridge hands it (names::lookup), for the
 members of a class of its own, Thing:
 - by a table of kind srg (Forge 1.20.1's: Mojang's class names, SRG's
@@ -39,10 +39,10 @@ TABLES = (('srg', '1.20.1', THING),
 CHECKS = ('kind', 'game-field', 'game-method', 'running-name-spelt',
           'class-name', 'not-the-game-s')
 
-#  the probe's Version, as far as Members asks it
+#  the probe's VersionName, as far as Members asks it
 VERSION = '''package io.github.asgerjon.unittas.probe;
 
-final class Version {
+final class VersionName {
 \tstatic String port() {
 \t\treturn "the check";
 \t}
@@ -135,7 +135,7 @@ class ReflectNamesTests(unittest.TestCase):
     sources = os.path.join(cls.work, 'src')
     written = []
     for relative, text in (
-        (PROBE + 'Version.java', VERSION),
+        (PROBE + 'VersionName.java', VERSION),
         (PROBE + 'Thing.java', THING_JAVA),
         (PROBE + 'MembersCheck.java', CHECK),
         ('io/github/asgerjon/unittas/agent/LookupOf.java', LOOKUP)):

@@ -25,10 +25,10 @@ final class ModernFlat {
 		StringBuilder text = new StringBuilder();
 		for (FlatLayer layer : layers) {
 			if (layer.meta != 0) {
-				throw ProbeException.badRequest("layers", Version.port() + "'s blocks have no meta, a block being its id"
+				throw ProbeException.badRequest("layers", VersionName.port() + "'s blocks have no meta, a block being its id"
 					+ " from 1.13 on: " + layer.id + " with meta " + layer.meta);
 			}
-			if (!Version.known(BuiltInRegistries.BLOCK, layer.id)) {
+			if (!VersionCommon.known(BuiltInRegistries.BLOCK, layer.id)) {
 				throw new ProbeException("NotFound", "this game has no block " + layer.id, Json.object("what", layer.id));
 			}
 			if (text.length() > 0) {
@@ -40,7 +40,7 @@ final class ModernFlat {
 			text.append(layer.id);
 		}
 		String named = biome.isEmpty() ? PLAINS : biome;
-		if (Version.key(Registries.BIOME, named) == null) {
+		if (VersionCommon.key(Registries.BIOME, named) == null) {
 			throw ProbeException.badRequest("biome", "a biome is a name like minecraft:plains, not " + biome);
 		}
 		return text.append(';').append(named).toString();

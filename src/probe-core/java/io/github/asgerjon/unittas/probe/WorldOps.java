@@ -46,11 +46,19 @@ final class WorldOps {
 		probe.op("world.create").does(call -> create(call, worlds));
 		probe.op("world.open").does(call -> open(call, worlds));
 		probe.op("world.close").does(WorldOps::close);
+		probe.op("world.difficulty.set").does(call -> difficulty(call, worlds));
+		bindServer(probe, worlds);
+	}
+
+	/**
+	 * The server thread's world operations alone, on those worlds: a dedicated server's (SPEC.md 19.7 step 10b), which
+	 * makes, opens and closes no world, and sets no difficulty (it sets the client's option too).
+	 */
+	static void bindServer(Probe probe, GameWorlds worlds) {
 		probe.op("world.get").does(call -> worlds.describe());
 		probe.op("world.rules.set").does(call -> rules(call, worlds));
 		probe.op("world.time.set").does(call -> time(call, worlds));
 		probe.op("world.weather.set").does(call -> weather(call, worlds));
-		probe.op("world.difficulty.set").does(call -> difficulty(call, worlds));
 		probe.op("world.prepare").does(call -> {
 			worlds.prepare();
 			return new JsonObject();

@@ -15,6 +15,9 @@ the clients a class names beyond the first, which is the run's own client
   it is.
 - Before each test, a client a test put out (kicked, or left) joins again
   ('rejoin'), so the class's next tests have it.
+- No flat wait (SPEC.md 19.7 step 10d): a further client is waited for
+  by its log, as the run's own is (session.awaitReady); the server by its
+  own signs of life (ServerGame.ready's quiet limit).
 - 'leave' before a singleplayer class; 'stop' at the run's end.
 
 - MemoryShort: the machine hasn't the memory for the games a class needs.
@@ -32,6 +35,7 @@ from typing import TYPE_CHECKING
 from .api import Game
 from .errors import NotReady, UnitTasError
 from .gamefiles import removeTree
+from .session import awaitReady
 
 if TYPE_CHECKING:  # pragma: no cover
   from typing import Any, Callable, Optional
@@ -41,8 +45,6 @@ if TYPE_CHECKING:  # pragma: no cover
 #  A real 1.7.10 client's memory (the launcher's -Xmx), and what is kept to spare beside the games (D5).
 CLIENT_MB = 2048
 MARGIN_MB = 1024
-#  From a game's start to its ready: every mod loaded.
-READY_SECONDS = float(os.environ.get('UNITTAS_READY_SECONDS', '600'))
 _MEMORY = re.compile(r'^([1-9][0-9]*)([MG])$')
 
 
@@ -202,7 +204,7 @@ class Multiplayer:
     launched = self.clientFor(name)
     try:
       connection = launched.start()
-      connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
+      awaitReady(connection, launched)
     except BaseException:
       launched.stop()
       raise
@@ -211,7 +213,7 @@ class Multiplayer:
 
   def _startServer(self, players: tuple) -> None:
     launched = self.serverFor(players)
-    connection, _ = launched.ready(READY_SECONDS)
+    connection, _ = launched.ready()
     self.server = launched
     self.serverGame = Game(connection)
     self.players = players

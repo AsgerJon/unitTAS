@@ -8,7 +8,10 @@ exactly (PROTOCOL.md section 9.5), the same for one client or for several:
    'respawned'), and its client waited for until it is there, past the
    terrain screen;
 3. one batch on the server side, in one tick: player.reset for every
-   player, world.reset, then the mods' resetPlayer hooks;
+   player (each at a start of its own: the first client's at the start
+   given, each further one SPACING blocks east of the one before, since
+   in a modern version two players in one place push each other apart),
+   world.reset, then the mods' resetPlayer hooks;
 4. client.reset on every client again, once it is at the start (its
    rain matching the server's clear weather), and three ticks to settle.
 
@@ -31,6 +34,9 @@ if TYPE_CHECKING:  # pragma: no cover
 OVERWORLD = 'minecraft:overworld'
 #  How long a client may take to arrive back in the overworld, in its ticks (as today's reset allows).
 ARRIVE_TICKS = 200
+#  How far east of the one before each further player's start is, in blocks: two players in one place push each other
+#  apart in a modern version (1.21.1's did, 2026-11-18), and a player is 0.6 wide
+SPACING = 2.0
 
 
 def reset(server: Connection, clients: Optional[Iterable[Connection]] = None,
@@ -41,7 +47,8 @@ def reset(server: Connection, clients: Optional[Iterable[Connection]] = None,
   singleplayer the one client's own) and 'clients' (each game with a
   client side; by default 'server' alone, singleplayer's case). A mod's
   resetPlayer that throws raises GameError: the player is then not fully
-  reset, and the test is an error.
+  reset, and the test is an error. The first client's player is put at
+  'at', each further one SPACING blocks east of the one before.
   """
   clients = [server] if clients is None else list(clients)
   for client in clients:
@@ -63,10 +70,11 @@ def reset(server: Connection, clients: Optional[Iterable[Connection]] = None,
       client.request('wait.until', {
         'side': 'client', 'op': 'screen.get', 'max_ticks': ARRIVE_TICKS,
         'test': {'not': {'path': ['class'], 'contains': 'DownloadTerrain'}}}, timeout=timeout)
-  where = {'at': list(at), 'look': {'yaw': yaw, 'pitch': pitch}, 'hooks': 'after'}
-  ops = []
   players = [client.request('player.get', side='client', timeout=timeout)['name'] for client in clients]
-  for name in players:
+  starts = [[at[0] + SPACING * index, at[1], at[2]] for index in range(len(players))]
+  wheres = [{'at': start, 'look': {'yaw': yaw, 'pitch': pitch}, 'hooks': 'after'} for start in starts]
+  ops = []
+  for name, where in zip(players, wheres):
     ops.append({'op': 'player.reset', 'args': dict(where, player=name) if len(players) > 1 else dict(where)})
   ops.append({'op': 'world.reset'})
   ops.append({'op': 'hooks.run', 'args': {'hook': 'resetPlayer'}})
@@ -82,9 +90,9 @@ def reset(server: Connection, clients: Optional[Iterable[Connection]] = None,
   #  move (the first reset after a world opens comes from the world's own spawn, far off) the teleport can reach the
   #  client before the chunk does, and the client's player falls through an empty world: placed once more then, with
   #  the chunk there
-  there = {'all': [{'path': ['pos', 0], 'eq': at[0]}, {'path': ['pos', 1], 'eq': at[1]}, {'path': ['pos', 2], 'eq': at[2]},
-                   {'path': ['on_ground'], 'eq': True}]}
-  for client, name in zip(clients, players):
+  for client, name, start, where in zip(clients, players, starts, wheres):
+    there = {'all': [{'path': ['pos', 0], 'eq': start[0]}, {'path': ['pos', 1], 'eq': start[1]},
+                     {'path': ['pos', 2], 'eq': start[2]}, {'path': ['on_ground'], 'eq': True}]}
     placed = client.request('wait.until', {
       'side': 'client', 'op': 'player.get', 'max_ticks': ARRIVE_TICKS, 'test': there}, timeout=timeout)
     if not placed['held']:

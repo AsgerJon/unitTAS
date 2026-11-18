@@ -265,6 +265,9 @@ class FakePlayer:
     #  the ticks of mining a block takes out of creative
     self.hardness = 6
     self.mining = None
+    #  a block that turns into another as it is mined (dirt grown to grass on a random tick): by its place, after how
+    #  many ticks of mining, and what it becomes; its mining goes on, as the game's does
+    self.becomes = {}
     self.hitDelay = 0
     #  the keys pressed since the last tick, which click once
     self.pressed = set()
@@ -606,6 +609,9 @@ class FakePlayer:
       if self.mining is None or self.mining[0] != pos:
         self.mining = [pos, 0]
       self.mining[1] += 1
+      change = self.becomes.get(pos)
+      if change is not None and self.mining[1] == change[0]:
+        self.walls[pos] = change[1]
       if self.mining[1] < self.hardness:
         return
     if pos[1] < GROUND:

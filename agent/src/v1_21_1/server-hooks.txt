@@ -1,0 +1,18 @@
+# The game's methods the 1.21.1 probe hooks in a dedicated server (SPEC.md 19.7 step 10b): the agent reads this file
+# instead of hooks.txt when its start file says role server. As hooks.txt, by Mojang's names, renamed as the agent wakes
+# by the server's own table (-Dunittas.names, from the version's server_mappings where it is obfuscated). No client
+# class: a dedicated server has none.
+entry	io.github.asgerjon.unittas.probe.ModernServerEntry
+# the server about to start: the probe dials, while the world loads
+BEFORE	net/minecraft/server/dedicated/DedicatedServer	initServer	()Z	server.starting
+BEFORE	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.start
+AFTER	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.end
+# a crash report saved: the server is crashing, said before the JVM goes (ModernCrash)
+AFTER	net/minecraft/CrashReport	saveToFile	(Ljava/nio/file/Path;Lnet/minecraft/ReportType;Ljava/util/List;)Z	crash.saved
+# what a command's source is told while command.run runs it, as the client's hooks have it: its lines (ModernThings.heard)
+BEFORE	net/minecraft/server/level/ServerPlayer	sendSystemMessage	(Lnet/minecraft/network/chat/Component;Z)V	command.heard
+BEFORE	net/minecraft/server/MinecraftServer	sendSystemMessage	(Lnet/minecraft/network/chat/Component;)V	command.heard
+# a player in, once the server has placed it in the world, and out (PROTOCOL.md 9.4): the player.joined and
+# player.left events, the status's players (ModernServerHooks)
+AFTER	net/minecraft/server/players/PlayerList	placeNewPlayer	(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/network/CommonListenerCookie;)V	player.joined
+BEFORE	net/minecraft/server/players/PlayerList	remove	(Lnet/minecraft/server/level/ServerPlayer;)V	player.left

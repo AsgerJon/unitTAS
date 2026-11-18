@@ -91,7 +91,7 @@ final class ModernPerceive {
 			return door.type().canOpenByHand();
 		}
 		if (block instanceof TrapDoorBlock trapdoor) {
-			return Version.trapdoorType(trapdoor).canOpenByHand();
+			return VersionCommon.trapdoorType(trapdoor).canOpenByHand();
 		}
 		return block instanceof FenceGateBlock;
 	}
@@ -174,7 +174,7 @@ final class ModernPerceive {
 		int z = (int) call.number("z", 0, -30000000, 30000000);
 		Level level = ModernThings.player(call).level();
 		int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
-		if (top < Version.minY(level)) {
+		if (top < VersionCommon.minY(level)) {
 			throw new ProbeException("NotFound", "nothing at x " + x + ", z " + z + " stops movement or holds a fluid",
 				Json.object("what", "the ground at x " + x + ", z " + z));
 		}

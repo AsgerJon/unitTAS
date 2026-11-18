@@ -69,6 +69,9 @@ LOADER_NAMES = {'forge': 'Forge', 'fabric': 'Fabric', 'neoforge': 'NeoForge'}
 REAL_ONLY = ('26.3', '1.21.1', '1.20.1')
 #  The versions a spec may name with no loader: the game as Mojang ships it (the probe a Java agent needs none)
 NO_LOADER = ('26.3', '1.21.1', '1.20.1')
+#  The modern versions whose dedicated server has the agent in, as Mojang ships it (SPEC.md 19.7 step 10): 26.3's by
+#  Mojang's names, 1.21.1's and 1.20.1's by their servers' own tables (from their server mappings, V21)
+AGENT_SERVERS = ('26.3', '1.21.1', '1.20.1')
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
@@ -228,8 +231,12 @@ def _read(cls: type, path: str) -> InstanceSpec:
   if minecraft in REAL_ONLY and client != 'real':
     raise reader.fail('"client" is "real" for %s: a Gradle run of a %s mod\'s own isn\'t there yet' % (
       minecraft, minecraft))
-  if minecraft in REAL_ONLY and 'server' in body:
-    raise reader.fail('"server" isn\'t there yet for %s: its dedicated server has no probe yet' % minecraft)
+  if minecraft in REAL_ONLY and 'server' in body and minecraft not in AGENT_SERVERS:
+    raise reader.fail('"server" isn\'t there yet for %s: its dedicated server\'s names are its own (from its server'
+                      ' mappings), and the agent has no table of them yet' % minecraft)
+  if minecraft in REAL_ONLY and 'server' in body and loaderName:
+    raise reader.fail('"server" isn\'t there yet for %s with %s: a loader\'s dedicated server comes after vanilla\'s'
+                      % (minecraft, loaderName))
   libraries = tuple(_library(reader, entry) for entry in reader.strings(body, 'libraries'))
   repositories = reader.strings(body, 'repositories')
   if any(isinstance(library, MavenLibrary) for library in libraries) and not repositories:

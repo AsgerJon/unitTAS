@@ -68,6 +68,17 @@ class AssemblyTests(unittest.TestCase):
     with inner:
       self.assertNotIn(build_agent.HOOKS_FILE, inner.namelist())
 
+  def test_a_dedicated_server_s_hooks_beside_them(self) -> None:
+    """A dedicated server's hooks (SPEC.md 19.7 step 10b) beside the client's, which the bootstrap reads instead when
+    its start file says role server; none where none is given."""
+    path = build_agent.assemble(self.bootstrap, self.probe, '0.1.0-dev18', os.path.join(self.folder, 'server.jar'),
+                                b'entry\tx.Entry\n', '26.3', b'entry\tx.ServerEntry\n')
+    with zipfile.ZipFile(path) as jar:
+      self.assertEqual(b'entry\tx.ServerEntry\n', jar.read(build_agent.SERVER_HOOKS_FILE))
+      self.assertEqual(b'entry\tx.Entry\n', jar.read(build_agent.HOOKS_FILE))
+    with zipfile.ZipFile(self.assembled()) as jar:
+      self.assertNotIn(build_agent.SERVER_HOOKS_FILE, jar.namelist())
+
   def test_the_declarers_inside_the_probe_s_jar(self) -> None:
     """An obfuscated version's declarers (SPEC.md 19.7 step 6b): in the probe's jar, where its renaming loader reads them."""
     touch(os.path.join(self.probe, build_agent.DECLARERS), b'a\tb\t()V\tc\n')
@@ -131,6 +142,26 @@ class VersionsTests(unittest.TestCase):
           self.assertEqual(5, len(parts), line)
           self.assertIn(parts[0], ('BEFORE', 'AFTER'), line)
         self.assertEqual(counts[minecraft], len(lines) - 1, "%s's hooks" % minecraft)
+
+  def test_each_version_s_server_hooks_file(self) -> None:
+    """A dedicated server's hooks (SPEC.md 19.7 step 10b): the server's entry, its own hooks, no client class; what
+    a command's source is told (command.heard) as the client's hooks have it, so a console command's lines come back;
+    a player in and out (player.joined, player.left: PROTOCOL.md 9.4)."""
+    for minecraft, version in build_agent.VERSIONS.items():
+      with self.subTest(minecraft=minecraft):
+        with open(version.serverHooks, encoding='utf-8') as file:
+          lines = [line.rstrip('\n') for line in file if line.strip() and not line.startswith('#')]
+        self.assertEqual(['entry', 'io.github.asgerjon.unittas.probe.ModernServerEntry'], lines[0].split('\t'))
+        hooks = [line.split('\t') for line in lines[1:]]
+        self.assertEqual(['server.starting', 'server.tick.start', 'server.tick.end', 'crash.saved', 'command.heard',
+                          'command.heard', 'player.joined', 'player.left'], [hook[4] for hook in hooks])
+        with open(version.hooks, encoding='utf-8') as file:
+          client = [line.rstrip('\n').split('\t') for line in file if line.strip() and not line.startswith('#')]
+        self.assertEqual([hook for hook in client if hook[4:] == ['command.heard']],
+                         [hook for hook in hooks if hook[4] == 'command.heard'])
+        self.assertEqual([], [hook for hook in hooks if hook[1].startswith('net/minecraft/client/')],
+                         'a dedicated server has no client class')
+
 
 
 if __name__ == '__main__':

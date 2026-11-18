@@ -10,6 +10,8 @@ over a real connection.
 - A singleplayer class after a multiplayer one: the clients leave, the run's own client gets its kept world back.
 - Short of memory for the other games: refused with the numbers, nothing started.
 - The run's end: the clients leave, the other games stop.
+- No flat wait (SPEC.md 19.7 step 10d): a further client is waited for by its log, as the run's own is; the server
+  by its own signs of life.
 - MultiplayerTestCase: skipped unless the run is asked for multiplayer, and skipped in a run that can't hold one.
 """
 #  Apache-2.0 license
@@ -18,10 +20,14 @@ from __future__ import annotations
 
 import io
 import os
+import time
 import unittest
+from unittest import mock
 
 import gamecases
 from fakeprobe import FakeError, FakeProbe, inThread
+from unittas import session
+from unittas.errors import LinkTimeout
 from unittas.link import Listener
 from unittas.multiplayer import MemoryShort, Multiplayer, availableMb, megabytes
 from unittas.run import Run, runSuite
@@ -52,12 +58,15 @@ class FakeServer:
     self.fake = None
     self.connection = None
     self.listener = None
+    #  the quiet limit the server was asked for its ready with; None: its own
+    self.seconds = 'not asked'
     os.makedirs(os.path.join(folder, 'unittas', 'region'), exist_ok=True)
 
   def worldFolder(self) -> str:
     return os.path.join(self.folder, 'unittas')
 
-  def ready(self, seconds: float = 10) -> tuple:
+  def ready(self, seconds: float = None) -> tuple:
+    self.seconds = seconds
     self.listener = Listener()
     expected = self.listener.prepare(self.folder, 'server', Role.SERVER)
     self.fake = FakeProbe(expected.startFile)
@@ -73,7 +82,7 @@ class FakeServer:
     })
     self.fake.event('ready', world='unittas', listening=[{'address': '127.0.0.1', 'port': self.port}],
                     address='127.0.0.1', port=self.port, mods=[], mixins={'applied': [], 'missing': []})
-    return self.connection, awaitServerReady(self.connection, self.stop, seconds)
+    return self.connection, awaitServerReady(self.connection, self.stop, 10 if seconds is None else seconds)
 
   def stop(self) -> None:
     self.stops += 1
@@ -86,15 +95,26 @@ class FakeServer:
 
 
 class FakeClient:
-  """A further client's face: 'start' (its fake probe connects, then ready), 'stop'; it joins and leaves."""
+  """
+  A further client's face: 'start' (its fake probe connects, then ready, unless 'sayReady' is false: a game that
+  never gets there, its log never growing), 'stop'; it joins and leaves.
+  """
 
-  def __init__(self, folder: str, name: str) -> None:
+  def __init__(self, folder: str, name: str, sayReady: bool = True) -> None:
     self.folder = folder
     self.name = name
+    self.sayReady = sayReady
     self.asked = []
     self.stops = 0
     self.joined = False
     os.makedirs(folder, exist_ok=True)
+    #  its output, as a launched game has one (outputName, results)
+    self.results = folder
+    with open(os.path.join(folder, 'client.log'), 'w', encoding='utf-8') as file:
+      file.write('loading its mods\n')
+
+  def outputName(self) -> str:
+    return 'client.log'
 
   def start(self):
     self.listener = Listener()
@@ -128,8 +148,9 @@ class FakeClient:
       'wait.until': lambda args, side: {'held': True, 'tick': 5, 'checks': 1, 'value': me},
       'quit': lambda args, side: {},
     })
-    self.fake.event('ready', screen='net.minecraft.client.gui.GuiMainMenu', load_ms=10, mods=[], mixins=[],
-                    window={'title': 'unitTAS', 'width': 854, 'height': 480, 'pointer_grabbed': False})
+    if self.sayReady:
+      self.fake.event('ready', screen='net.minecraft.client.gui.GuiMainMenu', load_ms=10, mods=[], mixins=[],
+                      window={'title': 'unitTAS', 'width': 854, 'height': 480, 'pointer_grabbed': False})
     return self.connection
 
   def stop(self) -> None:
@@ -237,6 +258,21 @@ class MultiplayerTests(MultiplayerCase):
     self.assertEqual(['world.reset', 'hooks.run'], [op['op'] for op in ops[2:]])
     self.assertIn('client.reset', self.clients['bob'].ops())
     self.assertNotIn('batch', self.aliceOps()[-6:], "the run's own client is no server now")
+
+  def test_each_player_its_own_start_from_the_run_s(self) -> None:
+    """
+    The players reset from the run's own start (its flat world's: a modern version's ground is at y -61), each at a
+    start of its own: the run's own client at it, each further one 2 blocks east of the one before (in a modern
+    version two players in one place push each other apart, as 1.21.1's did on 2026-11-18).
+    """
+    self.run.flatStart = (0.5, -60.0, 0.5)
+    self.run.enterMultiplayer('AMpTests', ('alice', 'bob'), shared=False)
+    server = self.servers[0]
+    before = len(server.asked)
+    self.run.beforeTest('AMpTests.test_a', 60)
+    ops = [request for request in server.asked[before:] if request['op'] == 'batch'][0]['args']['ops']
+    self.assertEqual([('Dev', [0.5, -60.0, 0.5]), ('bob', [2.5, -60.0, 0.5])],
+                     [(op['args']['player'], op['args']['at']) for op in ops if op['op'] == 'player.reset'])
 
   def test_a_fresh_world_is_a_restart_and_a_shared_one_isnt(self) -> None:
     self.run.enterMultiplayer('AMpTests', ('alice', 'bob'), shared=False)
@@ -354,6 +390,33 @@ class MultiplayerTests(MultiplayerCase):
     self.assertEqual(2048, megabytes('2G'))
     self.assertEqual(1536, megabytes('1536M'))
     self.assertIsNone(availableMb('/no/such/meminfo'))
+
+
+class SignsOfLifeTests(MultiplayerCase):
+  """
+  No flat wait for a multiplayer class's other games (SPEC.md 19.7 step 10d; a game unitTAS opens never hangs): a
+  further client is waited for by its log, as the run's own client is (session.awaitReady); the server by its own
+  signs of life (ServerGame.ready, with its own quiet limit).
+  """
+
+  def test_a_further_client_quiet_while_it_loads_is_given_up(self) -> None:
+    def quiet(name):
+      client = FakeClient(os.path.join(self.scratch, 'client-' + name), name, sayReady=False)
+      self.clients[name] = client
+      return client
+
+    self.run.multiplayer.clientFor = quiet
+    started = time.monotonic()
+    with mock.patch.object(session, 'LOG_QUIET_SECONDS', 0.5), mock.patch.object(session, 'READY_POLL_SECONDS', 0.1):
+      with self.assertRaises(LinkTimeout) as raised:
+        self.run.enterMultiplayer('AMpTests', ('alice', 'bob'), shared=False)
+    self.assertIn('nothing new in its log', str(raised.exception))
+    self.assertLess(time.monotonic() - started, 30, 'given up by its quiet log, not after a flat wait')
+    self.assertEqual(1, self.clients['bob'].stops, 'the client given up is stopped')
+
+  def test_the_server_waited_for_by_its_own_quiet_limit(self) -> None:
+    self.run.enterMultiplayer('AMpTests', ('alice', 'bob'), shared=False)
+    self.assertEqual([None], [server.seconds for server in self.servers], "the server's ready, by its own limit")
 
 
 class MultiplayerTestCaseTests(MultiplayerCase):

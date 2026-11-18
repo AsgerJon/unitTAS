@@ -663,9 +663,11 @@ class Agent(BaseObject):
                  ticks: Optional[int] = None) -> Perception:
     """
     Breaks the block at 'pos', as a player does: into reach, looking at
-    it, the attack key held until the crosshair no longer meets that
-    block, and let go at once (creative breaks the next block 5 ticks
-    on). 'ticks' is the mining's budget: 600, left out. What it
+    it, the attack key held until the crosshair no longer meets a block
+    there, and let go at once (creative breaks the next block 5 ticks
+    on). A block that turns into another as it is mined (dirt grown to
+    grass on a random tick) is still there, and the mining goes on, as a
+    player's does. 'ticks' is the mining's budget: 600, left out. What it
     perceives after.
 
     Raises
@@ -678,19 +680,18 @@ class Agent(BaseObject):
     if budget <= 0:
       raise ValueError('a tick budget is above 0, not %r' % budget)
     seen = self._ready('breakBlock', pos, None)
-    block = seen.target.id
     first = seen.tick
     try:
       self._hold('key.attack', True)
       while True:
         seen = self.perceive()
         aim = seen.target
-        if not (aim.kind == 'block' and aim.pos == pos and aim.id == block):
+        if not (aim.kind == 'block' and aim.pos == pos):
           return seen
         if seen.tick - first > budget:
           infoSpec = """%s at %s is still there after %d ticks of mining
           (the budget)"""
-          info = infoSpec % (block, _place(pos), seen.tick - first)
+          info = infoSpec % (aim.id, _place(pos), seen.tick - first)
           raise TesttimeError('breakBlock', seen, ' '.join(info.split()))
     finally:
       self.letGo()

@@ -168,13 +168,16 @@ def _size(path: Optional[str]) -> int:
     return -1
 
 
-def _awaitReady(connection: Connection, launched: LaunchedGame, say: Callable[[str], Any]) -> None:
+def awaitReady(connection: Connection, launched: LaunchedGame, say: Optional[Callable[[str], Any]] = None) -> None:
   """
   'ready' waited for, the game's log watched meanwhile: nothing new in it
-  for LOG_QUIET_SAY_SECONDS, said; for LOG_QUIET_SECONDS, LinkTimeout (a
-  game hung while it loaded its mods). READY_SECONDS is the outer bound.
-  The game's own end (LinkClosed) comes through as it is.
+  for LOG_QUIET_SAY_SECONDS, said ('say', stderr by default); for
+  LOG_QUIET_SECONDS, LinkTimeout (a game hung while it loaded its mods).
+  READY_SECONDS is the outer bound. The game's own end (LinkClosed) comes
+  through as it is. The run's own client's wait, and a multiplayer
+  class's further clients'.
   """
+  say = say or _stderr
   log = _logOf(launched)
   started = time.monotonic()
   size, grewAt, said = _size(log), started, False
@@ -211,7 +214,7 @@ def _ready(launched: LaunchedGame, results: Optional[str] = None, say: Optional[
            meanwhile: Optional[Callable[[Connection], Any]] = None) -> Connection:
   """
   The game started and at its title screen ('ready'), its log watched
-  while it loads (_awaitReady; 'say' for what the terminal is told,
+  while it loads (awaitReady; 'say' for what the terminal is told,
   stderr by default); stopped again if it doesn't get there. 'meanwhile'
   is given the connection after the hello, while the game loads its mods:
   work of the run's own that then never stands between the ready and the
@@ -223,7 +226,7 @@ def _ready(launched: LaunchedGame, results: Optional[str] = None, say: Optional[
   try:
     if meanwhile is not None:
       meanwhile(connection)
-    _awaitReady(connection, launched, say or _stderr)
+    awaitReady(connection, launched, say)
   except BaseException:
     launched.stop()
     raise
@@ -424,12 +427,16 @@ def multiplayerFor(spec: InstanceSpec, run: Run, results: str, launched: Launche
   5), or None where a run can't hold them: real clients only (D1), each
   in a folder of its own in the results. The server gets the clients'
   mods but those the spec's [server] exclude names, the spec's EULA
-  acceptance and memory, and the Gradle cache and the download cache.
+  acceptance and memory, and the Gradle cache and the download cache. A
+  modern spec's (19.7 step 10d; only where its spec takes [server]: 26.3
+  as Mojang ships it) has the spec's agent in, as its clients do, and no
+  mods (a vanilla server loads none), on its version's own Java; its
+  clients are counted at a modern client's memory.
   """
   if spec.client != 'real':
     return None
-  from .launcher import Sources, findJava
-  from .multiplayer import Multiplayer, megabytes
+  from .launcher import MINECRAFT, MODERN_CLIENT_MEMORY, Sources, findJava
+  from .multiplayer import CLIENT_MB, Multiplayer, megabytes
   from .servergame import ServerGame
   from .specgame import RealGame
   cache = getattr(launched, 'cache', None)
@@ -442,11 +449,17 @@ def multiplayerFor(spec: InstanceSpec, run: Run, results: str, launched: Launche
                     username=name, built=True)
 
   def serverFor(players: tuple) -> Any:
-    return ServerGame(spec.folder, results, 'server', folder=os.path.join(results, 'server-world'),
-                      mods=launched.serverMods(), players=players, eula=spec.serverEula, memory=spec.serverMemory,
-                      java=findJava(spec.java), sources=Sources(gradleHome=gradleHome, cache=cache))
+    folder = os.path.join(results, 'server-world')
+    if spec.minecraft == MINECRAFT:
+      return ServerGame(spec.folder, results, 'server', folder=folder, mods=launched.serverMods(), players=players,
+                        eula=spec.serverEula, memory=spec.serverMemory, java=findJava(spec.java),
+                        sources=Sources(gradleHome=gradleHome, cache=cache))
+    return ServerGame(spec.folder, results, 'server', folder=folder, players=players, eula=spec.serverEula,
+                      memory=spec.serverMemory, java=spec.java, sources=Sources(cache=cache),
+                      minecraft=spec.minecraft, probe=launched.probeJar())
 
-  return Multiplayer(run, serverFor, clientFor, serverMb=megabytes(spec.serverMemory))
+  clientMb = CLIENT_MB if spec.minecraft == MINECRAFT else megabytes(MODERN_CLIENT_MEMORY)
+  return Multiplayer(run, serverFor, clientFor, serverMb=megabytes(spec.serverMemory), clientMb=clientMb)
 
 
 def runTests(spec: InstanceSpec, names: list, results: str, out: TextIO, cwd: str, environ: dict,

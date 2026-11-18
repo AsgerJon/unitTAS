@@ -80,9 +80,11 @@ class VerbTests(unittest.TestCase):
     self.place((3, 4, 6), MCBlocks.Stone)
     self.agent.breakBlock(at(3, 4, 6))
     self.assertEqual('minecraft:air', self.game.block(at(3, 4, 6)).id)
-    #  let go in time: nothing behind it broken
+    #  let go in time: nothing behind it broken. The grass it covered may have turned to dirt meanwhile, as covered
+    #  grass does on a random tick (the game's own chance, a few in a hundred here): either is still there
     self.game.ticks(10)
-    self.assertIn(MCBlocks.GrassBlock, self.game.membersOf(self.game.block(at(3, 3, 6))))
+    under = self.game.membersOf(self.game.block(at(3, 3, 6)))
+    self.assertTrue({MCBlocks.GrassBlock, MCBlocks.Dirt} & under, under)
 
   def test_c_mines_a_block_in_survival(self) -> None:
     self.game.command('/gamemode survival')

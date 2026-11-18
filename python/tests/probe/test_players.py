@@ -9,6 +9,9 @@ Three games at once (about 5 GB): asked for before it is run.
   is 1.7.10's affair: on 2026-11-06 it showed "Connection Lost: Disconnected from server" instead, the server's
   goodbye unread before the connection closed. unitTAS shows the game as it is.
 - The last one leaves: the server lists nobody, and a command as a player is NotReady.
+On a modern port (SPEC.md 19.7 step 10e): the server and both clients the agent's (each client a folder and a player
+of its own), on the ports whose server has the agent (ports.AGENT_SERVERS); its world's own heights. About 10 GB: a
+server of 2 GB and two clients of 4.
 
   python -m unittas.selftest test_players.      (through the watcher: "probe test_players.")
 """
@@ -20,8 +23,11 @@ import os
 import shutil
 import unittest
 
+from agentgame import AgentGame, buildAgent
+from ports import AGENT_SERVERS, V1_7_10, port, start, version
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
+from unittas.cache import Cache, defaultRoot
 from unittas.errors import BadRequest, NotFound, NotReady
 from unittas.launcher import Sources
 from unittas.release import ReleaseGame, releaseJar
@@ -37,14 +43,23 @@ class PlayersTests(unittest.TestCase):
   def setUpClass(cls) -> None:
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       raise unittest.SkipTest("a dedicated server needs Mojang's EULA accepted: this runs on Asger's standing yes only")
+    if version() != V1_7_10 and port() not in AGENT_SERVERS:
+      raise unittest.SkipTest('not on %s yet: the agent in a server comes on 26.3 first (SPEC.md 19.7 step 10b)'
+                              % port())
     os.makedirs(os.path.join(results(), 'players-server'), exist_ok=True)
-    jar = releaseJar(ROOT, os.path.join(results(), 'players-server', 'build.log'))
-    mixins = os.path.join(ROOT, 'run', 'oldsaves', 'mods', 'unimixins-1.7.10-0.3.1.jar')
     folder = os.path.join(results(), 'players-server-folder')
     shutil.rmtree(folder, ignore_errors=True)
     cls.launched = []
-    cls.server = ServerGame(ROOT, results(), 'players-server', folder=folder, mods=[jar, mixins], players=NAMES,
-                            eula=True, memory='1G', sources=Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
+    if version() == V1_7_10:
+      jar = releaseJar(ROOT, os.path.join(results(), 'players-server', 'build.log'))
+      mixins = os.path.join(ROOT, 'run', 'oldsaves', 'mods', 'unimixins-1.7.10-0.3.1.jar')
+      cls.server = ServerGame(ROOT, results(), 'players-server', folder=folder, mods=[jar, mixins], players=NAMES,
+                              eula=True, memory='1G', sources=Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
+    else:
+      jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
+      cls.server = ServerGame(ROOT, results(), 'players-server', folder=folder, players=NAMES, eula=True,
+                              memory='2G', sources=Sources(cache=Cache(defaultRoot())), minecraft=version(),
+                              probe=jar)
     cls.launched.append(cls.server)
     try:
       serverConnection, _ = cls.server.ready(READY_SECONDS)
@@ -52,10 +67,15 @@ class PlayersTests(unittest.TestCase):
       cls.serverConnection = serverConnection
       cls.clients = {}
       for name in NAMES:
-        client = ReleaseGame(ROOT, results(), 'players-' + name, jar=jar, username=name,
-                             folder=os.path.join(results(), 'players-%s-game' % name))
-        cls.launched.append(client)
-        connection = client.start()
+        game = os.path.join(results(), 'players-%s-game' % name)
+        if version() == V1_7_10:
+          client = ReleaseGame(ROOT, results(), 'players-' + name, jar=jar, username=name, folder=game)
+          cls.launched.append(client)
+          connection = client.start()
+        else:
+          client = AgentGame(results(), jar, 'players-' + name, minecraft=version(), folder=game, username=name)
+          cls.launched.append(client)
+          connection = client.start(READY_SECONDS)
         connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
         cls.clients[name] = (connection, Game(connection))
       for name in NAMES:
@@ -95,7 +115,8 @@ class PlayersTests(unittest.TestCase):
 
   def test_3_a_command_as_each(self) -> None:
     before = self.serverGame.player(name='alice').pos
-    said = self.serverGame.command('/tp @p 10 4 10', as_='bob')
+    #  to x 10.5, z 10.5, at the height the reset puts a player at (1.7.10's y 4, a modern version's -60)
+    said = self.serverGame.command('/tp @p 10 %d 10' % int(start()[1]), as_='bob')
     self.assertEqual(1, said.result, said)
     bob = self.serverGame.player(name='bob').pos
     self.assertTrue(abs(bob.x - 10.5) <= 0.5 and abs(bob.z - 10.5) <= 0.5, bob)

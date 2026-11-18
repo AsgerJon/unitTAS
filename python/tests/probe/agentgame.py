@@ -58,23 +58,27 @@ def buildAgent(log: str, minecraft: str = MINECRAFT) -> str:
 class AgentGame(LaunchedGame):
   """
   One launch of a vanilla client of the version in run/vanilla-VERSION with the probe as a Java agent, its output in
-  '<results>/<name>/client.log', in the test display, the download cache filled as it needs.
+  '<results>/<name>/client.log', in the test display, the download cache filled as it needs. A test with several
+  clients gives each a folder and a player of its own ('folder', 'username'; SPEC.md 19.7 step 10e).
   """
 
   def __init__(self, results: str, jar: str, name: str = 'agent', cache: str = None,
-               minecraft: str = MINECRAFT) -> None:
+               minecraft: str = MINECRAFT, folder: str = None, username: str = None) -> None:
     LaunchedGame.__init__(self, ROOT, results, name)
     self.__jar__ = jar
     self.__cache__ = cache or defaultRoot()
     self.__minecraft__ = minecraft
+    self.__folder__ = folder
+    self.__username__ = username
 
   def gameFolder(self) -> str:
-    return os.path.join(ROOT, 'run', 'vanilla-' + self.__minecraft__)
+    return self.__folder__ or os.path.join(ROOT, 'run', 'vanilla-' + self.__minecraft__)
 
   def command(self) -> list:
-    return [os.path.join(ROOT, 'unittas-display.sh'), sys.executable, '-I', os.path.join(ROOT, 'bin', 'launch_client.py'),
-            '--game', self.gameFolder(), '--cache', self.__cache__, '--minecraft', self.__minecraft__, '--agent',
-            self.__jar__]
+    words = [os.path.join(ROOT, 'unittas-display.sh'), sys.executable, '-I',
+             os.path.join(ROOT, 'bin', 'launch_client.py'), '--game', self.gameFolder(), '--cache', self.__cache__,
+             '--minecraft', self.__minecraft__, '--agent', self.__jar__]
+    return words + (['--username', self.__username__] if self.__username__ else [])
 
   def outputName(self) -> str:
     return 'client.log'

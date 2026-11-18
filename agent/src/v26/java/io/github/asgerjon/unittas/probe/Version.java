@@ -1,69 +1,34 @@
 package io.github.asgerjon.unittas.probe;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.serialization.DataResult;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
-import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.SharedConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.DisconnectedScreen;
+import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.chat.GuiMessageSource;
+import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
-import net.minecraft.commands.CommandSourceStack;
-import net.minecraft.commands.arguments.blocks.BlockStateParser;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.core.Registry;
-import net.minecraft.core.component.DataComponentPatch;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.TagParser;
+import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
-import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket;
-import net.minecraft.resources.Identifier;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.sounds.SoundEvent;
-import net.minecraft.util.ProblemReporter;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.TrapDoorBlock;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockSetType;
-import net.minecraft.world.level.portal.TeleportTransition;
-import net.minecraft.world.level.storage.TagValueInput;
-import net.minecraft.world.level.storage.TagValueOutput;
-import net.minecraft.world.phys.Vec3;
 import org.lwjgl.sdl.SDLMouse;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -81,12 +46,12 @@ final class Version {
 
 	/** The probe's port, as its hello says it. */
 	static String port() {
-		return "26.3";
+		return VersionName.port();
 	}
 
 	/** The game's version, as it says itself. */
 	static String minecraft() {
-		return SharedConstants.getCurrentVersion().name();
+		return VersionName.minecraft();
 	}
 
 	/** The version's own operations, which differ too widely to share: the view and the looks. */
@@ -98,11 +63,6 @@ final class Version {
 	/** The version's worlds: the core's WorldOps on its calls. */
 	static GameWorlds worlds() {
 		return new V26Worlds();
-	}
-
-	/** The running world's folder's name; null when none is open. */
-	static String worldFolder(MinecraftServer server) {
-		return V26Worlds.folder(server);
 	}
 
 	/** A chat line's kind from the hooked addMessage's arguments: a player's (chat), or the game's (system). */
@@ -161,36 +121,7 @@ final class Version {
 
 	// ---------------------------------------------------------------- ids
 
-	/** A key's id as text (minecraft:overworld). */
-	static String id(ResourceKey<?> key) {
-		return key.identifier().toString();
-	}
-
-	/** The registry's entry by its id; empty for an id it hasn't, or text that is no id. */
-	static <T> Optional<T> byId(Registry<T> registry, String id) {
-		Identifier key = Identifier.tryParse(id);
-		return key == null ? Optional.empty() : registry.getOptional(key);
-	}
-
-	/** Whether the registry has the id (a defaulted one, the blocks', answers its default for any other). */
-	static boolean known(Registry<?> registry, String id) {
-		Identifier key = Identifier.tryParse(id);
-		return key != null && registry.containsKey(key);
-	}
-
-	/** A key in the registry by its id; null for text that is no id. */
-	static <T> ResourceKey<T> key(ResourceKey<? extends Registry<T>> registry, String id) {
-		Identifier key = Identifier.tryParse(id);
-		return key == null ? null : ResourceKey.create(registry, key);
-	}
-
 	// ---------------------------------------------------------------- sounds
-
-	/** A sound by its id, as a UI sound plays it; null for text that is no id. */
-	static SoundEvent soundEvent(String id) {
-		Identifier key = Identifier.tryParse(id);
-		return key == null ? null : SoundEvent.createVariableRangeEvent(key);
-	}
 
 	static String soundId(SoundInstance sound) {
 		return sound.getIdentifier().toString();
@@ -203,23 +134,6 @@ final class Version {
 
 	// ---------------------------------------------------------------- the inventory
 
-	/** The main slots: the hotbar's nine, then the rest. */
-	static List<ItemStack> mainItems(Inventory inventory) {
-		return inventory.getNonEquipmentItems();
-	}
-
-	static int selectedSlot(Inventory inventory) {
-		return inventory.getSelectedSlot();
-	}
-
-	static void selectSlot(Inventory inventory, int slot) {
-		inventory.setSelectedSlot(slot);
-	}
-
-	static ItemStack selectedItem(Inventory inventory) {
-		return inventory.getSelectedItem();
-	}
-
 	/** The game's own pick of what the crosshair meets, made afresh for the look as it is now (Minecraft's, private). */
 	static void pick(float partialTick) {
 		Members.call(Picking.PICK, Minecraft.getInstance(), partialTick);
@@ -231,39 +145,6 @@ final class Version {
 	}
 
 	// ---------------------------------------------------------------- items' data, chat, reach, results
-
-	/** An item's own data as the protocol has it: its component patch as SNBT ("components"), when it has any. */
-	static void itemData(ItemStack stack, HolderLookup.Provider registries, JsonObject item) {
-		DataComponentPatch patch = stack.getComponentsPatch();
-		if (!patch.isEmpty()) {
-			Tag written = DataComponentPatch.CODEC.encodeStart(registries.createSerializationContext(NbtOps.INSTANCE), patch)
-				.getOrThrow();
-			item.addProperty("components", written.toString());
-		}
-	}
-
-	/**
-	 * The protocol's item's data put on its stack: its components (SNBT of a component patch); BadRequest for nbt, which
-	 * 26.3's items haven't (data components from 1.20.5), and for components that aren't the item's.
-	 */
-	static void applyItemData(ItemStack stack, JsonObject given, String id, HolderLookup.Provider registries)
-		throws ProbeException {
-		if (given.has("nbt")) {
-			throw ProbeException.badRequest("item", port() + "'s items have components, not NBT");
-		}
-		String components = Json.string(given, "components");
-		if (components == null) {
-			return;
-		}
-		DataResult<DataComponentPatch> read = DataComponentPatch.CODEC.parse(
-			registries.createSerializationContext(NbtOps.INSTANCE), ModernValues.compound(components, "item"));
-		Optional<DataComponentPatch> patch = read.result();
-		if (patch.isEmpty()) {
-			throw ProbeException.badRequest("item", "the components aren't " + id + "'s: "
-				+ read.error().map(DataResult.Error::message).orElse(components));
-		}
-		stack.applyComponents(patch.get());
-	}
 
 	/** A chat line as the game's own JSON, by its registries when a world is open. */
 	static String chatJson(Component message) {
@@ -283,102 +164,43 @@ final class Version {
 		return player.entityInteractionRange();
 	}
 
-	/** The source, its command's result kept in result[0] as the command ends. */
-	static CommandSourceStack withResult(CommandSourceStack source, int[] result) {
-		return source.withCallback((success, value) -> result[0] = value);
-	}
-
-	/** A block entity's data, without its id and place, as /data reads it. */
-	static CompoundTag tileData(BlockEntity tile, HolderLookup.Provider registries) {
-		return tile.saveWithoutMetadata(registries);
-	}
-
-	/** A mob effect's id (minecraft:speed). */
-	static String effectId(MobEffectInstance effect) {
-		return effect.getEffect().unwrapKey().map(Version::id).orElse("");
-	}
-
-	/** A trapdoor's kind, whose hand-opening it says (its getter protected). */
-	static BlockSetType trapdoorType(TrapDoorBlock block) {
-		return Members.call(Trapdoors.TYPE, block);
-	}
-
-	/** Found at the first trapdoor asked about, once the probe has its names. */
-	private static final class Trapdoors {
-
-		static final java.lang.reflect.Method TYPE = Members.method(TrapDoorBlock.class, "getType");
-	}
-
 	// ---------------------------------------------------------------- the world, players and entities
 
-	/** The lowest block a level has. */
-	static int minY(Level level) {
-		return level.getMinY();
+	// ---------------------------------------------------------------- joining a server
+
+	/**
+	 * Joins a server as the multiplayer screen's Direct Connect does (ConnectScreen.startConnecting), the title screen
+	 * its parent, where a refused join's screen leads back to. On the client thread.
+	 */
+	static void connect(String host, int port) {
+		ConnectScreen.startConnecting(new TitleScreen(), Minecraft.getInstance(), new ServerAddress(host, port),
+			new ServerData("unitTAS", host + ":" + port, ServerData.Type.OTHER), false, null);
 	}
 
-	static ServerLevel level(ServerPlayer player) {
-		return player.level();
+	/**
+	 * Leaves the server as the pause menu's Disconnect does (disconnectFromWorld), then for the title screen, where a
+	 * join starts (the game's own goes to its server list). On the client thread.
+	 */
+	static void leaveServer() {
+		Minecraft.getInstance().disconnectFromWorld(ClientLevel.DEFAULT_QUIT_MESSAGE);
+		setScreen(new TitleScreen());
 	}
 
-	/** A player to another place, in that level, looking that way, nothing else changed. */
-	static void teleport(ServerPlayer player, ServerLevel to, double x, double y, double z, float yaw, float pitch) {
-		player.teleport(new TeleportTransition(to, new Vec3(x, y, z), Vec3.ZERO, yaw, pitch,
-			TeleportTransition.DO_NOTHING));
+	/** What a disconnected screen says, as a player reads it: its title, then its reason. */
+	static String disconnectReason(Screen screen) {
+		DisconnectionDetails details = Members.get(Disconnecting.DETAILS, screen);
+		return screen.getTitle().getString() + ": " + details.reason().getString();
 	}
 
-	/** No bed or anchor to respawn at. */
-	static void clearRespawn(ServerPlayer player) {
-		player.setRespawnPosition(null, false);
+	/** Found at the first disconnected screen read, once the probe has its names. */
+	private static final class Disconnecting {
+
+		static final java.lang.reflect.Field DETAILS = Members.field(DisconnectedScreen.class, "details");
 	}
 
-	/** The held slot told to the player's client. */
-	static void sendHeldSlot(ServerPlayer player, int slot) {
-		player.connection.send(new ClientboundSetHeldSlotPacket(slot));
-	}
-
-	/** An entity's data, without its id, as /data reads it. */
-	static CompoundTag save(Entity entity, HolderLookup.Provider registries) {
-		TagValueOutput data = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registries);
-		entity.saveWithoutId(data);
-		return data.buildResult();
-	}
-
-	static void load(Entity entity, CompoundTag data, HolderLookup.Provider registries) {
-		entity.load(TagValueInput.create(ProblemReporter.DISCARDING, registries, data));
-	}
-
-	static void loadTile(BlockEntity tile, CompoundTag data, HolderLookup.Provider registries) {
-		tile.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, registries, data));
-	}
-
-	/** An entity made as a command makes one; null for a kind a command can't make. */
-	static Entity create(EntityType<?> kind, ServerLevel level) {
-		return kind.create(level, EntitySpawnReason.COMMAND);
-	}
-
-	/** A mob given what it would have spawned with, as /summon does. */
-	static void finalizeSpawn(Mob mob, ServerLevel level) {
-		mob.finalizeSpawn(level, level.getCurrentDifficultyAt(mob.blockPosition()), EntitySpawnReason.COMMAND, null);
-	}
-
-	/** An entity put at a place, looking that way, before it is in a world. */
-	static void place(Entity entity, double x, double y, double z, float yaw, float pitch) {
-		entity.snapTo(x, y, z, yaw, pitch);
-	}
-
-	/** A block's state from text, as commands read it (minecraft:oak_stairs[facing=east]). */
-	static BlockState parseBlock(String text) throws CommandSyntaxException {
-		return BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, text, false).blockState();
-	}
-
-	/** A compound from SNBT, as the game's own commands read it. */
-	static CompoundTag parseCompound(String text) throws CommandSyntaxException {
-		return TagParser.parseCompoundFully(text);
-	}
-
-	/** Each of a state's properties, by its name and its value's name. */
-	static void properties(BlockState state, BiConsumer<String, String> each) {
-		state.getValues().forEach(value -> each.accept(value.property().getName(), value.valueName()));
+	/** Whether the screen is the one a client shows while it receives a level (26.3 has one for both kinds). */
+	static boolean levelLoading(Screen screen) {
+		return screen instanceof LevelLoadingScreen;
 	}
 
 	// ---------------------------------------------------------------- input
@@ -453,20 +275,4 @@ final class Version {
 	}
 
 	// ---------------------------------------------------------------- containers
-
-	/** container.click's modes, in 1.7.10's order (pickup, quick_move, swap, clone, throw, quick_craft, pickup_all). */
-	static Object[] clickModes() {
-		return ContainerInput.values();
-	}
-
-	/** The class of a click's mode, for the screen's own slotClicked. */
-	static Class<?> clickModeClass() {
-		return ContainerInput.class;
-	}
-
-	/** The file a crash report was saved to, or null where it couldn't be (its save file is a Path here). */
-	static java.io.File crashFile(net.minecraft.CrashReport report) {
-		java.nio.file.Path saved = report.getSaveFile();
-		return saved == null ? null : saved.toFile();
-	}
 }

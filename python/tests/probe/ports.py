@@ -49,6 +49,12 @@ NBT_ITEMS = (V1_7_10, V1_20_1)
 #  1.18 on (the world's bottom at y -64)
 STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_20_1: (0.5, -60.0, 0.5), V1_21_1: (0.5, -60.0, 0.5),
           V26_3: (0.5, -60.0, 0.5)}
+#  the flat test world's grass, under a player at the start
+GRASS = {V1_7_10: 'minecraft:grass', V1_20_1: 'minecraft:grass_block', V1_21_1: 'minecraft:grass_block',
+         V26_3: 'minecraft:grass_block'}
+#  the ports whose dedicated server has the agent in (SPEC.md 19.7 step 10b): 26.3's by Mojang's names, 1.21.1's and
+#  1.20.1's by their servers' own tables (V21); a loader's server comes after vanilla's
+AGENT_SERVERS = (VANILLA_26_3, VANILLA_1_21_1, VANILLA_1_20_1)
 #  the commands whose text differs between the versions, by what they do
 COMMANDS = {
   'xp 30 levels': {V1_7_10: '/xp 30L', V26_3: '/xp add @p 30 levels'},

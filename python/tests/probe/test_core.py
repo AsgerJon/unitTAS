@@ -46,12 +46,15 @@ SELF_PLUGIN_ONLY = "unitTAS's own SelfPlugin is in 1.7.10's development client; 
 def logLine(level: str, message: str) -> str:
   """
   The line log.write's message makes in the game's output, as a pattern: 1.7.10's console line; from 1.13 on the
-  Log4j event the version's own logging configuration writes (an XML event, its message in CDATA).
+  Log4j event the version's own logging configuration writes (an XML event, its message in CDATA), or, where the
+  loader brings a logging configuration of its own (NeoForge 1.21.1's), its console line ([thread/LEVEL]
+  [unitTAS/]: message).
   """
+  line = r'/%s\] \[unitTAS/?\]: %s$' % (level, re.escape(message))
   if version() == V1_7_10:
-    return r'(?m)/%s\] \[unitTAS\]: %s$' % (level, re.escape(message))
-  return (r'<log4j:Event logger="unitTAS" [^>]*level="%s"[^>]*>\s*<log4j:Message><!\[CDATA\[%s\]\]>'
-          % (level, re.escape(message)))
+    return '(?m)' + line
+  return (r'(?m)<log4j:Event logger="unitTAS" [^>]*level="%s"[^>]*>\s*<log4j:Message><!\[CDATA\[%s\]\]>|%s'
+          % (level, re.escape(message), line))
 
 
 def isJavaResult(event: dict) -> bool:

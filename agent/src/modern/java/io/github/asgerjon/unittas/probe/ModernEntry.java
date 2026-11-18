@@ -106,7 +106,7 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 				ModernHooks.serverTickEnd();
 				return pass;
 			case "crash.saved":
-				ModernHooks.crashSaved((net.minecraft.CrashReport) self);
+				ModernCrash.saved((net.minecraft.CrashReport) self);
 				return pass;
 			default:
 				// a hook of the version's own (1.21.1's view keeps its frames and builds by hooks): its Version's

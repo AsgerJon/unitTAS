@@ -33,12 +33,14 @@ import json
 import os
 import re
 import socket
+import time
 import uuid
 from typing import TYPE_CHECKING
 
-from .errors import UnitTasError
+from .errors import LinkTimeout, UnitTasError
 from .game import LaunchedGame
-from .launcher import Sources, findJava, offlineId, serverCommand
+from .gameoutput import GameOutput
+from .launcher import Sources, findJava, offlineId, serverCommand, serverVersionCommand
 from .release import putMods
 from .wire import Role
 
@@ -51,8 +53,10 @@ EULA_URL = 'https://aka.ms/MinecraftEULA'
 LOOPBACK = '127.0.0.1'
 #  127.0.0.1 as a server's ready may say it: Java on Linux listens through an IPv6 socket, which names it so
 LOOPBACK_FORMS = ('127.0.0.1', '::ffff:127.0.0.1')
-#  From the server's hello to its world's first tick.
-READY_SECONDS = float(os.environ.get('UNITTAS_READY_SECONDS', '600'))
+#  From the server's hello to its world's first tick: how long it may go without a sign of life (nothing new in its
+#  output) before its ready, as a game's hello is waited for (SPEC.md 19.7 step 10a; Asger, 2026-11-17: "600s is
+#  disgusting"); a server making its world says what it does as it goes
+READY_SECONDS = float(os.environ.get('UNITTAS_READY_SECONDS', '120'))
 #  A player name as 1.7.10 takes one: letters, digits and the underscore, 1 to 16 of them.
 NAME = re.compile(r'^[A-Za-z0-9_]{1,16}$')
 #  server.properties, in this order; the port goes in where it says.
@@ -75,6 +79,38 @@ PROPERTIES = (
   ('max-players', '8'),
   ('player-idle-timeout', '0'),
   ('announce-player-achievements', 'false'),
+  ('enable-command-block', 'true'),
+  ('white-list', 'false'),
+  ('motd', 'unitTAS'),
+)
+#  A modern server's test world (SPEC.md 19.7 step 10a): the client's (bedrock, two dirt, grass, on plains, no
+#  structures), its layers as server.properties takes them from 1.13 on (JSON)
+MODERN_LAYERS = json.dumps({'layers': [{'block': 'minecraft:bedrock', 'height': 1},
+                                       {'block': 'minecraft:dirt', 'height': 2},
+                                       {'block': 'minecraft:grass_block', 'height': 1}],
+                            'biome': 'minecraft:plains'}, separators=(',', ':'))
+#  A modern server's server.properties, in this order: 1.7.10's less what a modern server hasn't (the snooper, the
+#  achievements' announcement, a rule now), its game mode and difficulty by name, and no chat signing (a test client
+#  signs none)
+MODERN_PROPERTIES = (
+  ('server-ip', LOOPBACK),
+  ('server-port', None),
+  ('online-mode', 'false'),
+  ('enforce-secure-profile', 'false'),
+  ('enable-rcon', 'false'),
+  ('enable-query', 'false'),
+  ('level-name', 'unittas'),
+  ('level-type', 'minecraft:flat'),
+  ('generator-settings', MODERN_LAYERS),
+  ('generate-structures', 'false'),
+  ('level-seed', '20261029'),
+  ('gamemode', 'creative'),
+  ('force-gamemode', 'true'),
+  ('difficulty', 'easy'),
+  ('spawn-protection', '0'),
+  ('allow-flight', 'true'),
+  ('max-players', '8'),
+  ('player-idle-timeout', '0'),
   ('enable-command-block', 'true'),
   ('white-list', 'false'),
   ('motd', 'unitTAS'),
@@ -103,12 +139,13 @@ def _writeWhole(path: str, text: str) -> None:
   os.replace(temporary, path)
 
 
-def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool) -> None:
+def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool, minecraft: str = '1.7.10') -> None:
   """
-  The server's three files in its folder, for a server on 127.0.0.1 at
-  'port' with 'players' its operators. 'eula' is the user's own
-  acceptance of Mojang's EULA (the spec says so); without it, nothing is
-  written and ServerSetupError says how to give it.
+  The server's three files in its folder, for a server of 'minecraft' on
+  127.0.0.1 at 'port' with 'players' its operators (server.properties as
+  that version reads it: 1.7.10's, or a modern one's). 'eula' is the
+  user's own acceptance of Mojang's EULA (the spec says so); without it,
+  nothing is written and ServerSetupError says how to give it.
   """
   if eula is not True:
     raise ServerSetupError("a dedicated server needs Mojang's EULA (%s) accepted, and only you can accept it: say "
@@ -123,7 +160,8 @@ def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool) -> N
     raise ServerSetupError('two players of one name: %s' % ', '.join(players))
   os.makedirs(folder, exist_ok=True)
   lines = ['# unitTAS: written fresh for this run (on 127.0.0.1 only)']
-  lines += ['%s=%s' % (key, port if value is None else value) for key, value in PROPERTIES]
+  table = PROPERTIES if minecraft == '1.7.10' else MODERN_PROPERTIES
+  lines += ['%s=%s' % (key, port if value is None else value) for key, value in table]
   _writeWhole(os.path.join(folder, 'server.properties'), '\n'.join(lines) + '\n')
   _writeWhole(os.path.join(folder, 'eula.txt'), "# accepted by the user, in the instance spec's [server] table (%s)\n"
                                                 'eula=true\n' % EULA_URL)
@@ -132,15 +170,21 @@ def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool) -> N
 
 
 def awaitServerReady(connection: Connection, stop: Callable[[], Any], seconds: float = READY_SECONDS,
-                     since: int = 0) -> dict:
+                     since: int = 0, output: Optional[str] = None) -> dict:
   """
   The server's ready event (from the mark 'since'), once it says it
   listens on 127.0.0.1 alone. A server that names any other address, or
-  none, is stopped ('stop') before any client joins: ServerSetupError. No
-  ready in time, or the server gone first: stopped too, and that error.
+  none, is stopped ('stop') before any client joins: ServerSetupError.
+  With its 'output' (a file), it is waited for by signs of life: given up
+  once 'seconds' pass with nothing new there (LinkTimeout); without, once
+  'seconds' pass. Either way, or the server gone first: stopped too, and
+  that error.
   """
   try:
-    ready = connection.events.waitFor(lambda event: event.get('event') == 'ready', seconds, since)
+    if output is None:
+      ready = connection.events.waitFor(lambda event: event.get('event') == 'ready', seconds, since)
+    else:
+      ready = _readyWhileItWorks(connection, seconds, since, output)
   except BaseException:
     stop()
     raise
@@ -153,21 +197,41 @@ def awaitServerReady(connection: Connection, stop: Callable[[], Any], seconds: f
   return ready
 
 
+def _readyWhileItWorks(connection: Connection, seconds: float, since: int, output: str) -> dict:
+  """The ready event, waited for while the server's output grows; LinkTimeout once it is quiet for 'seconds'."""
+  seen = GameOutput(output, ())
+  quietSince = time.monotonic()
+  while True:
+    try:
+      return connection.events.waitFor(lambda event: event.get('event') == 'ready', min(1.0, seconds), since)
+    except LinkTimeout:
+      now = time.monotonic()
+      if seen.grew():
+        quietSince = now
+      if now - quietSince > seconds:
+        raise LinkTimeout('the server said nothing new for %s s before its ready (its output: %s)' % (seconds, output))
+
+
 class ServerGame(LaunchedGame):
   """
-  One launch of a 1.7.10 Forge dedicated server with the probe in it
-  (SPEC.md 11.3, step 2), in 'folder': its three files and mods/ ('mods',
-  the probe's jar and a Mixin loader among them) made before it starts,
-  'players' its operators, 'eula' the user's own acceptance, 'memory' its
-  -Xmx, on 'port' (a free one unless given). Its output is
+  One launch of a dedicated server with the probe in it (SPEC.md 11.3,
+  step 2; 19.7 step 10b), in 'folder': its three files (as 'minecraft'
+  reads them) made before it starts, 'players' its operators, 'eula' the
+  user's own acceptance, 'memory' its -Xmx, on 'port' (a free one unless
+  given). A 1.7.10 Forge server's probe is in its mods/ ('mods', the
+  probe's jar and a Mixin loader among them); a modern server's is the
+  agent ('probe', its jar), as Mojang ships the server. Its output is
   '<results>/<name>/server.log'. 'ready' starts it and lets it through
   only once it says it listens on 127.0.0.1 alone.
   """
 
   def __init__(self, root: str, results: str, name: str = 'server', folder: Optional[str] = None, mods: Iterable[str] = (),
                players: Iterable[str] = (), eula: bool = False, memory: str = '2G', java: Optional[str] = None,
-               sources: Optional[Sources] = None, port: Optional[int] = None) -> None:
+               sources: Optional[Sources] = None, port: Optional[int] = None, minecraft: str = '1.7.10',
+               probe: Optional[str] = None) -> None:
     LaunchedGame.__init__(self, root, results, name)
+    self.minecraft = minecraft
+    self.probe = probe
     self.folder = os.path.abspath(folder or os.path.join(results, name, 'world-folder'))
     self.mods = list(mods)
     self.players = tuple(players)
@@ -187,21 +251,29 @@ class ServerGame(LaunchedGame):
     return 'server.log'
 
   def command(self) -> list:
-    return serverCommand(self.folder, self.java or findJava(), self.sources, self.memory).java
+    if self.minecraft == '1.7.10':
+      return serverCommand(self.folder, self.java or findJava(), self.sources, self.memory).java
+    agents = (self.probe,) if self.probe else ()
+    return serverVersionCommand(self.folder, self.java, self.sources, self.minecraft, self.memory, agents=agents).java
 
   def workingDir(self) -> str:
     #  FML finds mods/ and config/ in the server's working folder
     return self.folder
 
   def prepare(self) -> None:
-    serverFiles(self.folder, self.port, self.players, self.eula)
-    putMods(self.folder, self.mods, os.path.join(self.results, 'mods-before-this-run'))
+    serverFiles(self.folder, self.port, self.players, self.eula, self.minecraft)
+    if self.minecraft == '1.7.10' or self.mods:
+      putMods(self.folder, self.mods, os.path.join(self.results, 'mods-before-this-run'))
 
   def worldFolder(self) -> str:
     """The server's world (level-name unittas): removed for a fresh one, which the next start makes again."""
     return os.path.join(self.folder, 'unittas')
 
   def ready(self, seconds: float = READY_SECONDS) -> tuple:
-    """Started, its hello welcomed and its ready let through (awaitServerReady): (the connection, the ready event)."""
+    """
+    Started, its hello welcomed and its ready let through (awaitServerReady, by its output's signs of life, quiet
+    for 'seconds' at most): (the connection, the ready event).
+    """
     connection = self.start()
-    return connection, awaitServerReady(connection, self.stop, seconds)
+    return connection, awaitServerReady(connection, self.stop, seconds, 0,
+                                        os.path.join(self.results, self.outputName()))

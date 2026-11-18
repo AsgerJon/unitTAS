@@ -3,9 +3,6 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.CameraType;
-import net.minecraft.client.KeyMapping;
-import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -23,7 +20,8 @@ import java.util.List;
 /**
  * The reset in 26.3 (PROTOCOL.md 8.4, 9.5; README's "What tests share"), as 1.7.10's Reset and ServerReset have it,
  * by 26.3's calls and with its own parts: the off hand (cleared with the rest), the hidden HUD, the camera type. Its
- * three operations, which unittas.reset runs in 9.5's order.
+ * server's two operations, which unittas.reset runs in 9.5's order with the client's (ModernClientReset): no client
+ * class (SPEC.md 19.7 step 10b), as a dedicated server's probe runs them too.
  */
 final class ModernReset {
 
@@ -36,36 +34,11 @@ final class ModernReset {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("client.reset").does(ModernReset::client).settles((call, value) ->
-			ModernThings.waitClient(call, call.number("settle_ticks", 3, 0, 1200), value));
 		probe.op("player.reset").does(ModernReset::player);
 		probe.op("world.reset").does(call -> {
-			world(ModernThings.server());
+			world(ModernServer.get());
 			return new JsonObject();
 		});
-	}
-
-	/** client.reset: no screen, no keys held, the first hotbar slot, first person, the HUD shown; no rain on the client. */
-	private static JsonElement client(Call call) throws ProbeException {
-		Minecraft mc = Minecraft.getInstance();
-		if (mc.player == null || mc.level == null) {
-			throw new ProbeException("NotReady", "client.reset needs a world: the client has no player",
-				Json.object("state", call.probe.snapshot.state));
-		}
-		if (Version.screen() != null) {
-			Version.setScreen(null);
-		}
-		KeyMapping.releaseAll();
-		// the first hotbar slot, so a given item is the held one
-		Version.selectSlot(mc.player.getInventory(), 0);
-		mc.options.setCameraType(CameraType.FIRST_PERSON);
-		if (Version.hudHidden()) {
-			Version.toggleHud();
-		}
-		// the client's own rain and thunder, to match the server's clear weather (code on the client asks it)
-		mc.level.setRainLevel(0.0F);
-		mc.level.setThunderLevel(0.0F);
-		return new JsonObject();
 	}
 
 	/**
@@ -92,10 +65,10 @@ final class ModernReset {
 		JsonObject look = call.object("look");
 		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : 0.0F;
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : 0.0F;
-		MinecraftServer server = ModernThings.server();
+		MinecraftServer server = ModernServer.get();
 		if (player.level().dimension() != Level.OVERWORLD) {
 			// back to the overworld, where the reset puts it; the client arrives some ticks later
-			Version.teleport(player, server.overworld(), at[0], at[1], at[2], yaw, pitch);
+			VersionCommon.teleport(player, server.overworld(), at[0], at[1], at[2], yaw, pitch);
 			return Json.object("respawned", true);
 		}
 		reset(player, at[0], at[1], at[2], yaw, pitch);
@@ -110,11 +83,11 @@ final class ModernReset {
 		if (player.isSleeping()) {
 			player.stopSleepInBed(true, true);
 		}
-		Version.clearRespawn(player);
+		VersionCommon.clearRespawn(player);
 		// the first hotbar slot on the server too, as on the client, and told to it: set on one side only, the two
 		// disagree on what is held
-		Version.selectSlot(player.getInventory(), 0);
-		Version.sendHeldSlot(player, 0);
+		VersionCommon.selectSlot(player.getInventory(), 0);
+		VersionCommon.sendHeldSlot(player, 0);
 		// everything held: the main slots, the armour and the off hand, and the cursor's stack
 		player.getInventory().clearContent();
 		player.containerMenu.setCarried(ItemStack.EMPTY);
@@ -159,6 +132,6 @@ final class ModernReset {
 				each.discard();
 			}
 		}
-		Version.worlds().setWeather(false, false, true);
+		VersionCommon.serverWorlds().setWeather(false, false, true);
 	}
 }

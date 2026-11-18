@@ -3,7 +3,6 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Entity;
@@ -11,7 +10,7 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * What reflection (the probe core's Reflect) reaches of the version that is its own (SPEC.md 19.7 steps 4 and 6c): the
- * side's player, its level, the game (the client's Minecraft, the integrated server), an entity by its number, and its
+ * side's player, its level, the game (the client's Minecraft, the server), an entity by its number, and its
  * stacks (with their components), entities and tags as the protocol writes them. Names are Mojang's, as the tests
  * write them. 26.x runs under them, so nothing is translated; where the game runs under other names (1.21.1's
  * obfuscated ones, Fabric's intermediary ones before 26.1, Forge 1.20.1's SRG members of Mojang's classes), each name
@@ -36,10 +35,10 @@ final class ModernReflect implements Reflect.Game {
 		return ((Entity) player).level();
 	}
 
+	/** The client's Minecraft, or the server: a client's integrated one, or the dedicated server the probe is in. */
 	@Override
 	public Object minecraft(Call call) {
-		Minecraft mc = Minecraft.getInstance();
-		return call.side == Side.CLIENT ? mc : mc.getSingleplayerServer();
+		return call.side == Side.CLIENT ? ModernThings.client().minecraft() : ModernServer.orNull();
 	}
 
 	@Override

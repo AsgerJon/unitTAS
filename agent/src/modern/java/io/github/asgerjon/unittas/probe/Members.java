@@ -29,7 +29,7 @@ final class Members {
 			field.setAccessible(true);
 			return field;
 		} catch (NoSuchFieldException e) {
-			throw new IllegalStateException(Version.port() + "'s " + className(owner) + " has no field " + name
+			throw new IllegalStateException(VersionName.port() + "'s " + className(owner) + " has no field " + name
 				+ (running.equals(name) ? "" : " (" + running + ")") + ": the probe needs it", e);
 		}
 	}
@@ -47,7 +47,7 @@ final class Members {
 			method.setAccessible(true);
 			return method;
 		} catch (NoSuchMethodException e) {
-			throw new IllegalStateException(Version.port() + "'s " + className(owner) + " has no method " + name
+			throw new IllegalStateException(VersionName.port() + "'s " + className(owner) + " has no method " + name
 				+ descriptor + (running.equals(name) ? "" : " (" + running + ")") + ": the probe needs it", e);
 		}
 	}

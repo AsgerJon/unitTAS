@@ -79,9 +79,9 @@ time.
 - A game unitTAS opens, unitTAS closes, and it never waits on one that shows no sign of life:
   - Before its probe says hello, the launch must keep saying what it does: the launcher names each file it fetches and
     each line of a loader's installer (NeoForge's, Forge's) as they come, a build its tasks. Two minutes with nothing
-    new (`UNITTAS_HELLO_SECONDS`) and the game is stopped, said so. Once the agent has woken in the game (its first
-    line, as the JVM starts), the hello must follow within 30 s; it takes about 2. A game that ends first is said at
-    once, with its exit code.
+    new (`UNITTAS_HELLO_SECONDS`) and the game is stopped, said so. Once the probe dials (as Minecraft is launched,
+    which a loader and its mods can take well over 30 s to reach), the hello must follow within 30 s. A game that ends
+    first is said at once, with its exit code.
   - An agent whose probe can't be loaded ends the game itself, saying why (exit code 70): a game no probe drives is
     no test, so it isn't left on its title screen for the run to wait on.
 - A Python run (`unittas run`, plain `unittest`) watches the two stretches before its first world opens:
@@ -346,8 +346,9 @@ window = { width = 854, height = 480, display = "nested" }   # or "headless", "p
   [#80](https://github.com/MinecraftForge/Installer/issues/80) open), so on a system whose zlib is zlib-ng (Arch's,
   Fedora's) unitTAS runs it once more on classic zlib 1.3.1, built once into the download cache from zlib's own source
   (held to its sha1) by the system's C compiler (`cc`); without one it stops, saying so. A real client only for now (no
-  `client = "gradle"` and no `[server]` yet). The probe is the version's agent jar
-  (`probe = "path/to/unittas-probe-26.3.jar"`, `unittas-probe-1.21.1.jar`, `unittas-probe-1.20.1.jar`), on the game's
+  `client = "gradle"` yet; `[server]` on a version as Mojang ships it, below, "Multiplayer tests"). The probe is the
+  version's agent jar (`probe = "path/to/unittas-probe-26.3.jar"`, `unittas-probe-1.21.1.jar`,
+  `unittas-probe-1.20.1.jar`), on the game's
   command line, never in `mods/`; the version's Java (25 for 26.3, 21 for 1.21.1, 17 for 1.20.1) is found as it asks;
   the first launch's onboarding and tutorial hints are switched off in its `options.txt`. Tests that name things by
   mcdex member and places from `self.start` run on every version unchanged.
@@ -475,6 +476,12 @@ class SyncTests(MultiplayerTestCase):
   - `unittas run --multiplayer` (or `UNITTAS_MULTIPLAYER=1`). Without it, multiplayer classes are skipped, saying
     why.
   - `client = "real"` in the spec: each client has a folder of its own, which a development `runClient` hasn't.
+  - 1.7.10 Forge, or 26.3, 1.21.1 or 1.20.1 as Mojang ships it (no loader): its server Mojang's own server jar
+    with the spec's agent in (1.21.1's and 1.20.1's renamed by their servers' own tables, from their server mappings)
+    and no mods (a vanilla server loads none), on the version's Java. Each player starts at a place of its own: the
+    run's own client at the run's start, each further one 2 blocks east of the one before (two players in one place
+    push each other apart). A loader's server comes after vanilla's: a spec with a loader and `[server]` is refused,
+    saying so.
   - The spec's `[server]` table:
 
     ```toml
@@ -485,7 +492,8 @@ class SyncTests(MultiplayerTestCase):
     ```
 
     Without `eula = true`, `--multiplayer` is refused before anything starts.
-- **What it costs:** three games at once, the server's memory plus about 2 GB per extra client. Before they start,
+- **What it costs:** three games at once, the server's memory plus about 2 GB per extra client (4 GB on a modern
+  version, as its client's `-Xmx`; three 26.3 games used about 4.5 GB in all). Before they start,
   the machine's available memory is checked against that, plus 1 GB to spare. Short of it, that class's tests are
   `NO RESULT`, saying the numbers, and the run goes on.
 - **Safety:** the server listens on 127.0.0.1 only. It reports every address it really listens on, and unitTAS stops
@@ -758,8 +766,10 @@ A test written for every port names things by mcdex member and places from the p
 yet skips, saying which step brings it (`ports.py`). Every module runs on every port but those of 1.7.10 itself: its
 live download (`test_download`), its release jar (`test_realclient`), the Java runner (`test_noresult`, `test_oldsaves`,
 `test_core`'s `java.run`), its login race (`test_opening`), unitTAS's own 1.7.10 clients and test mod
-(`test_specgames`, `test_mptest`), and its numbers for mcdex's members (`test_mcdexthings`). Multiplayer is 1.7.10's
-so far (`test_server`, `test_join`, `test_players`, `test_multiplayer_run`).
+(`test_specgames`, `test_mptest`), and its numbers for mcdex's members (`test_mcdexthings`). Multiplayer runs on 1.7.10
+and on 26.3, 1.21.1 and 1.20.1 as Mojang ships them (`test_server`, `test_join`, `test_players`,
+`test_multiplayer_run`; the join guard's tests 1.7.10's alone, a modern server having no login race of its kind); the
+loader ports skip it, saying which step brings them.
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the

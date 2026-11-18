@@ -81,8 +81,8 @@ final class V1_20_1Looks {
 				throw ProbeException.badRequest("blocks", "1.20.1's blocks have no meta: a block is asked for by its id");
 			}
 			String id = Json.string(block, "id");
-			Optional<Block> found = id == null || !Version.known(BuiltInRegistries.BLOCK, id) ? Optional.empty()
-				: Version.byId(BuiltInRegistries.BLOCK, id);
+			Optional<Block> found = id == null || !VersionCommon.known(BuiltInRegistries.BLOCK, id) ? Optional.empty()
+				: VersionCommon.byId(BuiltInRegistries.BLOCK, id);
 			if (found.isEmpty()) {
 				out.add(Json.object("error", "this game has no block " + id));
 				continue;
@@ -121,7 +121,7 @@ final class V1_20_1Looks {
 				JsonArray stated = new JsonArray();
 				for (BlockState state : states.get(each.getKey())) {
 					JsonObject properties = new JsonObject();
-					Version.properties(state, properties::addProperty);
+					VersionCommon.properties(state, properties::addProperty);
 					stated.add(properties);
 				}
 				JsonObject variant = Json.object("states", stated);

@@ -516,7 +516,7 @@ class Run:
     else:
       self.worldNote = 'world %d, shared: %s runs in it as %s left it' % (self.worldNumber, name, previous)
     self.lastClass = name
-    reset(multiplayer.serverGame.connection, multiplayer.connections())
+    reset(multiplayer.serverGame.connection, multiplayer.connections(), at=self.flatStart)
     return multiplayer.games()
 
   def _closeOwnWorld(self) -> None:
@@ -640,7 +640,7 @@ class Run:
       #  across the games: a client a test put out back in first, then one batch on the server for every player, each
       #  client's own part (PROTOCOL.md 9.5)
       self.multiplayer.rejoin()
-      reset(self.multiplayer.serverGame.connection, self.multiplayer.connections())
+      reset(self.multiplayer.serverGame.connection, self.multiplayer.connections(), at=self.flatStart)
     elif not self.saveMode:
       reset(self.game.connection, at=self.start)
     mark = self.game.mark()

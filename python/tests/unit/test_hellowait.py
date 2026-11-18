@@ -2,8 +2,12 @@
 A launched game's wait for its hello never hangs (Asger, 2026-11-17: "if
 you open a game, it must never hang"; unittas.game.LaunchedGame.accept),
 with commands that are no game, each acting one way a game can:
-- one whose agent woke (its line in the output) but whose probe never
-  dials fails once HELLO_AFTER_WAKE has passed, not at the run's limit;
+- one whose probe dialled (its line in the output) but never said hello
+  fails once HELLO_AFTER_DIAL has passed, not at the run's limit;
+- one whose agent woke but whose game still loads (its loader, its mods,
+  Minecraft's start: its output growing) is waited for, past that limit:
+  the probe dials only once Minecraft is launched (a Fabric game's start
+  took over 30 s, 2026-11-18);
 - one that says nothing at all fails once its quiet limit has passed;
 - one that keeps saying what it does (a launcher fetching, an installer
   installing) is waited for as long as it does, past the quiet limit;
@@ -32,11 +36,20 @@ from unittas.game import LaunchedGame
 from unittas.launcher import FAILED
 
 #  each 'game', a Python script: what it prints, how it waits
-WOKE_AND_SILENT = (
+DIALLED_AND_SILENT = (
   "import sys, time\n"
   "print('[unitTAS] the probe wakes: 19 hooks', file=sys.stderr, "
   "flush=True)\n"
+  "print('[main/INFO]: unitTAS probe: dialling 127.0.0.1:5000 as game "
+  "(client)', flush=True)\n"
   "time.sleep(60)\n")
+WOKE_AND_LOADING = (
+  "import sys, time\n"
+  "print('[unitTAS] the probe wakes: 19 hooks', file=sys.stderr, "
+  "flush=True)\n"
+  "for each in range(10):\n"
+  "  print('[main/INFO]: loading, step %d' % each, flush=True)\n"
+  "  time.sleep(0.5)\n")
 SILENT = "import time\ntime.sleep(60)\n"
 BUSY = (
   "import time\n"
@@ -84,13 +97,19 @@ class HelloWaitTests(unittest.TestCase):
       launched.start(seconds)
     return raised.exception, time.monotonic() - began, launched
 
-  def test_woke_but_never_dialled(self) -> None:
-    with mock.patch.object(game, 'HELLO_AFTER_WAKE', 2.0):
-      raised, took, launched = self.started(WOKE_AND_SILENT, 60)
+  def test_dialled_but_never_said_hello(self) -> None:
+    with mock.patch.object(game, 'HELLO_AFTER_DIAL', 2.0):
+      raised, took, launched = self.started(DIALLED_AND_SILENT, 60)
     self.assertIsInstance(raised, LinkTimeout)
-    self.assertIn('woke', str(raised))
-    self.assertLess(took, 10, 'within HELLO_AFTER_WAKE, not the 60 s')
+    self.assertIn('dialled', str(raised))
+    self.assertLess(took, 10, 'within HELLO_AFTER_DIAL, not the 60 s')
     self.assertIsNotNone(launched.process().poll(), 'and stopped')
+
+  def test_woke_and_still_loading_is_waited_for(self) -> None:
+    with mock.patch.object(game, 'HELLO_AFTER_DIAL', 2.0):
+      raised, took, _ = self.started(WOKE_AND_LOADING, 3)
+    self.assertIsInstance(raised, LinkClosed, 'it ended, not timed out')
+    self.assertGreater(took, 4, 'waited past HELLO_AFTER_DIAL as it loaded')
 
   def test_silent(self) -> None:
     raised, took, launched = self.started(SILENT, 2)

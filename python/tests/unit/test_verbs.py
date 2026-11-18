@@ -82,6 +82,21 @@ class BreakTests(PlayedTests):
     self.assertGreaterEqual(self.player.tick - before, 12)
     self.assertOnlyAPlayersMeans()
 
+  def test_a_block_that_changes_as_it_is_mined(self) -> None:
+    """
+    Dirt grown to grass while it is mined (a random tick's, as on 1.21.1 on
+    2026-11-18): still a block there, so the mining goes on to the end, as
+    a player's does; the crosshair meeting another id is no break.
+    """
+    self.player.creative = False
+    self.player.hardness = 12
+    self.player.walls[(3, 4, 4)] = 'minecraft:dirt'
+    self.player.becomes[(3, 4, 4)] = (5, 'minecraft:grass')
+    self.agent.breakBlock(BlockPos(3, 4, 4))
+    self.assertNotIn((3, 4, 4), self.player.walls)
+    self.assertEqual([('broke', (3, 4, 4))], self.player.clicks)
+    self.assertOnlyAPlayersMeans()
+
   def test_the_budget_spent(self) -> None:
     self.player.creative = False
     self.player.hardness = 500

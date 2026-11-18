@@ -7,7 +7,9 @@ Asger's standing yes and 1G. selfsuite.multiplayer's four classes, in order:
 - a shared one: the world as the one before it left it;
 - a singleplayer class after them: the run's own client in its own world again.
 The report has every test ok and a world line for each; the server and bob are gone after.
-Three games at once (about 5 GB): asked for before it is run.
+Three games at once (about 5 GB; 10 GB on a modern version): asked for before it is run.
+On a modern port (SPEC.md 19.7 step 10e): a spec of the version as Mojang ships it, the agent its probe, on the
+ports whose server has the agent (ports.AGENT_SERVERS).
 
   python -m unittas.selftest test_multiplayer_run.      (through the watcher: "probe test_multiplayer_run.")
 """
@@ -21,6 +23,8 @@ import subprocess
 import sys
 import unittest
 
+from agentgame import buildAgent
+from ports import AGENT_SERVERS, V1_7_10, port, version
 from probegame import READY_SECONDS, ROOT, results
 from unittas.release import releaseJar
 
@@ -30,17 +34,25 @@ class MultiplayerRunTests(unittest.TestCase):
   def test_1_a_run_with_its_multiplayer_classes(self) -> None:
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       self.skipTest("a dedicated server needs Mojang's EULA accepted: this runs on Asger's standing yes only")
+    if version() != V1_7_10 and port() not in AGENT_SERVERS:
+      self.skipTest('not on %s yet: the agent in a server comes on 26.3 first (SPEC.md 19.7 step 10b)' % port())
     folder = os.path.join(results(), 'mp-run')
     os.makedirs(folder, exist_ok=True)
-    jar = releaseJar(ROOT, os.path.join(folder, 'build.log'))
-    mixins = os.path.join(ROOT, 'run', 'oldsaves', 'mods', 'unimixins-1.7.10-0.3.1.jar')
     game = os.path.join(results(), 'mp-client')
     shutil.rmtree(game, ignore_errors=True)
     spec = os.path.join(folder, 'multiplayer.toml')
+    if version() == V1_7_10:
+      jar = releaseJar(ROOT, os.path.join(folder, 'build.log'))
+      mixins = os.path.join(ROOT, 'run', 'oldsaves', 'mods', 'unimixins-1.7.10-0.3.1.jar')
+      text = ('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "real"\nmods = ["%s"]\n'
+              'libraries = ["%s"]\nprobe = "%s"\ngame = "%s"\n[server]\neula = true\nmemory = "1G"\n'
+              % (jar, mixins, jar, game))
+    else:
+      jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
+      text = ('minecraft = "%s"\nclient = "real"\nprobe = "%s"\ngame = "%s"\n[server]\neula = true\nmemory = "2G"\n'
+              % (version(), jar, game))
     with open(spec, 'w', encoding='utf-8') as file:
-      file.write('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "real"\nmods = ["%s"]\n'
-                 'libraries = ["%s"]\nprobe = "%s"\ngame = "%s"\n[server]\neula = true\nmemory = "1G"\n'
-                 % (jar, mixins, jar, game))
+      file.write(text)
     run = os.path.join(folder, 'run')
     environment = dict(os.environ, GRADLE_USER_HOME=os.path.join(ROOT, '.gradle-home'))
     process = subprocess.run([sys.executable, '-m', 'unittas', 'run', 'selfsuite.multiplayer', '--multiplayer',
@@ -62,7 +74,9 @@ class MultiplayerRunTests(unittest.TestCase):
     for world in ("world 2: the server's, fresh for AServerTests", "world 3: the server's, fresh for BFreshTests",
                   'world 3, shared: CSharedTests runs in it as BFreshTests left it', 'world 4: fresh for DSingleTests'):
       self.assertIn(world, report)
-    left = subprocess.run(['pgrep', '-f', 'ServerLaunchWrapper|client-bob-game'], capture_output=True, text=True)
+    #  1.7.10's server by its main class; a modern one by its folder, its agent's argument
+    left = subprocess.run(['pgrep', '-f', 'ServerLaunchWrapper|server-world|client-bob-game'], capture_output=True,
+                          text=True)
     self.assertEqual('', left.stdout.strip(), 'a game of the run left running')
 
 

@@ -6,15 +6,6 @@ import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.asgerjon.unittas.probe.link.Json;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.ChatScreen;
-import net.minecraft.client.gui.screens.PauseScreen;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
-import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
@@ -53,7 +44,9 @@ import java.util.Optional;
  * The game's things in 26.3 (SPEC.md 12.3, step 5): the bodies of command.run, the players, the inventory and
  * containers, the blocks, the entities, the screens and hooks.run (PROTOCOL.md 8.4 to 8.9), as 1.7.10's GameOps and
  * ThingOps have them, by 26.3's own calls and values (ModernValues). Each body runs on the side its request named;
- * what an operation waits for after (the client arriving, a tick) is its settle phase, on the probe's thread.
+ * what an operation waits for after (the client arriving, a tick) is its settle phase, on the probe's thread. No
+ * client class (SPEC.md 19.7 step 10b): a dedicated server's probe runs these bodies too, and the client's own side is
+ * asked through ModernClientSide; the screens are a client's alone (ModernScreens).
  */
 final class ModernThings {
 
@@ -67,16 +60,12 @@ final class ModernThings {
 	private ModernThings() {
 	}
 
+	/** The client's own side: a client's hooks give it (ModernHooks.register); a dedicated server has none. */
+	static volatile ModernClientSide client;
+
+	/** A client's: every operation here, on its integrated server's side and on its own. */
 	static void bind(Probe probe) {
-		probe.op("command.run").does(ModernThings::command).settles(ModernThings::settled);
-		probe.op("player.get").does(call -> {
-			JsonObject value = ModernValues.player(player(call));
-			if (call.side == Side.CLIENT) {
-				// the client's own: its camera (0 first person, 1 from behind, 2 from the front)
-				value.addProperty("camera", Minecraft.getInstance().options.getCameraType().ordinal());
-			}
-			return value;
-		});
+		bindShared(probe);
 		probe.op("player.teleport").does(ModernThings::teleport).settles(ModernThings::arrive);
 		probe.op("inventory.get").does(ModernThings::inventory);
 		probe.op("inventory.set").does(ModernThings::inventorySet);
@@ -89,7 +78,7 @@ final class ModernThings {
 			Entity entity = entity(call);
 			JsonObject value = ModernValues.entity(entity);
 			if (call.flag("nbt", false)) {
-				value.addProperty("nbt", Version.save(entity, registries(call)).toString());
+				value.addProperty("nbt", VersionCommon.save(entity, registries(call)).toString());
 			}
 			return value;
 		});
@@ -97,48 +86,68 @@ final class ModernThings {
 			entity(call).discard();
 			return new JsonObject();
 		});
-		probe.op("screen.open").does(ModernThings::openScreen).settles(ModernThings::oneTick);
-		probe.op("screen.close").does(ModernThings::closeScreen).settles(ModernThings::oneTick);
+	}
+
+	/**
+	 * A dedicated server's (SPEC.md 19.7 step 10b), as 1.7.10's ServerOps: the server's commands, the players by name
+	 * and their kick, the server's hooks.
+	 */
+	static void bindDedicated(Probe probe) {
+		bindShared(probe);
+		probe.op("players.list").does(call -> {
+			JsonArray list = new JsonArray();
+			for (ServerPlayer each : ModernServer.get().getPlayerList().getPlayers()) {
+				list.add(summary(each));
+			}
+			return list;
+		});
+		probe.op("player.kick").does(ModernThings::kick);
+	}
+
+	/** Both a client's and a dedicated server's. */
+	private static void bindShared(Probe probe) {
+		probe.op("command.run").does(ModernThings::command).settles(ModernThings::settled);
+		probe.op("player.get").does(call -> {
+			JsonObject value = ModernValues.player(player(call));
+			if (call.side == Side.CLIENT) {
+				// the client's own: its camera (0 first person, 1 from behind, 2 from the front)
+				value.addProperty("camera", client().camera());
+			}
+			return value;
+		});
 		probe.op("hooks.run").does(ModernThings::hooks);
 	}
 
 	// ---------------------------------------------------------------- the sides
 
-	static MinecraftServer server() throws ProbeException {
-		MinecraftServer server = Minecraft.getInstance().getSingleplayerServer();
-		if (server == null) {
-			throw new ProbeException("NotReady", "no world is open", null);
+	/** The client's own side; a dedicated server has none (its core refuses a client's request before a body runs). */
+	static ModernClientSide client() {
+		ModernClientSide given = client;
+		if (given == null) {
+			throw new IllegalStateException("no client side here: a dedicated server's probe has none");
 		}
-		return server;
+		return given;
 	}
 
 	/** The side's registries: the server's, or the client's level's. */
 	static HolderLookup.Provider registries(Call call) throws ProbeException {
 		if (call.side == Side.CLIENT) {
-			ClientLevel level = Minecraft.getInstance().level;
-			if (level == null) {
-				throw new ProbeException("NotReady", "the client has no world", null);
-			}
-			return level.registryAccess();
+			return client().registries();
 		}
-		return server().registryAccess();
+		return ModernServer.get().registryAccess();
 	}
 
 	/** The side's player: the client's own, or on the server the one named by "player" (the only one when unnamed). */
 	static Player player(Call call) throws ProbeException {
 		if (call.side == Side.CLIENT) {
-			LocalPlayer own = Minecraft.getInstance().player;
-			if (own == null) {
-				throw new ProbeException("NotReady", "the client has no player: no world is open", null);
-			}
-			return own;
+			return client().player();
 		}
 		return serverPlayer(call.string("player", null));
 	}
 
 	/** A player on the server by name; with no name, the only one (PROTOCOL.md 9.4). */
 	static ServerPlayer serverPlayer(String name) throws ProbeException {
-		List<ServerPlayer> players = server().getPlayerList().getPlayers();
+		List<ServerPlayer> players = ModernServer.get().getPlayerList().getPlayers();
 		if (name == null) {
 			if (players.size() == 1) {
 				return players.get(0);
@@ -169,10 +178,6 @@ final class ModernThings {
 		return value;
 	}
 
-	private static JsonElement oneTick(Call call, JsonElement value) throws ProbeException, InterruptedException {
-		return waitClient(call, 1, value);
-	}
-
 	// ---------------------------------------------------------------- commands
 
 	/** The command running now on this (the server's) thread, whose source's messages are its lines (heard). */
@@ -201,7 +206,7 @@ final class ModernThings {
 		if (text == null) {
 			throw ProbeException.badRequest("command", "command.run needs the command");
 		}
-		MinecraftServer server = server();
+		MinecraftServer server = ModernServer.get();
 		JsonElement as = call.args.get("as");
 		CommandSourceStack source;
 		Object told;
@@ -224,7 +229,7 @@ final class ModernThings {
 		String typed = text.startsWith("/") ? text : "/" + text;
 		HEARING.set(heard);
 		try {
-			server.getCommands().performPrefixedCommand(Version.withResult(source, result), typed);
+			server.getCommands().performPrefixedCommand(VersionCommon.withResult(source, result), typed);
 		} finally {
 			HEARING.remove();
 		}
@@ -247,9 +252,37 @@ final class ModernThings {
 		}
 	}
 
-	/** After the command, settle_ticks client ticks, so what it changed has reached the client (as 1.7.10's does). */
+	/**
+	 * After the command, settle_ticks client ticks, so what it changed has reached the client (as 1.7.10's does); a
+	 * dedicated server has no client of its own to wait for: its players' clients are theirs.
+	 */
 	private static JsonElement settled(Call call, JsonElement value) throws ProbeException, InterruptedException {
+		if (call.probe.dedicated()) {
+			return value;
+		}
 		return waitClient(call, call.number("settle_ticks", 3, 0, 1200), value);
+	}
+
+	// ---------------------------------------------------------------- players by name
+
+	/** A player in players.list (PROTOCOL.md 9.4), as 1.7.10's: name, uuid, entity id, dimension, where it stands. */
+	static JsonObject summary(ServerPlayer player) {
+		return Json.object(
+			"name", player.getName().getString(),
+			"uuid", player.getUUID().toString(),
+			"entity", player.getId(),
+			"dimension", VersionCommon.id(VersionCommon.level(player).dimension()),
+			"pos", java.util.Arrays.asList(player.getX(), player.getY(), player.getZ()));
+	}
+
+	/** player.kick: the player named is sent off, as /kick does, with that reason; it must be named. */
+	private static JsonElement kick(Call call) throws ProbeException {
+		String name = call.string("player", null);
+		if (name == null) {
+			throw ProbeException.badRequest("player", "player.kick names the player to kick");
+		}
+		serverPlayer(name).connection.disconnect(Component.literal(call.string("reason", "kicked by unitTAS")));
+		return new JsonObject();
 	}
 
 	// ---------------------------------------------------------------- teleporting
@@ -268,8 +301,8 @@ final class ModernThings {
 
 	/** The level a protocol name names; NotFound for none. */
 	static ServerLevel level(MinecraftServer server, JsonElement dimension) throws ProbeException {
-		ResourceKey<Level> key = dimension.isJsonPrimitive() ? Version.key(Registries.DIMENSION, dimension.getAsString())
-			: null;
+		ResourceKey<Level> key = dimension.isJsonPrimitive()
+			? VersionCommon.key(Registries.DIMENSION, dimension.getAsString()) : null;
 		ServerLevel level = key == null ? null : server.getLevel(key);
 		if (level == null) {
 			throw new ProbeException("NotFound", "no dimension " + dimension, Json.object("what", dimension));
@@ -283,15 +316,16 @@ final class ModernThings {
 		JsonObject look = call.object("look");
 		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : player.getYRot();
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : player.getXRot();
-		ServerLevel to = call.has("dimension") ? level(server(), call.args.get("dimension")) : Version.level(player);
+		ServerLevel to = call.has("dimension") ? level(ModernServer.get(), call.args.get("dimension"))
+			: VersionCommon.level(player);
 		call.note = null;
-		if (to != Version.level(player)) {
+		if (to != VersionCommon.level(player)) {
 			if (call.inBatch) {
 				throw ProbeException.badRequest("dimension", "a teleport to another dimension waits for the client: it can't be in a batch");
 			}
 			Vec3 at = pos == null ? player.position() : new Vec3(pos[0], pos[1], pos[2]);
-			Version.teleport(player, to, at.x, at.y, at.z, yaw, pitch);
-			call.note = Version.id(to.dimension());
+			VersionCommon.teleport(player, to, at.x, at.y, at.z, yaw, pitch);
+			call.note = VersionCommon.id(to.dimension());
 			return new JsonObject();
 		}
 		if (pos == null) {
@@ -331,11 +365,11 @@ final class ModernThings {
 		}
 		Inventory inventory = player.getInventory();
 		JsonArray main = new JsonArray();
-		for (ItemStack stack : Version.mainItems(inventory)) {
+		for (ItemStack stack : VersionCommon.mainItems(inventory)) {
 			main.add(ModernValues.item(stack, registries));
 		}
 		return Json.object(
-			"selected", Version.selectedSlot(inventory),
+			"selected", VersionCommon.selectedSlot(inventory),
 			"main", main,
 			"armor", Json.object(
 				"feet", ModernValues.item(player.getItemBySlot(EquipmentSlot.FEET), registries),
@@ -350,7 +384,7 @@ final class ModernThings {
 	static ItemStack slot(Player player, String name) throws ProbeException {
 		Inventory inventory = player.getInventory();
 		if (name.equals("held")) {
-			return Version.selectedItem(inventory);
+			return VersionCommon.selectedItem(inventory);
 		}
 		if (name.equals("cursor")) {
 			return player.containerMenu.getCarried();
@@ -360,7 +394,7 @@ final class ModernThings {
 		}
 		int main = mainIndex(inventory, name);
 		if (main >= 0) {
-			return Version.mainItems(inventory).get(main);
+			return VersionCommon.mainItems(inventory).get(main);
 		}
 		for (int i = 0; i < ARMOR.length; i++) {
 			if (ARMOR[i].equals(name)) {
@@ -377,7 +411,7 @@ final class ModernThings {
 		}
 		try {
 			int index = Integer.parseInt(name.substring(5));
-			return index >= 0 && index < Version.mainItems(inventory).size() ? index : -1;
+			return index >= 0 && index < VersionCommon.mainItems(inventory).size() ? index : -1;
 		} catch (NumberFormatException e) {
 			return -1;
 		}
@@ -411,7 +445,7 @@ final class ModernThings {
 	static void set(ServerPlayer player, String slot, ItemStack stack) {
 		Inventory inventory = player.getInventory();
 		if (slot.equals("held")) {
-			inventory.setItem(Version.selectedSlot(inventory), stack);
+			inventory.setItem(VersionCommon.selectedSlot(inventory), stack);
 		} else if (slot.equals("cursor")) {
 			player.containerMenu.setCarried(stack);
 		} else if (slot.equals("offhand")) {
@@ -474,7 +508,7 @@ final class ModernThings {
 			if (tile == null) {
 				value.add("tile", com.google.gson.JsonNull.INSTANCE);
 			} else {
-				value.addProperty("tile", Version.tileData(tile, level.registryAccess()).toString());
+				value.addProperty("tile", VersionCommon.tileData(tile, level.registryAccess()).toString());
 			}
 		}
 		return value;
@@ -492,10 +526,10 @@ final class ModernThings {
 			throw ProbeException.badRequest("block", "block is {\"id\": ..., \"state\": {...}}");
 		}
 		if (block.has("meta")) {
-			throw ProbeException.badRequest("block", Version.port() + "'s blocks have no meta: a colour is in the id"
+			throw ProbeException.badRequest("block", VersionName.port() + "'s blocks have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), the rest is the state's properties");
 		}
-		if (!Version.known(BuiltInRegistries.BLOCK, id)) {
+		if (!VersionCommon.known(BuiltInRegistries.BLOCK, id)) {
 			throw new ProbeException("NotFound", "this game has no block " + id, Json.object("what", id));
 		}
 		StringBuilder text = new StringBuilder(id);
@@ -510,7 +544,7 @@ final class ModernThings {
 		}
 		BlockState state;
 		try {
-			state = Version.parseBlock(text.toString());
+			state = VersionCommon.parseBlock(text.toString());
 		} catch (CommandSyntaxException e) {
 			throw ProbeException.badRequest("block", "the game doesn't read " + text + ": " + e.getMessage());
 		}
@@ -536,7 +570,7 @@ final class ModernThings {
 			if (tile == null) {
 				throw ProbeException.badRequest("tile", id + " has no block entity to take the data");
 			}
-			Version.loadTile(tile, tileData, level.registryAccess());
+			VersionCommon.loadTile(tile, tileData, level.registryAccess());
 			tile.setChanged();
 			level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
 		}
@@ -565,8 +599,8 @@ final class ModernThings {
 			throw ProbeException.badRequest("type", "entity.spawn needs the type");
 		}
 		double[] at = vec(call, "pos");
-		ServerLevel level = Version.level(serverPlayer(call.string("player", null)));
-		Optional<EntityType<?>> kind = Version.byId(BuiltInRegistries.ENTITY_TYPE, type);
+		ServerLevel level = VersionCommon.level(serverPlayer(call.string("player", null)));
+		Optional<EntityType<?>> kind = VersionCommon.byId(BuiltInRegistries.ENTITY_TYPE, type);
 		if (kind.isEmpty()) {
 			throw new ProbeException("NotFound", "this game has no entity " + type, Json.object("what", type));
 		}
@@ -574,7 +608,7 @@ final class ModernThings {
 			throw new ProbeException("NotReady", "no chunk is loaded at " + at[0] + " " + at[1] + " " + at[2]
 				+ ": the " + type + " would have nowhere to be", Json.object("what", type));
 		}
-		Entity entity = Version.create(kind.get(), level);
+		Entity entity = VersionCommon.create(kind.get(), level);
 		if (entity == null) {
 			throw ProbeException.badRequest("type", type + " can't be made by a command");
 		}
@@ -584,12 +618,12 @@ final class ModernThings {
 		if (call.has("nbt")) {
 			// the given data over the entity's own, as /summon's does
 			CompoundTag given = ModernValues.compound(call.string("nbt", null), "nbt");
-			CompoundTag data = Version.save(entity, level.registryAccess()).merge(given);
-			Version.load(entity, data, level.registryAccess());
+			CompoundTag data = VersionCommon.save(entity, level.registryAccess()).merge(given);
+			VersionCommon.load(entity, data, level.registryAccess());
 		}
-		Version.place(entity, at[0], at[1], at[2], yaw, pitch);
+		VersionCommon.place(entity, at[0], at[1], at[2], yaw, pitch);
 		if (call.flag("initialize", false) && entity instanceof Mob mob) {
-			Version.finalizeSpawn(mob, level);
+			VersionCommon.finalizeSpawn(mob, level);
 		}
 		if (!level.addFreshEntity(entity)) {
 			throw new ProbeException("NotReady", "the world refused the " + type + " at " + at[0] + " " + at[1] + " "
@@ -637,8 +671,7 @@ final class ModernThings {
 		}
 		boolean players = call.flag("players", false);
 		double[] from = at != null ? at : new double[]{player.getX(), player.getY(), player.getZ()};
-		Iterable<Entity> all = level instanceof ServerLevel server ? server.getAllEntities()
-			: ((ClientLevel) level).entitiesForRendering();
+		Iterable<Entity> all = level instanceof ServerLevel server ? server.getAllEntities() : client().entities(level);
 		List<Entity> found = new ArrayList<>();
 		for (Entity entity : all) {
 			if (entity.isRemoved() || (!players && entity instanceof Player)) {
@@ -668,51 +701,6 @@ final class ModernThings {
 		double dy = entity.getY() - to[1];
 		double dz = entity.getZ() - to[2];
 		return Math.sqrt(dx * dx + dy * dy + dz * dz);
-	}
-
-	// ---------------------------------------------------------------- screens
-
-	private static JsonElement openScreen(Call call) throws ProbeException {
-		Minecraft mc = Minecraft.getInstance();
-		JsonElement given = call.args.get("screen");
-		if (given != null && given.isJsonObject()) {
-			Object made = Reflect.make(call, given.getAsJsonObject());
-			if (!(made instanceof Screen)) {
-				throw ProbeException.badRequest("screen", Members.className(made.getClass()) + " is no screen");
-			}
-			Version.setScreen((Screen) made);
-			return new JsonObject();
-		}
-		String name = call.string("screen", null);
-		if (!"pause".equals(name) && mc.player == null) {
-			throw new ProbeException("NotReady", name + " needs a world", null);
-		}
-		Screen screen;
-		if ("chat".equals(name)) {
-			screen = Version.chatScreen(call.string("text", ""));
-		} else if ("inventory".equals(name)) {
-			screen = new InventoryScreen(mc.player);
-		} else if ("creative".equals(name)) {
-			screen = new CreativeModeInventoryScreen(mc.player, mc.player.connection.enabledFeatures(),
-				mc.options.operatorItemsTab().get());
-		} else if ("pause".equals(name)) {
-			screen = new PauseScreen(true);
-		} else {
-			throw ProbeException.badRequest("screen", "screen is chat, inventory, creative or pause, not " + name);
-		}
-		Version.setScreen(screen);
-		return new JsonObject();
-	}
-
-	/** As Esc closes it: a container's screen through the player's own close, which tells the server too (8.9). */
-	private static JsonElement closeScreen(Call call) {
-		Minecraft mc = Minecraft.getInstance();
-		if (Version.screen() instanceof AbstractContainerScreen && mc.player != null) {
-			mc.player.closeContainer();
-		} else {
-			Version.setScreen(null);
-		}
-		return new JsonObject();
 	}
 
 	// ---------------------------------------------------------------- the mods' hooks

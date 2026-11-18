@@ -22,10 +22,10 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 final class ModernVerbs {
 
 	/** container.click's modes, as 26.3's ContainerInput names them (1.7.10's window click types, in the same order). */
-	private static final Object[] MODES = Version.clickModes();
+	private static final Object[] MODES = VersionCommon.clickModes();
 	/** The screen's own slot click (protected): what a click on a slot does (SPEC.md 19.7 step 3b). */
 	private static final java.lang.reflect.Method SLOT_CLICKED = Members.method(AbstractContainerScreen.class,
-		"slotClicked", net.minecraft.world.inventory.Slot.class, int.class, int.class, Version.clickModeClass());
+		"slotClicked", net.minecraft.world.inventory.Slot.class, int.class, int.class, VersionCommon.clickModeClass());
 	private static final java.util.List<String> MODE_NAMES = java.util.Arrays.asList(
 		"pickup", "quick_move", "swap", "clone", "throw", "quick_craft", "pickup_all");
 

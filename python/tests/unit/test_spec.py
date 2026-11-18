@@ -214,10 +214,23 @@ class SpecTests(unittest.TestCase):
     self.refused(REAL.replace('loader = { forge = "10.13.4.1614" }\n', ''), '"loader"', 'forge')
 
   def test_26_3_s_clients(self) -> None:
-    """26.3's game is a real client for now: no Gradle run of a Fabric mod's yet, no dedicated server's probe."""
+    """26.3's game is a real client for now: no Gradle run of a Fabric mod's yet, no Fabric dedicated server."""
     gradle = REAL_26.replace('client = "real"', 'client = "gradle"') + '[gradle]\ngame = "run"\n'
     self.refused(gradle, '"client"', '26.3', 'real')
     self.refused(REAL_26 + '[server]\neula = true\n', '"server"', '26.3')
+
+  def test_a_dedicated_server_as_mojang_ships_it(self) -> None:
+    """
+    [server] on a modern version with no loader (SPEC.md 19.7 step 10d): its dedicated server has the agent in (26.3's
+    by Mojang's names, 1.21.1's and 1.20.1's by their servers' own tables, V21). With a loader, refused, naming it (a
+    loader's server comes after vanilla's).
+    """
+    for minecraft, real in (('26.3', REAL_26), ('1.21.1', REAL_1_21_1), ('1.20.1', REAL_1_20_1)):
+      with self.subTest(minecraft=minecraft):
+        vanilla = real.replace('loader = { fabric = "0.20.1" }\n', '') + '[server]\neula = true\nmemory = "3G"\n'
+        spec = InstanceSpec.read(self.write(vanilla))
+        self.assertEqual((True, '3G'), (spec.serverEula, spec.serverMemory))
+        self.refused(real + '[server]\neula = true\n', '"server"', minecraft, 'fabric', "vanilla's")
 
   def test_1_21_1_and_1_20_1_on_fabric_or_with_no_loader(self) -> None:
     """

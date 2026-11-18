@@ -27,7 +27,7 @@ public final class ModernSounds {
 
 	private static JsonElement play(Call call) throws ProbeException {
 		String id = call.string("id", null);
-		SoundEvent event = id == null ? null : Version.soundEvent(id);
+		SoundEvent event = id == null ? null : VersionCommon.soundEvent(id);
 		if (event == null) {
 			throw ProbeException.badRequest("id", "sound.play needs the sound's id");
 		}

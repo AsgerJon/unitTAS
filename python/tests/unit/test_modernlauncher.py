@@ -83,10 +83,31 @@ class ModernFixture:
     self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(profile).encode('utf-8')
     self.asked = []
 
+  def withServer(self, data: bytes) -> None:
+    """The version's server jar served (SPEC.md 19.7 step 10a): its JSON's downloads.server, its sha1 its own."""
+    self.vanilla['downloads']['server'].update({'sha1': sha1(data), 'size': len(data)})
+    self.served[self.vanilla['downloads']['server']['url']] = data
+    versionJson = json.dumps(self.vanilla).encode('utf-8')
+    self.served['https://piston-meta.mojang.com/v1/packages/x/26.3.json'] = versionJson
+    self.served[MANIFEST] = json.dumps({'versions': [
+      {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
+    ]}).encode('utf-8')
+
   def withMappings(self, log: bytes) -> None:
     """The version as an obfuscated one is served (before 26.1): its JSON names its obfuscation log."""
     url = 'https://piston-data.mojang.com/v1/objects/x/client.txt'
     self.vanilla['downloads']['client_mappings'] = {'sha1': sha1(log), 'size': len(log), 'url': url}
+    self.served[url] = log
+    versionJson = json.dumps(self.vanilla).encode('utf-8')
+    self.served['https://piston-meta.mojang.com/v1/packages/x/26.3.json'] = versionJson
+    self.served[MANIFEST] = json.dumps({'versions': [
+      {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
+    ]}).encode('utf-8')
+
+  def withServerMappings(self, log: bytes) -> None:
+    """The version's server as an obfuscated one is served (before 26.1): its JSON names its server's own log."""
+    url = 'https://piston-data.mojang.com/v1/objects/x/server.txt'
+    self.vanilla['downloads']['server_mappings'] = {'sha1': sha1(log), 'size': len(log), 'url': url}
     self.served[url] = log
     versionJson = json.dumps(self.vanilla).encode('utf-8')
     self.served['https://piston-meta.mojang.com/v1/packages/x/26.3.json'] = versionJson

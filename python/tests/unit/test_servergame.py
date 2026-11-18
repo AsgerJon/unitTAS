@@ -20,6 +20,7 @@ import os
 import shutil
 import socket
 import tempfile
+import time
 import unittest
 
 from fakeprobe import FakeProbe, inThread, readStartFile
@@ -235,6 +236,36 @@ class ListeningCheckTests(unittest.TestCase):
   def test_no_ready_in_time_stops_it(self) -> None:
     with self.assertRaises(LinkTimeout):
       self.check(seconds=0.3)
+    self.assertEqual(['stopped'], self.stops)
+
+  def test_a_server_still_working_is_waited_for(self) -> None:
+    """By signs of life (SPEC.md 19.7 step 10a): its output growing, its ready waited for past the quiet limit."""
+    output = os.path.join(self.scratch, 'server.log')
+    open(output, 'w').close()
+
+    def work() -> None:
+      for each in range(8):
+        with open(output, 'a', encoding='utf-8') as file:
+          file.write('[Server thread/INFO]: Preparing spawn area: %d%%\n' % (each * 12))
+        time.sleep(0.25)
+      self.ready(('127.0.0.1', 41300))
+
+    thread, _ = inThread(work)
+    began = time.monotonic()
+    ready = awaitServerReady(self.connection, lambda: self.stops.append('stopped'), 0.6, 0, output)
+    thread.join(10)
+    self.assertEqual('unittas', ready['world'])
+    self.assertGreater(time.monotonic() - began, 1.2, 'waited past the quiet limit as it worked')
+    self.assertEqual([], self.stops)
+
+  def test_a_quiet_server_is_given_up(self) -> None:
+    output = os.path.join(self.scratch, 'server.log')
+    open(output, 'w').close()
+    began = time.monotonic()
+    with self.assertRaises(LinkTimeout) as raised:
+      awaitServerReady(self.connection, lambda: self.stops.append('stopped'), 0.5, 0, output)
+    self.assertLess(time.monotonic() - began, 5)
+    self.assertIn('nothing new', str(raised.exception))
     self.assertEqual(['stopped'], self.stops)
 
 

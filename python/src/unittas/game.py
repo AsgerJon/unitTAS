@@ -38,10 +38,11 @@ if TYPE_CHECKING:  # pragma: no cover
 #  fetching or installing, or a build, says what it does as it goes, so one quiet this long is stuck (Asger,
 #  2026-11-17: "if you open a game, it must never hang")
 HELLO_SECONDS = float(os.environ.get('UNITTAS_HELLO_SECONDS', '120'))
-#  What the agent says as it wakes in the game (its premain, as the JVM starts); its probe dials seconds after (2 s in
-#  26.3 beside NeoForge), so a hello not come this long after it never will
-WOKE = '[unitTAS] the probe wakes'
-HELLO_AFTER_WAKE = 30.0
+#  What the probe logs as it dials the orchestrator (once Minecraft is launched, which a loader and its mods can take
+#  well over 30 s to reach: a 26.3 Fabric game's start, 2026-11-18); the hello follows at once, so one not come this
+#  long after it never will. Before it, the game loads, its output growing: the quiet limit is the watch there
+DIALLING = 'unitTAS probe: dialling'
+HELLO_AFTER_DIAL = 30.0
 #  What FML logs once every mod has loaded; the probe has said hello long before (it dials as Minecraft starts).
 LOADED = 'Forge Mod Loader has successfully loaded'
 LOADED_GRACE = 10.0
@@ -176,17 +177,17 @@ class LaunchedGame(BaseObject):
     with gamescope's exit code, not the launcher's); LinkTimeout at once
     when its hello was refused; once 'seconds' pass
     with nothing new in the game's output (a launcher fetching or
-    installing, or a build, says what it does as it goes); once the agent
-    has woken in the game (WOKE in its output) and no hello came within
-    HELLO_AFTER_WAKE; or once FML has loaded every mod (its log says so)
+    installing, or a build, says what it does as it goes); once the probe
+    has dialled (DIALLING in its output) and no hello came within
+    HELLO_AFTER_DIAL; or once FML has loaded every mod (its log says so)
     and none came within LOADED_GRACE: a probe that never woke.
     """
-    seen = GameOutput(os.path.join(self.results, self.outputName()), (WOKE, LOADED))
+    seen = GameOutput(os.path.join(self.results, self.outputName()), (DIALLING, LOADED))
     #  the command's own output, where it is a file of its own (a launch script's lines): a sign of life too
     launching = None if self.launchName() == self.outputName() else GameOutput(
       os.path.join(self.results, self.launchName()), ())
     quietSince = time.monotonic()
-    wokeAt = loadedAt = None
+    dialledAt = loadedAt = None
     while True:
       now = time.monotonic()
       if seen.grew() | (launching is not None and launching.grew()):
@@ -194,11 +195,11 @@ class LaunchedGame(BaseObject):
       if now - quietSince > seconds:
         raise LinkTimeout('%s: no hello, and nothing new in its output for %s s (its output: %s)' % (
           self.name, seconds, self.results))
-      if wokeAt is None and seen.said(WOKE):
-        wokeAt = now
-      if wokeAt is not None and now - wokeAt > HELLO_AFTER_WAKE:
-        raise LinkTimeout('%s: its agent woke, but its probe never said hello in %s s (its output: %s)' % (
-          self.name, HELLO_AFTER_WAKE, self.results))
+      if dialledAt is None and seen.said(DIALLING):
+        dialledAt = now
+      if dialledAt is not None and now - dialledAt > HELLO_AFTER_DIAL:
+        raise LinkTimeout('%s: its probe dialled, but never said hello in %s s (its output: %s)' % (
+          self.name, HELLO_AFTER_DIAL, self.results))
       if loadedAt is None and seen.said(LOADED):
         loadedAt = now
       if loadedAt is not None and now - loadedAt > LOADED_GRACE:

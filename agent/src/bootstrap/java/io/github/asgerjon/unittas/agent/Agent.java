@@ -23,8 +23,10 @@ public final class Agent {
 	static final String START_FILE = "unittas/probe.properties";
 	/** The system property naming the table of the names the game runs under, where they aren't Mojang's. */
 	static final String NAMES = "unittas.names";
-	/** This agent's version's hooks (Hooks.read), beside the bootstrap in its jar. */
+	/** This agent's version's hooks (Hooks.read), beside the bootstrap in its jar: a client's. */
 	static final String HOOKS_FILE = "/unittas-probe-hooks.txt";
+	/** A dedicated server's hooks, read instead when the start file says role server (SPEC.md 19.7 step 10b). */
+	static final String SERVER_HOOKS_FILE = "/unittas-probe-server-hooks.txt";
 
 	private Agent() {
 	}
@@ -36,13 +38,24 @@ public final class Agent {
 			return;
 		}
 		File game = new File(gameFolder);
-		if (!new File(game, START_FILE).isFile()) {
+		File start = new File(game, START_FILE);
+		if (!start.isFile()) {
+			return;
+		}
+		// a dedicated server's own hooks, its start file saying role server; a client's otherwise
+		String hooksFile;
+		try (InputStream in = new java.io.FileInputStream(start)) {
+			java.util.Properties said = new java.util.Properties();
+			said.load(in);
+			hooksFile = "server".equals(said.getProperty("role")) ? SERVER_HOOKS_FILE : HOOKS_FILE;
+		} catch (IOException e) {
+			System.err.println("[unitTAS] the probe sleeps: its start file can't be read: " + e);
 			return;
 		}
 		Hooks.Table table;
-		try (InputStream in = Agent.class.getResourceAsStream(HOOKS_FILE)) {
+		try (InputStream in = Agent.class.getResourceAsStream(hooksFile)) {
 			if (in == null) {
-				System.err.println("[unitTAS] the probe sleeps: its jar holds no " + HOOKS_FILE);
+				System.err.println("[unitTAS] the probe sleeps: its jar holds no " + hooksFile);
 				return;
 			}
 			table = Hooks.read(in, "the agent");

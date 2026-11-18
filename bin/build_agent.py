@@ -37,8 +37,9 @@ sys.path.insert(0, os.path.join(ROOT, 'python', 'src'))
 
 MINECRAFT = '26.3'
 INNER = 'unittas-probe-inner.jar'
-#  the version's hooks, beside the bootstrap (its Agent.HOOKS_FILE)
+#  the version's hooks, beside the bootstrap (its Agent.HOOKS_FILE), and a dedicated server's (Agent.SERVER_HOOKS_FILE)
 HOOKS_FILE = 'unittas-probe-hooks.txt'
+SERVER_HOOKS_FILE = 'unittas-probe-server-hooks.txt'
 PREMAIN = 'io.github.asgerjon.unittas.agent.Agent'
 AGENT = os.path.join(ROOT, 'agent', 'src')
 OUT = os.path.join(ROOT, 'agent', 'build', 'unittas-probe-%s.jar')
@@ -55,13 +56,19 @@ DECLARERS = 'unittas-probe-declarers.txt'
 @dataclass(frozen=True)
 class Version:
   """
-  One version the builder makes an agent for: its probe's source folders, its Java (javac --release), its hooks, and
-  whether the game runs obfuscated (before 26.1: the probe compiled against its stubs and renamed as it loads).
+  One version the builder makes an agent for: its probe's source folders, its Java (javac --release), its hooks (a
+  client's, and a dedicated server's beside it: server-hooks.txt), and whether the game runs obfuscated (before 26.1:
+  the probe compiled against its stubs and renamed as it loads).
   """
   release: str
   sources: tuple
   hooks: str
   obfuscated: bool = False
+
+  @property
+  def serverHooks(self) -> str:
+    """A dedicated server's hooks: server-hooks.txt beside the client's hooks.txt."""
+    return os.path.join(os.path.dirname(self.hooks), 'server-hooks.txt')
 
 
 VERSIONS = {
@@ -122,10 +129,11 @@ def sourcesUnderAll(folder: str) -> list:
   return found
 
 
-def assemble(bootstrapClasses: str, probeClasses: str, version: str, out: str, hooks: bytes, minecraft: str) -> str:
+def assemble(bootstrapClasses: str, probeClasses: str, version: str, out: str, hooks: bytes, minecraft: str,
+             serverHooks: bytes = b'') -> str:
   """
-  The agent's jar at 'out': its manifest first, the bootstrap's classes, the version's hooks beside them, and the
-  probe's jar inside it.
+  The agent's jar at 'out': its manifest first, the bootstrap's classes, the version's hooks beside them (a client's,
+  and a dedicated server's where given), and the probe's jar inside it.
   """
   inner = io.BytesIO()
   with zipfile.ZipFile(inner, 'w') as jar:
@@ -139,6 +147,8 @@ def assemble(bootstrapClasses: str, probeClasses: str, version: str, out: str, h
                                                  'Implementation-Version: %s' % version]))
     _addFolder(jar, bootstrapClasses)
     _add(jar, HOOKS_FILE, hooks)
+    if serverHooks:
+      _add(jar, SERVER_HOOKS_FILE, serverHooks)
     _add(jar, INNER, inner.getvalue())
   return out
 
@@ -223,7 +233,9 @@ def build(out: str = '', cacheRoot: str = '', java25: str = '', minecraft: str =
       _tool(compiler, tools, 'Declarers', gameStubs, probeClasses, os.path.join(probeClasses, DECLARERS))
     with open(version.hooks, 'rb') as file:
       hooks = file.read()
-    return assemble(bootstrapClasses, probeClasses, modVersion(), out, hooks, minecraft)
+    with open(version.serverHooks, 'rb') as file:
+      serverHooks = file.read()
+    return assemble(bootstrapClasses, probeClasses, modVersion(), out, hooks, minecraft, serverHooks)
   finally:
     shutil.rmtree(work, ignore_errors=True)
 
