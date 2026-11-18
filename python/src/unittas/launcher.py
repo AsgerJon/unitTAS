@@ -50,7 +50,7 @@ from . import versions
 from .cache import Cache, CacheError
 
 if TYPE_CHECKING:  # pragma: no cover
-  from typing import Optional
+  from typing import Callable, Optional
 
 MINECRAFT = '1.7.10'
 FORGE = '1.7.10-10.13.4.1614-1.7.10'
@@ -70,10 +70,35 @@ OLD_FORGE_MAVENS = ('http://files.minecraftforge.net/maven/', 'https://files.min
 ASSETS = 'https://resources.download.minecraft.net/'
 #  Fabric's meta server (fabric-meta's v2 API): the launcher profile for a game version and a loader version
 FABRIC_META = 'https://meta.fabricmc.net/v2/versions/loader/%s/%s/profile/json'
-#  NeoForge's maven: each NeoForge version's installer, which makes NeoForge's game (SPEC.md 19.7 step 7)
-NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/net/neoforged/neoforge/'
+#  NeoForge's maven, where each NeoForge version's installer is (SPEC.md 19.7 step 7)
+NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/'
+#  The loaders put on a version by their own installer, run headless (SPEC.md 19.7 steps 7 and 8): each one's name as
+#  its people write it, its maven, its installer's place there for (Minecraft's version, its own), its installer's flag
+INSTALLED = {
+  'neoforge': ('NeoForge', NEOFORGE_MAVEN, 'net/neoforged/neoforge/{v}/neoforge-{v}-installer.jar',
+               '--install-client'),
+  'forge': ('Forge', FORGE_MAVEN, 'net/minecraftforge/forge/{m}-{v}/forge-{m}-{v}-installer.jar', '--installClient'),
+}
 #  The loaders versionCommand puts on a version (1.7.10 Forge is command's, below)
-LOADERS = ('fabric', 'neoforge')
+LOADERS = ('fabric',) + tuple(INSTALLED)
+#  What an installer says when its own sha1 check refuses the jars it made: Forge's installer does so wherever Java's
+#  zlib isn't classic zlib (zlib-ng, as Arch's and Fedora's is), its sha1s being of classic zlib's bytes (SPEC.md
+#  19.7 step 8)
+REFUSED = 'Processor failed, invalid outputs'
+#  Forge's word on any other zlib: the flag that would take zlib-ng's bytes closed unmerged, the issue left open
+FORGE_REFUSES = ("Forge won't take any other zlib's (https://github.com/MinecraftForge/Installer/pull/77 closed "
+                 "unmerged, https://github.com/MinecraftForge/Installer/issues/80 open)")
+#  Classic zlib, which such an installer is run on: built once into the download cache from zlib's own source by the
+#  system's C compiler. Its tarball's sha1, of the file whose sha256 is zlib.net's own (9a93b2b7dfdac77ceba5a558a580e7
+#  4667dd6fede4585b91eefb60f03b72df23); its C files, as zlib's Makefile builds its shared library of them
+ZLIB = '1.3.1'
+ZLIB_SOURCE = 'https://github.com/madler/zlib/releases/download/v%s/zlib-%s.tar.gz' % (ZLIB, ZLIB)
+ZLIB_SHA1 = 'f535367b1a11e2f9ac3bec723fb007fbc0d189e5'
+ZLIB_FILES = ('adler32.c', 'crc32.c', 'deflate.c', 'infback.c', 'inffast.c', 'inflate.c', 'inftrees.c', 'trees.c',
+              'zutil.c', 'compress.c', 'uncompr.c', 'gzclose.c', 'gzlib.c', 'gzread.c', 'gzwrite.c')
+#  The file in a game's results (UNITTAS_RESULTS) that holds why the launcher couldn't start it, for the test that
+#  launched it: in the test display a launch ends with gamescope's exit code, not the launcher's
+FAILED = 'launcher-failed.txt'
 #  What a version's default-user-jvm says of memory, which a run gives itself instead
 _MEMORY_FLAG = re.compile(r'^-Xm[sx]')
 #  Forge 10.13.4.1614's JSON pins these two Scala jars at sha1s its maven no longer serves. Found by the live
@@ -460,30 +485,56 @@ def _mavenFile(coordinates: str) -> str:
                                   extension or 'jar')
 
 
-def _neoForgeProfile(sources: Sources, minecraft: str, loaderVersion: str, java: str) -> dict:
+def _installProfile(sources: Sources, minecraft: str, loader: str, loaderVersion: str) -> tuple:
   """
-  NeoForge's version JSON for that version (SPEC.md 19.7 step 7): what NeoForge's own installer writes, run headless
-  once into the download cache (--install-client), which is laid out as a launcher's folder (versions/, libraries/).
-  Its processors make the game NeoForge runs (for 1.21.1 the client jar split, renamed by Mojang's names, patched; for
-  26.x patched): they are NeoForge's own, run by its installer, on the version's Java. The installer is fetched from
-  NeoForge's maven and held to its .sha1; the folder's launcher_profiles.json, which the installer asks for, written
-  first. Installed when its version JSON and the patched client its install profile names (PATCHED) are both there.
-  Missing, naming the installer's output, when it fails, or when the profile is for another version.
+  A loader's installer (INSTALLED: NeoForge's or Forge's), fetched from its maven and held to its .sha1, and the
+  install profile in it (the profile's id, the files its install makes: PATCHED, Forge's MAPPINGS): (its path, it).
   """
-  import subprocess
-  if sources.cache is None:
-    raise Missing('no NeoForge %s: there is no download cache to install it into' % loaderVersion)
-  name = 'neoforge-%s' % loaderVersion
-  url = NEOFORGE_MAVEN + '%s/%s-installer.jar' % (loaderVersion, name)
-  installer = _fetched(sources, 'libraries/net/neoforged/neoforge/%s/%s-installer.jar' % (loaderVersion, name), url,
-                       "NeoForge %s's installer" % loaderVersion, sha1Url=url + '.sha1')
+  label, maven, relative, _ = INSTALLED[loader]
+  relative = relative.format(m=minecraft, v=loaderVersion)
+  installer = _fetched(sources, 'libraries/' + relative, maven + relative, "%s %s's installer" % (label, loaderVersion),
+                       sha1Url=maven + relative + '.sha1')
   try:
     with zipfile.ZipFile(installer) as jar:
-      patchedName = json.loads(jar.read('install_profile.json').decode('utf-8'))['data']['PATCHED']['client']
-    patched = sources.cache.path('libraries/' + _mavenFile(patchedName))
-  except (zipfile.BadZipFile, KeyError, TypeError, ValueError) as error:
-    raise Missing("NeoForge %s's installer (%s) names no patched client in its install profile: %s" % (
-      loaderVersion, installer, error)) from None
+      profile = json.loads(jar.read('install_profile.json').decode('utf-8'))
+    if not isinstance(profile.get('version'), str) or not isinstance(profile.get('data'), dict):
+      raise ValueError('no version or data')
+  except (zipfile.BadZipFile, KeyError, ValueError) as error:
+    raise Missing("%s %s's installer (%s) has no install profile it can be installed by: %s" % (
+      label, loaderVersion, installer, error)) from None
+  return installer, profile
+
+
+def _installedFile(sources: Sources, profile: dict, key: str, what: str) -> str:
+  """A file an install makes, by its name in the install profile's data (PATCHED, MAPPINGS): its place in the cache."""
+  try:
+    return sources.cache.path('libraries/' + _mavenFile(profile['data'][key]['client']))
+  except (KeyError, TypeError, ValueError) as error:
+    raise Missing('%s names no %s in its install profile: %s' % (what, key, error)) from None
+
+
+def _installedProfile(sources: Sources, minecraft: str, loader: str, loaderVersion: str, java: str) -> dict:
+  """
+  A loader's version JSON for that version (SPEC.md 19.7 steps 7 and 8): what the loader's own installer writes, run
+  headless once into the download cache (INSTALLED's flag), which is laid out as a launcher's folder (versions/,
+  libraries/). Its processors make the game the loader runs (the client jar split, renamed, patched): they are the
+  loader's own, run by its installer, on the version's Java. The folder's launcher_profiles.json, which the installer
+  asks for, written first. Installed when the version JSON by the id its install profile gives, and the patched
+  client it names (PATCHED), are both there.
+
+  An installer whose own sha1 check refuses the jars it made (REFUSED: Forge's, wherever Java's zlib isn't classic
+  zlib) is run once more on classic zlib (ZLIB, _buildZlib), as it wants, on Linux, where the JDKs compress with the
+  system's zlib. Missing, in one line naming the installer's output: when it fails; when it refuses its jars on
+  classic zlib too, or there's no C compiler to build it with; when the profile is for another version.
+  """
+  import shutil
+  label, _, _, flag = INSTALLED[loader]
+  if sources.cache is None:
+    raise Missing('no %s %s: there is no download cache to install it into' % (label, loaderVersion))
+  installer, install = _installProfile(sources, minecraft, loader, loaderVersion)
+  name = install['version']
+  what = "%s %s's installer" % (label, loaderVersion)
+  patched = _installedFile(sources, install, 'PATCHED', what)
   profilePath = sources.cache.path('versions/%s/%s.json' % (name, name))
   if not (os.path.isfile(profilePath) and os.path.isfile(patched)):
     root = sources.cache.path('')
@@ -493,24 +544,96 @@ def _neoForgeProfile(sources: Sources, minecraft: str, loaderVersion: str, java:
         file.write('{"profiles": {}}\n')
     log = sources.cache.path('versions/%s/install.log' % name)
     os.makedirs(os.path.dirname(log), exist_ok=True)
-    # its output kept, and each line said as it comes (the launch's sign of life while it installs)
-    with open(log, 'w', encoding='utf-8') as output:
-      installing = subprocess.Popen([java, '-jar', installer, '--install-client', root], stdin=subprocess.DEVNULL,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=os.path.dirname(installer),
-                                    text=True, errors='replace')
-      for line in installing.stdout:
-        output.write(line)
-        if sources.cache.said is not None:
-          sources.cache.said('NeoForge %s installer: %s' % (loaderVersion, line.rstrip('\n')))
-      returncode = installing.wait()
+    said = sources.cache.said
+    heading = '%s %s installer' % (label, loaderVersion)
+    returncode, refused = _install([java, '-jar', installer, flag, root], log, said, heading)
+    if refused:
+      why = ("%s refused the jars it made itself ('%s'): its sha1s are of classic zlib's bytes, and Java here "
+             "compresses with this system's zlib instead (zlib-ng, as on Arch and Fedora)" % (what, REFUSED))
+      if loader == 'forge':
+        why += '; ' + FORGE_REFUSES
+      if not sys.platform.startswith('linux'):
+        raise Missing('%s: its output is in %s' % (why, log))
+      folder = sources.cache.path('zlib/' + ZLIB)
+      built = os.path.isfile(os.path.join(folder, 'libz.so.1'))
+      compiler = None if built else shutil.which('cc')
+      if not built and compiler is None:
+        raise Missing("%s. unitTAS runs it on classic zlib, built from zlib's source, which needs a C compiler ('cc' "
+                      "on the PATH), and there is none: its output is in %s" % (why, log))
+      if said is not None:
+        said('%s. So it installs again on classic zlib %s, built for it once into the download cache (%s)' % (
+          why, ZLIB, folder))
+      if not built:
+        _buildZlib(sources, compiler, folder)
+      environment = dict(os.environ)
+      environment['LD_LIBRARY_PATH'] = os.pathsep.join(
+        [folder] + [part for part in environment.get('LD_LIBRARY_PATH', '').split(os.pathsep) if part])
+      returncode, refused = _install([java, '-jar', installer, flag, root], log, said, heading, environment,
+                                     'again on classic zlib %s (%s)' % (ZLIB, folder))
+      if refused:
+        raise Missing("%s refused the jars it made itself even on classic zlib %s (its own sha1 check on them "
+                      "failed: '%s'): its output is in %s" % (what, ZLIB, REFUSED, log))
     if returncode != 0 or not (os.path.isfile(profilePath) and os.path.isfile(patched)):
-      raise Missing("NeoForge %s's installer didn't install it (exit %d): its output is in %s" % (
-        loaderVersion, returncode, log))
+      raise Missing("%s didn't install it (exit %d): its output is in %s" % (what, returncode, log))
   with open(profilePath, encoding='utf-8') as file:
     profile = json.load(file)
   if profile.get('inheritsFrom') != minecraft:
-    raise Missing('NeoForge %s is for %s, not %s' % (loaderVersion, profile.get('inheritsFrom'), minecraft))
+    raise Missing('%s %s is for %s, not %s' % (label, loaderVersion, profile.get('inheritsFrom'), minecraft))
   return profile
+
+
+def _install(words: list, log: str, said: Optional[Callable[[str], None]], heading: str,
+             environment: Optional[dict] = None, again: str = '') -> tuple:
+  """
+  One run of a loader's installer (its command's words), headless: its output kept in the log (added to it, under a
+  line saying 'again', when it runs again), and each line said as it comes under the heading (the launch's sign of
+  life while it installs). Its exit code, and whether its own sha1 check refused the jars it made (REFUSED).
+  """
+  import subprocess
+  refused = False
+  with open(log, 'a' if again else 'w', encoding='utf-8') as output:
+    if again:
+      output.write('\n--- %s, %s\n' % (heading, again))
+    installing = subprocess.Popen(words, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  cwd=os.path.dirname(words[2]), env=environment, text=True, errors='replace')
+    for line in installing.stdout:
+      output.write(line)
+      refused = refused or REFUSED in line
+      if said is not None:
+        said('%s: %s' % (heading, line.rstrip('\n')))
+    return installing.wait(), refused
+
+
+def _buildZlib(sources: Sources, compiler: str, folder: str) -> None:
+  """
+  Classic zlib's shared library (ZLIB's libz.so.1) built into the folder from zlib's own source, held to its sha1,
+  by the C compiler, as zlib's own Makefile builds it: its C files (ZLIB_FILES), its symbols' versions by its
+  zlib.map (a JDK's libzip asks for them). Built in a folder of its own and moved in once whole. Missing, with the
+  compiler's words, when it doesn't build.
+  """
+  import shutil
+  import subprocess
+  import tarfile
+  import tempfile
+  tarball = _fetched(sources, 'zlib/zlib-%s.tar.gz' % ZLIB, ZLIB_SOURCE, 'the zlib %s source' % ZLIB, [ZLIB_SHA1])
+  os.makedirs(folder, exist_ok=True)
+  build = tempfile.mkdtemp(prefix='build-', dir=folder)
+  try:
+    with tarfile.open(tarball) as archive:
+      archive.extractall(build, filter='data')
+    source = os.path.join(build, 'zlib-' + ZLIB)
+    built = os.path.join(build, 'libz.so.1')
+    words = [compiler, '-O2', '-fPIC', '-shared', '-D_LARGEFILE64_SOURCE=1', '-DHAVE_HIDDEN', '-Wl,-soname,libz.so.1',
+             '-Wl,--version-script,' + os.path.join(source, 'zlib.map'), '-o', built]
+    compiling = subprocess.run(words + [os.path.join(source, name) for name in ZLIB_FILES], cwd=source,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                               errors='replace')
+    if compiling.returncode != 0 or not os.path.isfile(built):
+      raise Missing("classic zlib %s didn't build (%s, exit %d): %s" % (
+        ZLIB, compiler, compiling.returncode, ' '.join(compiling.stdout.split())[-600:]))
+    os.replace(built, os.path.join(folder, 'libz.so.1'))
+  finally:
+    shutil.rmtree(build, ignore_errors=True)
 
 
 def _jar(sources: Sources, library: versions.Library, gradle: bool = True) -> str:
@@ -560,9 +683,9 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   if not MEMORY.match(memory or ''):
     raise ValueError("memory is as -Xmx takes it, '4G' or '3072M', not %r" % (memory,))
   vanilla = _versionJson(sources, minecraft)
-  if loader == 'neoforge':
+  if loader in INSTALLED:
     installing = java or findJavaFor(versions.resolve(vanilla).javaMajor, javaCandidates)
-    profile = _neoForgeProfile(sources, minecraft, loaderVersion, installing)
+    profile = _installedProfile(sources, minecraft, loader, loaderVersion, installing)
   else:
     profile = None if loader is None else _profile(sources, minecraft, loader, loaderVersion)
   version = versions.resolve(vanilla, profile, features={'has_custom_resolution': True})
@@ -578,8 +701,8 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
     raise Missing('the %s version JSON names no client jar' % minecraft)
   jar = _fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
                  'the %s client jar' % minecraft, [client['sha1']])
-  if loader == 'neoforge':
-    # as a launcher lays a profile out: the client jar by the version's own name, which NeoForge's BootstrapLauncher
+  if loader in INSTALLED:
+    # as a launcher lays a profile out: the client jar by the version's own name, which the loader's BootstrapLauncher
     # leaves alone (its -DignoreList names it); the game it runs is the installer's patched one
     jar = sources.cache.store('versions/%s/%s.jar' % (version.id, version.id), jar)
   path.append(jar)
@@ -601,14 +724,14 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
     jvm += versions.fill([version.logging['argument']], {'path': configPath})
   jvm += versions.fill(version.jvm, values)
   if agents:
-    jvm += _names(sources, vanilla, minecraft, loader, version, path[-1])
+    jvm += _names(sources, vanilla, minecraft, loader, loaderVersion, version, path[-1])
   jvm += ['-javaagent:%s=%s' % (agent, game) for agent in agents]
   return Launch([java] + jvm + [version.mainClass] + versions.fill(version.game, values), natives, assets,
                 version.javaMajor)
 
 
-def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str], version: versions.Version,
-           client: str) -> list:
+def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str], loaderVersion: Optional[str],
+           version: versions.Version, client: str) -> list:
   """
   The agent's table of names, for a version the game runs under names
   other than Mojang's (before 26.1: SPEC.md 19.7 steps 6b and 6d):
@@ -624,6 +747,12 @@ def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str
   if loader == 'neoforge':
     # NeoForge's installer renames the game by Mojang's names (SPEC.md 19.7 step 7): the probe's own
     return []
+  if loader == 'forge':
+    # Forge's renames its classes by Mojang's names and its members by SRG's (the MCP config's, which its install
+    # keeps as MAPPINGS: SPEC.md 19.7 step 8)
+    _, install = _installProfile(sources, minecraft, loader, loaderVersion)
+    mappings = _installedFile(sources, install, 'MAPPINGS', "Forge %s's installer" % loaderVersion)
+    return ['-Dunittas.names=' + namesTable(sources, minecraft, srg=mappings)]
   if loader is None:
     return ['-Dunittas.names=' + namesTable(sources, minecraft)]
   intermediary = next((library for library in version.libraries
@@ -635,12 +764,13 @@ def _names(sources: Sources, vanilla: dict, minecraft: str, loader: Optional[str
 
 
 def namesTable(sources: Sources, minecraft: str, intermediary: Optional[str] = None,
-               client: Optional[str] = None) -> str:
+               client: Optional[str] = None, srg: Optional[str] = None) -> str:
   """
-  The version's table of names (SPEC.md 19.7 steps 6b and 6d), Mojang's
-  to the ones the game runs under: the obfuscated ones in vanilla, or
-  with an intermediary jar on to intermediary's (beside Fabric), along
-  the client jar's classes for the overrides. Written once into the
+  The version's table of names (SPEC.md 19.7 steps 6b, 6d and 8), Mojang's
+  to the ones the game runs under: the obfuscated ones in vanilla, with
+  an intermediary jar on to intermediary's (beside Fabric), along the
+  client jar's classes for the overrides, or with the MCP config's names
+  (a tsrg2 file, 'srg') on to SRG's members (beside Forge). Written once into the
   download cache from the version's obfuscation log, which is fetched
   there once and held to its sha1. Missing for a version with no log, or
   when it can't be had.
@@ -648,11 +778,14 @@ def namesTable(sources: Sources, minecraft: str, intermediary: Optional[str] = N
   from .mojangnames import TABLE_FORMAT, MojangNames
   if sources.cache is None:
     raise Missing('no %s table of names: there is no download cache to write it into' % minecraft)
-  kind = 'obfuscated' if intermediary is None else 'intermediary'
+  kind = 'srg' if srg is not None else 'obfuscated' if intermediary is None else 'intermediary'
   table = sources.cache.path('names/%s-%s-%s.txt' % (minecraft, kind, TABLE_FORMAT))
   if not os.path.isfile(table):
     names = MojangNames.load(sources, minecraft)
-    if intermediary is not None:
+    if srg is not None:
+      from .srgnames import SrgNames
+      names = names.onSrg(SrgNames.fromFile(srg))
+    elif intermediary is not None:
       from .classheaders import supertypes
       from .intermediary import Intermediary
       names = names.through(Intermediary.fromJar(intermediary), supertypes(client))
@@ -814,6 +947,11 @@ def main(*args: str, gradleHome: Optional[str] = None) -> int:
                        taken.get('--username', USERNAME))
   except (Missing, OSError, KeyError, ValueError) as problem:
     print('unitTAS launcher: %s' % problem)
+    # and left for the test that launched it (FAILED): the test display ends with its own exit code, not this one
+    results = os.environ.get('UNITTAS_RESULTS')
+    if results:
+      with open(os.path.join(results, FAILED), 'w', encoding='utf-8') as file:
+        file.write(str(problem))
     return 2
   if dry:
     print(' '.join(shlex.quote(word) for word in launch.java))

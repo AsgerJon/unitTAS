@@ -49,8 +49,8 @@ VERSIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 NEOFORGE = '21.1.267'
 NAME = 'neoforge-' + NEOFORGE
 VANILLA_URL = 'https://piston-meta.mojang.com/v1/packages/x/1.21.1.json'
-INSTALLER = NEOFORGE_MAVEN + '%s/neoforge-%s-installer.jar' % (NEOFORGE,
-                                                             NEOFORGE)
+INSTALLER = NEOFORGE_MAVEN + (
+  'net/neoforged/neoforge/%s/neoforge-%s-installer.jar' % (NEOFORGE, NEOFORGE))
 PATCHED = 'libraries/net/neoforged/neoforge/%s/neoforge-%s-client.jar' % (
   NEOFORGE, NEOFORGE)
 
@@ -71,7 +71,7 @@ if not os.path.isfile(os.path.join(root, 'launcher_profiles.json')):
   sys.exit(1)
 print('Installing NeoForge client', flush=True)
 if os.path.exists(os.path.join(here, 'fail')):
-  print('Processor failed, invalid outputs')
+  print('There was an error during installation')
   sys.exit(1)
 folder = os.path.join(root, 'versions', %(name)r)
 os.makedirs(folder, exist_ok=True)
@@ -283,7 +283,7 @@ class NeoForgeLauncherTests(unittest.TestCase):
     log = self.cache.path('versions/%s/install.log' % NAME)
     self.assertIn(log, str(failed.exception))
     with open(log, encoding='utf-8') as file:
-      self.assertIn('Processor failed', file.read())
+      self.assertIn('There was an error', file.read())
     os.remove(os.path.join(self.bin, 'fail'))
     self.launch()
     self.assertEqual(2, len(self.calls()), 'not taken as installed')

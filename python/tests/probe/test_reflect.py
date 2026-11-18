@@ -255,7 +255,7 @@ class ReflectTests(unittest.TestCase):
     self.reflect({'from': 'player', 'path': path, 'value': 4}, op='reflect.set')
     self.assertEqual(4, self.reflect({'from': 'player', 'path': [name('inventory'), name('selected slot')]}))
 
-  @onlyOn(V1_7_10, why="the orchestrator translates 1.7.10's MCP names; from 1.20.1 on, the probe translates Mojang's where the game runs obfuscated")
+  @onlyOn(V1_7_10, why="the orchestrator translates 1.7.10's MCP names; from 1.20.1 on, the probe translates Mojang's where the game runs under other names")
   def test_13d_a_path_translated_from_the_mappings(self) -> None:
     mappings = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
     self.assertEqual(0, self.reflect({'from': 'player', 'path': mappings.translate(['inventory', 'currentItem'])}))

@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover
   from .intermediary import Intermediary
   from .launcher import Sources
+  from .srgnames import SrgNames
 
 #  the table's format (the agent's Names reads this one), and its first line:
 #  the format, what the names run under, the game
@@ -71,8 +72,8 @@ class MojangNames:
   the game runs under; 'fields' and 'methods' map (Mojang's owner,
   Mojang's name, the descriptor in Mojang's names) to the running name.
   A name the game keeps is in them as itself. 'kind' says what the names
-  run under: obfuscated (vanilla), or intermediary (beside Fabric:
-  through).
+  run under: obfuscated (vanilla), intermediary (beside Fabric: through)
+  or srg (beside Forge: onSrg).
   """
 
   def __init__(self, classes: dict, fields: dict, methods: dict,
@@ -164,6 +165,26 @@ class MojangNames:
         intermediary, supertypes, self.classes.get(owner, owner),
         obfuscated, self.running(descriptor))
     return MojangNames(classes, fields, methods, 'intermediary')
+
+  def onSrg(self, srg: SrgNames) -> MojangNames:
+    """
+    The names as Forge runs the game (SPEC.md 19.7 step 8): every class by
+    Mojang's name (Forge's install merges Mojang's for classes), each
+    field and method on from its obfuscated name to SRG's where the MCP
+    config has a line for it (an override's on its own class), kept where
+    none does (a constructor, a JDK method's override).
+    """
+    classes = {mojang: mojang for mojang in self.classes}
+    fields = {}
+    for (owner, name, descriptor), obfuscated in self.fields.items():
+      fields[(owner, name, descriptor)] = srg.fields.get(
+        (self.classes.get(owner, owner), obfuscated), obfuscated)
+    methods = {}
+    for (owner, name, descriptor), obfuscated in self.methods.items():
+      key = (self.classes.get(owner, owner), obfuscated,
+             self.running(descriptor))
+      methods[(owner, name, descriptor)] = srg.methods.get(key, obfuscated)
+    return MojangNames(classes, fields, methods, 'srg')
 
   def running(self, descriptor: str) -> str:
     """A descriptor in Mojang's names as the game runs it."""

@@ -23,6 +23,7 @@ from typing import Callable
 
 from agentgame import AgentGame, buildAgent
 from fabricgame import FabricGame
+from forgegame import ForgeGame
 from neoforgegame import NeoForgeGame
 from probegame import ROOT, results
 from unittas.dev import DevGame
@@ -31,15 +32,17 @@ from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Item, Vec3
 
 (FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1,
- NEOFORGE_1_21_1, NEOFORGE_26_3) = PORTS
+ NEOFORGE_1_21_1, NEOFORGE_26_3, FORGE_1_20_1) = PORTS
 #  the versions, which the tables are by
 V1_7_10, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.20.1', '1.21.1', '26.3'
 VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
             FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1, NEOFORGE_1_21_1: V1_21_1,
-            NEOFORGE_26_3: V26_3}
+            NEOFORGE_26_3: V26_3, FORGE_1_20_1: V1_20_1}
 #  the ports with Fabric Loader beside the probe, and with NeoForge
 FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1)
 NEOFORGE_PORTS = (NEOFORGE_1_21_1, NEOFORGE_26_3)
+#  the ports with Forge on a modern version (1.7.10's is the development client's own)
+FORGE_PORTS = (FORGE_1_20_1,)
 #  the versions whose items keep their data as NBT (data components from 1.20.5 on)
 NBT_ITEMS = (V1_7_10, V1_20_1)
 #  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
@@ -195,6 +198,11 @@ def damageable(item: Item) -> Item:
   return item.replace(snbt='{Damage:0}') if version() == V1_20_1 else item
 
 
+def forgeVersion() -> str:
+  """The version test_forge's Forge game is: the port's on a Forge port, 1.20.1 on any other."""
+  return version() if port() in FORGE_PORTS else V1_20_1
+
+
 def neoForgeVersion() -> str:
   """The version test_neoforge's NeoForge game is: the port's on a NeoForge port, 1.21.1 on any other."""
   return version() if port() in NEOFORGE_PORTS else V1_21_1
@@ -217,6 +225,9 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == FABRIC_1_21_1:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_21_1), name,
                       minecraft=V1_21_1)
+  if port() in FORGE_PORTS:
+    return ForgeGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version()), name,
+                     minecraft=version())
   if port() in NEOFORGE_PORTS:
     return NeoForgeGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version()), name,
                         minecraft=version())

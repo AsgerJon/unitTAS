@@ -32,7 +32,8 @@ PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
 26.3, 1.21.1 and 1.20.1 each with Fabric Loader 0.20.1 or no loader at
 all (SPEC.md 19.7 steps 4, 5, 6d and 6e: the loader is the mod's, the
 probe a Java agent beside it), with NeoForge too 1.21.1 (21.1.267) and
-26.3 (26.3.0.110; step 7), a real client only for now.
+26.3 (26.3.0.110; step 7), with Forge 1.20.1 (47.4.28; step 8), a real
+client only for now.
 
 - SpecError: what is wrong with a spec, and where.
 - MavenLibrary: a library by its Maven coordinates.
@@ -61,7 +62,7 @@ FORGE = '10.13.4.1614'
 #  The versions this unitTAS runs, each with its loaders, each loader at its one version: {name: version} by
 #  Minecraft's version (SPEC.md 19.7; NeoForge from step 7)
 PORTS = {MINECRAFT: {'forge': FORGE}, '26.3': {'fabric': '0.20.1', 'neoforge': '26.3.0.110'},
-         '1.21.1': {'fabric': '0.20.1', 'neoforge': '21.1.267'}, '1.20.1': {'fabric': '0.20.1'}}
+         '1.21.1': {'fabric': '0.20.1', 'neoforge': '21.1.267'}, '1.20.1': {'fabric': '0.20.1', 'forge': '47.4.28'}}
 #  Each loader as its own people write its name
 LOADER_NAMES = {'forge': 'Forge', 'fabric': 'Fabric', 'neoforge': 'NeoForge'}
 #  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet

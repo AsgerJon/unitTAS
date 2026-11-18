@@ -10,16 +10,21 @@ import java.util.Optional;
 /**
  * The 26.3 port (SPEC.md 12, 19.7 step 5): what this version gives the probe's version-free core. The probe is a Java
  * agent, needing no loader: its facts come from the game itself (its own version), and the loader beside it, if the
- * mod under test brought one, is said as that loader says itself (Fabric Loader, or NeoForge's FML, read by
+ * mod under test brought one, is said as that loader says itself (Fabric Loader, or NeoForge's or Forge's FML, read by
  * reflection: the probe depends on no loader's API). Its game operations are declared here and given their bodies by
  * the hooks (ModernHooks); one not declared is Unsupported.
  */
 public final class ModernPort implements Port {
 
 	private static final String FABRIC = "net.fabricmc.loader.api.FabricLoader";
-	/** NeoForge's loader (FML) and its list of mods, as FML 4 names them (SPEC.md 19.7 step 7). */
-	private static final String NEOFORGE = "net.neoforged.fml.loading.FMLLoader";
-	private static final String NEOFORGE_MODS = "net.neoforged.fml.ModList";
+	/**
+	 * The FML loaders the probe knows (SPEC.md 19.7 steps 7 and 8): each one's name, its FMLLoader, its ModList, and the
+	 * version info's method that says its version.
+	 */
+	private static final String[][] FMLS = {
+		{"neoforge", "net.neoforged.fml.loading.FMLLoader", "net.neoforged.fml.ModList", "neoForgeVersion"},
+		{"forge", "net.minecraftforge.fml.loading.FMLLoader", "net.minecraftforge.fml.ModList", "forgeVersion"},
+	};
 
 	@Override
 	public String name() {
@@ -36,7 +41,7 @@ public final class ModernPort implements Port {
 		if (fabric().isPresent()) {
 			return "fabric";
 		}
-		return neoForge().isPresent() ? "neoforge" : "";
+		return fml().map(each -> each[0]).orElse("");
 	}
 
 	@Override
@@ -44,7 +49,7 @@ public final class ModernPort implements Port {
 		if (fabric().isPresent()) {
 			return fabricVersion("fabricloader");
 		}
-		return neoForgeVersion();
+		return fml().map(ModernPort::fmlVersion).orElse("");
 	}
 
 	@Override
@@ -176,32 +181,32 @@ public final class ModernPort implements Port {
 		}
 	}
 
-	/** NeoForge's FMLLoader, when the mod under test brought NeoForge; empty otherwise. */
-	static Optional<Class<?>> neoForge() {
-		try {
-			return Optional.of(Class.forName(NEOFORGE, true, ModernPort.class.getClassLoader()));
-		} catch (ClassNotFoundException e) {
-			return Optional.empty();
+	/** The FML loader beside the probe (its FMLS entry), when the mod under test brought NeoForge or Forge. */
+	static Optional<String[]> fml() {
+		for (String[] each : FMLS) {
+			try {
+				Class.forName(each[1], false, ModernPort.class.getClassLoader());
+				return Optional.of(each);
+			} catch (ClassNotFoundException e) {
+				// not this one
+			}
 		}
+		return Optional.empty();
 	}
 
-	/** NeoForge's version as FML says it (its version info); "" without NeoForge. */
-	static String neoForgeVersion() {
-		Optional<Class<?>> loader = neoForge();
-		if (loader.isEmpty()) {
-			return "";
-		}
+	/** An FML loader's version as it says it (its version info). */
+	static String fmlVersion(String[] fml) {
 		try {
-			Object info = versionInfo(loader.get());
-			return (String) info.getClass().getMethod("neoForgeVersion").invoke(info);
+			Object info = versionInfo(Class.forName(fml[1], true, ModernPort.class.getClassLoader()));
+			return (String) info.getClass().getMethod(fml[3]).invoke(info);
 		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("NeoForge is here but doesn't say its version: " + e, e);
+			throw new IllegalStateException(fml[0] + " is here but doesn't say its version: " + e, e);
 		}
 	}
 
 	/**
-	 * FML's version info, as each FML has it: FML 4's (NeoForge for 1.21.x) a static versionInfo(); from FML 10 on (26.x)
-	 * the running loader's (FMLLoader.getCurrent()) getVersionInfo().
+	 * FML's version info, as each FML has it: FML 4's (NeoForge for 1.21.x) and Forge 47's a static versionInfo(); from
+	 * FML 10 on (NeoForge for 26.x) the running loader's (FMLLoader.getCurrent()) getVersionInfo().
 	 */
 	private static Object versionInfo(Class<?> loader) throws ReflectiveOperationException {
 		for (Method each : loader.getMethods()) {
@@ -214,19 +219,19 @@ public final class ModernPort implements Port {
 		return loader.getMethod("getVersionInfo").invoke(current);
 	}
 
-	/** Each mod the loader beside the probe has, (id, name, version): Fabric Loader's or NeoForge's; none in vanilla. */
+	/** Each mod the loader beside the probe has, (id, name, version): Fabric Loader's or FML's; none in vanilla. */
 	static java.util.List<String[]> mods() {
-		return fabric().isPresent() ? fabricMods() : neoForgeMods();
+		if (fabric().isPresent()) {
+			return fabricMods();
+		}
+		return fml().map(ModernPort::fmlMods).orElseGet(java.util.ArrayList::new);
 	}
 
-	/** Each mod NeoForge has (its ModList, as IModInfo says each), (id, name, version); none without NeoForge. */
-	static java.util.List<String[]> neoForgeMods() {
+	/** Each mod an FML loader has (its ModList, as IModInfo says each), (id, name, version). */
+	static java.util.List<String[]> fmlMods(String[] fml) {
 		java.util.List<String[]> out = new java.util.ArrayList<>();
-		if (neoForge().isEmpty()) {
-			return out;
-		}
 		try {
-			Class<?> list = Class.forName(NEOFORGE_MODS, true, ModernPort.class.getClassLoader());
+			Class<?> list = Class.forName(fml[2], true, ModernPort.class.getClassLoader());
 			Object mods = list.getMethod("get").invoke(null);
 			for (Object mod : (Collection<?>) list.getMethod("getMods").invoke(mods)) {
 				out.add(new String[] {(String) method(mod, "getModId").invoke(mod),
@@ -234,7 +239,7 @@ public final class ModernPort implements Port {
 			}
 			return out;
 		} catch (ReflectiveOperationException e) {
-			throw new IllegalStateException("NeoForge doesn't list its mods: " + e, e);
+			throw new IllegalStateException(fml[0] + " doesn't list its mods: " + e, e);
 		}
 	}
 

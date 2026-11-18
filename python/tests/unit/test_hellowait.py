@@ -8,7 +8,11 @@ with commands that are no game, each acting one way a game can:
 - one that keeps saying what it does (a launcher fetching, an installer
   installing) is waited for as long as it does, past the quiet limit;
   when it then ends, that is said (LinkClosed), not taken for a timeout;
-- a game that ends before its hello is said at once, its exit code named.
+- a game that ends before its hello is said at once, its exit code named;
+- one whose launcher couldn't start it (its reason left in the results,
+  unittas.launcher.FAILED) is that reason, one error, no exit code: a
+  launch in the test display ends with gamescope's, 0, whatever the
+  launcher's; a reason an earlier launch left isn't taken for this one's.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -25,6 +29,7 @@ from unittest import mock
 from unittas import game
 from unittas.errors import LinkClosed, LinkTimeout
 from unittas.game import LaunchedGame
+from unittas.launcher import FAILED
 
 #  each 'game', a Python script: what it prints, how it waits
 WOKE_AND_SILENT = (
@@ -39,6 +44,12 @@ BUSY = (
   "  print('unitTAS launcher: fetched asset %d' % each, flush=True)\n"
   "  time.sleep(0.5)\n")
 ENDS = "import sys\nsys.exit(70)\n"
+#  the launcher's refusal, ended by the display as gamescope does: 0
+REFUSED = (
+  "import os\n"
+  "with open(os.path.join(os.environ['UNITTAS_RESULTS'], %r), 'w') as f:\n"
+  "  f.write(\"Forge 47.4.28's installer refused the jars it made\")\n"
+  % FAILED)
 
 
 class ScriptGame(LaunchedGame):
@@ -98,6 +109,25 @@ class HelloWaitTests(unittest.TestCase):
     self.assertIsInstance(raised, LinkClosed)
     self.assertIn('exit 70', str(raised))
     self.assertLess(took, 10)
+
+  def test_the_launcher_s_reason_is_the_error(self) -> None:
+    raised, took, _ = self.started(REFUSED, 60)
+    self.assertIsInstance(raised, LinkClosed)
+    self.assertIn("Forge 47.4.28's installer refused the jars it made",
+                  str(raised))
+    self.assertNotIn('exit 0', str(raised), "gamescope's, not the reason")
+    self.assertTrue(raised.__suppress_context__, 'one error, no chain')
+    self.assertLess(took, 10)
+
+  def test_an_earlier_launch_s_reason_isn_t_this_one_s(self) -> None:
+    results = os.path.join(self.folder, 'results')
+    os.makedirs(results)
+    with open(os.path.join(results, FAILED), 'w') as file:
+      file.write('an earlier launch could not start')
+    raised, _, _ = self.started(ENDS, 60)
+    self.assertIn('exit 70', str(raised))
+    self.assertNotIn('earlier', str(raised))
+
 
 
 if __name__ == '__main__':

@@ -34,8 +34,6 @@ from neoforgegame import NEOFORGE, NeoForgeGame
 from ports import neoForgeVersion
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 
-#  what each version runs on beside NeoForge
-JAVAS = {'1.21.1': '21', '26.3': '25'}
 #  the probe's operations its hello lists, each in every port
 OPS = ('status', 'quit', 'ticks.wait', 'screen.get', 'key.down',
        'player.perceive', 'container.click', 'view.block', 'block.faces',
@@ -50,16 +48,27 @@ def isEvent(kind: str):
 class NeoForgeGameTests(unittest.TestCase):
   """
   The probe beside NeoForge, on the NeoForge port's version (1.21.1 on any
-  other port).
+  other port). Its loader's own, which test_forge's ForgeGameTests give
+  their own: the game, the version, the loader's versions, the names the
+  game runs under, its Java by version.
   """
+  GAME = NeoForgeGame
+  LOADER = 'neoforge'
+  LOADERS = NEOFORGE
+  NAMES = 'mojang'
+  #  what each version runs on beside it
+  JAVAS = {'1.21.1': '21', '26.3': '25'}
+
+  @staticmethod
+  def gameVersion() -> str:
+    return neoForgeVersion()
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.version = neoForgeVersion()
-    folder = os.path.join(results(), 'neoforge')
+    cls.version = cls.gameVersion()
+    folder = os.path.join(results(), cls.LOADER)
     jar = buildAgent(os.path.join(folder, 'build.log'), cls.version)
-    cls.game = NeoForgeGame(results(), jar, 'neoforge',
-                            minecraft=cls.version)
+    cls.game = cls.GAME(results(), jar, cls.LOADER, minecraft=cls.version)
     cls.connection = cls.game.start(READY_SECONDS)
     cls.ready = cls.connection.events.waitFor(isEvent('ready'),
                                               READY_SECONDS)
@@ -76,18 +85,19 @@ class NeoForgeGameTests(unittest.TestCase):
     self.assertEqual(self.version, hello.probePort,
                      "the agent's port: the same beside any loader")
     self.assertEqual(self.version, hello.minecraft)
-    self.assertEqual(('neoforge', NEOFORGE[self.version]),
+    self.assertEqual((self.LOADER, self.LOADERS[self.version]),
                      (hello.loaderName, hello.loaderVersion))
-    self.assertEqual('mojang', hello.names,
-                     "NeoForge's installer renames the game by Mojang's")
+    self.assertEqual(self.NAMES, hello.names,
+                     'the names its installer renames the game by')
     role = hello.role
     self.assertEqual('client', role.value if hasattr(role, 'value')
                      else str(role))
     self.assertFalse(hello.development, 'a real client')
     self.assertEqual(modVersion(), hello.probeVersion,
                      "the probe's version from its own jar")
-    self.assertTrue(hello.javaVersion.startswith(JAVAS[self.version]),
-                    hello.javaVersion)
+    self.assertTrue(
+      hello.javaVersion.startswith(self.JAVAS[self.version]),
+      hello.javaVersion)
 
   def test_2_the_probe_s_own_operations(self) -> None:
     for op in OPS:
@@ -96,10 +106,10 @@ class NeoForgeGameTests(unittest.TestCase):
   def test_2b_ready_once_loaded(self) -> None:
     self.assertEqual(TITLE, self.ready['screen'])
     mods = {mod['id'] for mod in self.ready['mods']}
-    self.assertTrue({'minecraft', 'neoforge'} <= mods, mods)
-    self.assertNotIn('unittas', mods, 'the probe is no NeoForge mod')
+    self.assertTrue({'minecraft', self.LOADER} <= mods, mods)
+    self.assertNotIn('unittas', mods, "the probe is no loader's mod")
     self.assertEqual(HOOKED[self.version], self.ready['mixins']['applied'],
-                     "each hooked class rewritten after NeoForge's own")
+                     "each hooked class rewritten after the loader's own")
     self.assertEqual([], self.ready['mixins']['missing'])
     window = self.ready['window']
     self.assertEqual((854, 480), (window['width'], window['height']))

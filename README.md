@@ -78,10 +78,10 @@ time.
   (`screenshots/opened.png`).
 - A game unitTAS opens, unitTAS closes, and it never waits on one that shows no sign of life:
   - Before its probe says hello, the launch must keep saying what it does: the launcher names each file it fetches and
-    each line of NeoForge's installer as they come, a build its tasks. Two minutes with nothing new
-    (`UNITTAS_HELLO_SECONDS`) and the game is stopped, said so. Once the agent has woken in the game (its first line,
-    as the JVM starts), the hello must follow within 30 s; it takes about 2. A game that ends first is said at once,
-    with its exit code.
+    each line of a loader's installer (NeoForge's, Forge's) as they come, a build its tasks. Two minutes with nothing
+    new (`UNITTAS_HELLO_SECONDS`) and the game is stopped, said so. Once the agent has woken in the game (its first
+    line, as the JVM starts), the hello must follow within 30 s; it takes about 2. A game that ends first is said at
+    once, with its exit code.
   - An agent whose probe can't be loaded ends the game itself, saying why (exit code 70): a game no probe drives is
     no test, so it isn't left on its title screen for the run to wait on.
 - A Python run (`unittas run`, plain `unittest`) watches the two stretches before its first world opens:
@@ -337,13 +337,20 @@ window = { width = 854, height = 480, display = "nested" }   # or "headless", "p
   (`runClient`) and `game` (its run folder).
 - **26.3**, **1.21.1** and **1.20.1** are the other versions a spec may name (`minecraft = "26.3"`, `"1.21.1"`,
   `"1.20.1"`), each with Fabric Loader 0.20.1 for a Fabric mod (`loader = { fabric = "0.20.1" }`), 1.21.1 and 26.3 with
-  NeoForge for a NeoForge mod (`loader = { neoforge = "21.1.267" }`, `loader = { neoforge = "26.3.0.110" }`: installed
-  by NeoForge's own installer into the download cache, once, as the launcher first needs it), or with no loader at all,
-  as Mojang ships it; a real client only for now (no `client = "gradle"` and no `[server]` yet). The probe is the
-  version's agent jar (`probe = "path/to/unittas-probe-26.3.jar"`, `unittas-probe-1.21.1.jar`,
-  `unittas-probe-1.20.1.jar`), on the game's command line, never in `mods/`; the version's Java (25 for 26.3, 21 for
-  1.21.1, 17 for 1.20.1) is found as it asks; the first launch's onboarding and tutorial hints are switched off in its
-  `options.txt`. Tests that name things by mcdex member and places from `self.start` run on every version unchanged.
+  NeoForge for a NeoForge mod (`loader = { neoforge = "21.1.267" }`, `loader = { neoforge = "26.3.0.110" }`), 1.20.1
+  with Forge for a Forge mod (`loader = { forge = "47.4.28" }`), or with no loader at all, as Mojang ships it. NeoForge
+  and Forge are installed by their own installers into the download cache, once, as the launcher first needs them.
+  Forge's installer refuses the jars it makes unless Java compressed them with classic zlib (its sha1s are of classic
+  zlib's bytes, and Forge won't take any other zlib's:
+  [Installer#77](https://github.com/MinecraftForge/Installer/pull/77) closed unmerged,
+  [#80](https://github.com/MinecraftForge/Installer/issues/80) open), so on a system whose zlib is zlib-ng (Arch's,
+  Fedora's) unitTAS runs it once more on classic zlib 1.3.1, built once into the download cache from zlib's own source
+  (held to its sha1) by the system's C compiler (`cc`); without one it stops, saying so. A real client only for now (no
+  `client = "gradle"` and no `[server]` yet). The probe is the version's agent jar
+  (`probe = "path/to/unittas-probe-26.3.jar"`, `unittas-probe-1.21.1.jar`, `unittas-probe-1.20.1.jar`), on the game's
+  command line, never in `mods/`; the version's Java (25 for 26.3, 21 for 1.21.1, 17 for 1.20.1) is found as it asks;
+  the first launch's onboarding and tutorial hints are switched off in its `options.txt`. Tests that name things by
+  mcdex member and places from `self.start` run on every version unchanged.
 - Paths are taken from the spec's own folder. A mod jar of the spec's own project that is older than the newest file
   under its `src/` is refused, as not built from those sources. Every mistake names the file and the key.
 
@@ -591,8 +598,10 @@ Forge's universal jar, every library, the natives, the assets), so nothing is do
 needed. `./unittas.sh oldsaves instance` runs the release jar there with no saves, every suite its jars hold, in the
 fresh test world: for unitTAS's own jar there are none, and the run is the check that the jar starts outside a
 development run (`Ran 0 tests`, OK). Any other version is `--minecraft VERSION`, with a loader on top by `--loader
-fabric|neoforge --loader-version V`: Mojang's version JSON, Fabric's profile from its meta server, NeoForge's from its
-own installer, run headless once into the download cache; every file held to its sha1.
+fabric|neoforge|forge --loader-version V`: Mojang's version JSON, Fabric's profile from its meta server, NeoForge's and
+Forge's from their own installers, run headless once into the download cache; every file held to its sha1. When it
+can't make the launch, it says why and exits 2, and leaves the reason in `$UNITTAS_RESULTS/launcher-failed.txt`: a test
+that launched the game reports that as its error (in the test display the launch ends with gamescope's exit code).
 
 **Through the orchestrator** (`unittas run`, "Tests in Python" above), in whatever game an instance spec names:
 
@@ -725,14 +734,17 @@ under other names than Mojang's (before 26.1: obfuscated), the probe is written 
 renamed as it loads, by a table of the version's names that the launcher writes once from the version's own obfuscation
 log (`client_mappings`) and names to the agent (`-Dunittas.names=TABLE`); the log and the table stay in the download
 cache, never shipped. `python3 -m unittest bin/tests/test_agent_names.py` checks the renaming on a small game of its
-own, and `bin/tests/test_agent_members.py` the names the probe reaches by reflection and the methods it hooks against
-each obfuscated version's own. Against an obfuscated version it is compiled against stubs of the version's classes in
+own, `bin/tests/test_agent_members.py` the names the probe reaches by reflection and the methods it hooks against
+each obfuscated version's own, and `bin/tests/test_agent_reflectnames.py` a test's reflection by Mojang's names beside
+each kind of table (beside Forge the classes keep Mojang's names, so the table, not the name, says a class is the
+game's). Against an obfuscated version it is compiled against stubs of the version's classes in
 Mojang's names, made once into the download cache from its client jar, never shipped. It runs in the version as Mojang
-ships it, and beside whatever loader the mod under test brings (Fabric and NeoForge so far; before 26.1 Fabric runs the
-game under its intermediary names, and the table goes on to them, from the intermediary jar Fabric's profile names;
-NeoForge runs it under Mojang's, its installer having renamed 1.21.1 so, and needs no table): a mod and its loader are
-the user's, taken as working. Its version is the root's `mod_version`. The probe's version-free core,
-`src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
+ships it, and beside whatever loader the mod under test brings (Fabric, NeoForge and Forge so far; before 26.1 Fabric
+runs the game under its intermediary names, and the table goes on to them, from the intermediary jar Fabric's profile
+names; NeoForge runs it under Mojang's, its installer having renamed 1.21.1 so, and needs no table; Forge 1.20.1 runs it
+under Mojang's class names and SRG's member names (`m_91398_`), and the table goes on to those, from the MCP config's
+names Forge's install keeps): a mod and its loader are the user's, taken as working. Its version is the root's
+`mod_version`. The probe's version-free core, `src/probe-core/java`, is compiled into it and into the 1.7.10 jar.
 
 The probe's own game tests (`python/tests/probe`) run with `python -m unittas.selftest [filter] [on PORT]` from the root
 (through the watcher: `probe [filter] [on PORT]`). The port is a version and what runs it: `1.7.10-forge` (the
@@ -740,8 +752,9 @@ development client, the default), `26.3` (a real client from unitTAS's own launc
 (the same with Fabric Loader, as a Fabric mod's tests would have it), `1.21.1` (a real client as Mojang ships it,
 obfuscated), `1.21.1-fabric` (the same with Fabric Loader, under its intermediary names), `1.21.1-neoforge` (the same
 with NeoForge, under Mojang's names), `26.3-neoforge` (26.3 with NeoForge), `1.20.1` or `1.20.1-fabric` (the same for
-1.20.1); on every port but 1.7.10's the probe is the Java agent. A test written for every port names things by mcdex
-member and places from the port's start; one its version can't do yet skips, saying which step brings it (`ports.py`).
+1.20.1), `1.20.1-forge` (1.20.1 with Forge, under SRG's names); on every port but 1.7.10's the probe is the Java agent.
+A test written for every port names things by mcdex member and places from the port's start; one its version can't do
+yet skips, saying which step brings it (`ports.py`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the

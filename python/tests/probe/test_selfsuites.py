@@ -5,8 +5,8 @@ ones by the same names.
   bin/self_red_check.py --python. Its table is the Java run's, less what Python doesn't twin.
 - In the real client (unitTAS's release jar from an instance spec): the green suite, every line ok.
 - On 26.3, 1.21.1 and 1.20.1 (SPEC.md 19.7 steps 4, 6d, 6e and 7): 'unittas run' as a user runs it (python -m
-  unittas, a process of its own) with a spec of the port's version and its loader (the mod's: NeoForge on a NeoForge
-  port, else Fabric), the probe the version's agent jar beside it: the green suite, every line ok.
+  unittas, a process of its own) with a spec of the port's version and its loader (the mod's: NeoForge or Forge on
+  their ports, else Fabric), the probe the version's agent jar beside it: the green suite, every line ok.
 
   python -m unittas.selftest test_selfsuites.      (through the watcher: "probe test_selfsuites.")
   python -m unittas.selftest test_selfsuites on 26.3-fabric      ("probe test_selfsuites on 26.3-fabric")
@@ -26,8 +26,9 @@ import sys
 import unittest
 
 from agentgame import buildAgent
+from forgegame import FORGE
 from neoforgegame import NEOFORGE
-from ports import NEOFORGE_PORTS, V1_7_10, V1_20_1, V1_21_1, V26_3, onlyOn, port, version
+from ports import FORGE_PORTS, NEOFORGE_PORTS, V1_7_10, V1_20_1, V1_21_1, V26_3, onlyOn, port, version
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -105,7 +106,9 @@ class SelfSuitesAgentTests(unittest.TestCase):
     folder = os.path.join(results(), 'specs')
     os.makedirs(folder, exist_ok=True)
     spec = os.path.join(folder, 'self-%s.toml' % minecraft)
-    loader, loaderVersion = ('neoforge', NEOFORGE[minecraft]) if port() in NEOFORGE_PORTS else ('fabric', '0.20.1')
+    loader, loaderVersion = (('forge', FORGE[minecraft]) if port() in FORGE_PORTS
+                             else ('neoforge', NEOFORGE[minecraft]) if port() in NEOFORGE_PORTS
+                             else ('fabric', '0.20.1'))
     with open(spec, 'w', encoding='utf-8') as file:
       # no "java": the launcher finds one the version asks for (25, 21, 17), as a user's spec would leave it
       file.write('minecraft = "%s"\nloader = { %s = "%s" }\nclient = "real"\nprobe = "%s"\ngame = "%s"\n' % (

@@ -25,6 +25,7 @@ from worktoy.mcls import BaseObject
 from .errors import LinkClosed, LinkTimeout, UnitTasError
 from .gamefiles import GameFiles
 from .gameoutput import GameOutput
+from .launcher import FAILED as LAUNCHER_FAILED
 from .link import Listener
 from .wire import Role
 
@@ -155,6 +156,10 @@ class LaunchedGame(BaseObject):
     if beforeLaunch is not None:
       beforeLaunch(expected)
     output = open(os.path.join(self.results, self.launchName()), 'ab')
+    #  why an earlier launch couldn't start is not this one's
+    failed = os.path.join(self.results, LAUNCHER_FAILED)
+    if os.path.isfile(failed):
+      os.remove(failed)
     environment = dict(self.environment(), UNITTAS_RESULTS=self.results)
     self.__process__ = subprocess.Popen(
       self.command(), cwd=self.workingDir(), env=environment,
@@ -165,8 +170,11 @@ class LaunchedGame(BaseObject):
   def accept(self, seconds: float = HELLO_SECONDS) -> Connection:
     """
     The game's connection, once its hello is welcomed. It never waits on a
-    game that shows no sign of life: LinkClosed if the game ends first;
-    LinkTimeout at once when its hello was refused; once 'seconds' pass
+    game that shows no sign of life: LinkClosed if the game ends first,
+    saying the launcher's reason when it couldn't start the game (it leaves
+    it in the results, LAUNCHER_FAILED: in the test display a launch ends
+    with gamescope's exit code, not the launcher's); LinkTimeout at once
+    when its hello was refused; once 'seconds' pass
     with nothing new in the game's output (a launcher fetching or
     installing, or a build, says what it does as it goes); once the agent
     has woken in the game (WOKE in its output) and no hello came within
@@ -204,8 +212,17 @@ class LaunchedGame(BaseObject):
         if 'refused meanwhile' in str(timeout):
           raise LinkTimeout('%s: its hello was refused (%s)' % (self.name, timeout)) from timeout
         if self.__process__.poll() is not None:
-          raise LinkClosed('%s ended before it connected (exit %s; its output: %s)' % (
-            self.name, self.__process__.returncode, self.results))
+          raise self.__endedFirst__() from None
+
+  def __endedFirst__(self) -> LinkClosed:
+    """A game that ended before its hello: the launcher's reason if it left one, else its exit code."""
+    failed = os.path.join(self.results, LAUNCHER_FAILED)
+    if os.path.isfile(failed):
+      with open(failed, encoding='utf-8', errors='replace') as file:
+        reason = file.read().strip()
+      return LinkClosed("%s: unitTAS's launcher couldn't start it: %s" % (self.name, reason))
+    return LinkClosed('%s ended before it connected (exit %s; its output: %s)' % (
+      self.name, self.__process__.returncode, self.results))
 
   def start(self, seconds: float = HELLO_SECONDS) -> Connection:
     """Launches the game and waits for its hello; on any failure it is stopped again."""

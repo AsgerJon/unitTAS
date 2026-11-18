@@ -13,10 +13,11 @@ import net.minecraft.world.item.ItemStack;
  * What reflection (the probe core's Reflect) reaches of the version that is its own (SPEC.md 19.7 steps 4 and 6c): the
  * side's player, its level, the game (the client's Minecraft, the integrated server), an entity by its number, and its
  * stacks (with their components), entities and tags as the protocol writes them. Names are Mojang's, as the tests
- * write them. 26.x runs under them, so nothing is translated; where the game runs obfuscated (1.21.1), each name is
- * translated by the names' lookup (Members), class by class: a class, a field of the class that declares it, a method
- * by its declaring class and parameters. A game class that doesn't declare a name has nothing by it, so a name is
- * never matched against an obfuscated one it merely spells.
+ * write them. 26.x runs under them, so nothing is translated; where the game runs under other names (1.21.1's
+ * obfuscated ones, Fabric's intermediary ones before 26.1, Forge 1.20.1's SRG members of Mojang's classes), each name
+ * is translated by the names' lookup (Members), class by class: a class, a field of the class that declares it, a
+ * method by its declaring class and parameters. A game class that doesn't declare a name has nothing by it, so a name
+ * is never matched against a running one it merely spells.
  */
 final class ModernReflect implements Reflect.Game {
 

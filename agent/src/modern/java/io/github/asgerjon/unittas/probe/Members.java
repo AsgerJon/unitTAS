@@ -87,9 +87,13 @@ final class Members {
 		return found == null ? binaryName : found.replace('/', '.');
 	}
 
-	/** Whether a class is the game's: one with a Mojang name of its own other than its running one. */
+	/**
+	 * Whether a class is the game's: one the lookup has a Mojang name for. Its name may be its running one (beside
+	 * Forge 1.20.1 the classes keep Mojang's names, their members SRG's), so it is the lookup that says.
+	 */
 	private static boolean isGame(Class<?> type) {
-		return names != null && !mojang(type).equals(type.getName().replace('.', '/'));
+		Function<String, String> lookup = names;
+		return lookup != null && lookup.apply("c\t" + type.getName().replace('.', '/')) != null;
 	}
 
 	/**

@@ -409,7 +409,7 @@ final class Reflect {
 		if (named.isEmpty()) {
 			throw new ProbeException("NotFound", readable(owner(here)) + " has no field or method " + name
 				+ " (names are the running game's: 1.7.10's MCP in a development run, Searge in a real client; Mojang's"
-				+ " from 1.20.1 on, translated where the game runs obfuscated)", Json.object("what", name));
+				+ " from 1.20.1 on, translated where the game runs under other names)", Json.object("what", name));
 		}
 		Method chosen = (Method) choose(call, named, args, sig, name);
 		try {

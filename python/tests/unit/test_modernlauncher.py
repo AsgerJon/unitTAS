@@ -22,7 +22,8 @@ import tempfile
 import unittest
 
 from unittas.cache import Cache
-from unittas.launcher import FABRIC_META, MANIFEST, Missing, Sources, classPath, findJavaFor, main, versionCommand
+from unittas.launcher import (FABRIC_META, FAILED, MANIFEST, Missing, Sources, classPath, findJavaFor, main,
+                              versionCommand)
 
 VERSIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'versions')
 
@@ -368,6 +369,31 @@ class ModernLauncherTests(unittest.TestCase):
     said = printed.getvalue()
     self.assertIn('net.minecraft.client.main.Main', said, 'no loader named: vanilla')
     self.assertIn('-javaagent:/opt/probe.jar=' + self.game, said)
+
+  def test_a_launch_it_can_t_make_leaves_its_reason(self) -> None:
+    """
+    What it can't do, said and left in the game's results (FAILED, by UNITTAS_RESULTS) for the test that launched it:
+    in the test display the launch ends with gamescope's exit code, not the launcher's.
+    """
+    import contextlib
+    import io
+    from unittest import mock
+    results = os.path.join(self.scratch, 'results')
+    os.makedirs(results)
+    printed = io.StringIO()
+    with mock.patch.dict(os.environ, {'UNITTAS_RESULTS': results}), contextlib.redirect_stdout(printed):
+      code = main('--game', self.game, '--no-gradle-cache', '--java', '/no/such/java', '--minecraft', '26.3')
+    self.assertEqual(2, code)
+    with open(os.path.join(results, FAILED), encoding='utf-8') as file:
+      reason = file.read()
+    self.assertIn('no java at /no/such/java', reason)
+    self.assertIn('unitTAS launcher: ' + reason, printed.getvalue())
+    os.remove(os.path.join(results, FAILED))
+    with mock.patch.dict(os.environ, {}, clear=False), contextlib.redirect_stdout(io.StringIO()):
+      os.environ.pop('UNITTAS_RESULTS', None)
+      self.assertEqual(2, main('--game', self.game, '--no-gradle-cache', '--java', '/no/such/java',
+                               '--minecraft', '26.3'))
+    self.assertFalse(os.path.exists(os.path.join(results, FAILED)), 'none without UNITTAS_RESULTS')
 
 
 if __name__ == '__main__':
