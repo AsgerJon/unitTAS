@@ -150,6 +150,18 @@ jobs:
           test -f "build/libs/unittas-probe-26.3-$VERSION_INFO.jar"
           test -f "build/libs/unittas-probe-1.21.1-$VERSION_INFO.jar"
           test -f "build/libs/unittas-probe-1.20.1-$VERSION_INFO.jar"
+      # The Python package (python/), as WorkToy's buttons build WorkToy: from the stamped tree, with the release's
+      # jars in it (unittas/probes, where a spec's probe = "bundled" finds them; not the dev jar) and the licence
+      # beside it. Uploaded to PyPI by the 'pypi' job, once the version commit and its tag are pushed.
+      - name: Build the Python package
+        run: |
+          mkdir -p python/src/unittas/probes
+          cp "build/libs/unittas-$VERSION_INFO.jar" "build/libs/unittas-probe-26.3-$VERSION_INFO.jar" \
+            "build/libs/unittas-probe-1.21.1-$VERSION_INFO.jar" "build/libs/unittas-probe-1.20.1-$VERSION_INFO.jar" \
+            python/src/unittas/probes/
+          cp LICENSE python/LICENSE
+          python -m pip install build
+          python -m build python
 
       # Advance the counters in VERSION by the state machine, then commit VERSION and the stamped files, and tag that
       # commit. The commit and its tag are pushed together or not at all (--atomic): if the branch moved meanwhile, or
@@ -161,7 +173,8 @@ jobs:
           git config user.name "Asger Jon Vistisen"
           git config user.email "asgerjon2@gmail.com"
           git add bin/release_tooling/VERSION gradle.properties README.md \
-            src/main/java/io/github/asgerjon/unittas/UnitTasMod.java
+            src/main/java/io/github/asgerjon/unittas/UnitTasMod.java \
+            python/pyproject.toml python/src/unittas/__init__.py
           git commit -m "dev $VERSION_INFO"
           git tag "$VERSION_INFO"
           git push --atomic origin "HEAD:$GITHUB_REF" "refs/tags/$VERSION_INFO"
@@ -177,6 +190,30 @@ jobs:
             build/libs/unittas-probe-1.21.1-${{ env.VERSION_INFO }}.jar
             build/libs/unittas-probe-1.20.1-${{ env.VERSION_INFO }}.jar
           if-no-files-found: error
+      - name: Keep the Python package for PyPI
+        uses: actions/upload-artifact@v4
+        with:
+          name: python
+          path: python/dist/
+          if-no-files-found: error
+
+  pypi:
+    # The Python package to PyPI, as WorkToy's buttons publish WorkToy (trusted publishing: PyPI trusts this workflow
+    # of this repository, and no token is kept anywhere). A job of its own, as the release is: should it fail (the tag
+    # is pushed by then), re-running only this job ("Re-run failed jobs") uploads the same package.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # trusted publishing (OIDC) to PyPI
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python
+          path: python/dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist/
 
   release:
     # A job of its own: should it fail (the tag is pushed by then), re-running only this job ("Re-run failed jobs")

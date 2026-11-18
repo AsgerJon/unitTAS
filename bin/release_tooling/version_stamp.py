@@ -7,16 +7,21 @@ unitTAS's version to the outside world:
   'VERSION' constant the '@Mod' annotation names.
 - 'README.md': every unitTAS version it names, as in
   'unittas-X.jar', 'unittas-X-dev.jar' and 'io.github.asgerjon:unittas:X'.
+- 'python/pyproject.toml': the Python package's 'version = "..."' line,
+  which its build reads, and 'python/src/unittas/__init__.py': its
+  '__version__' attribute. As WorkToy's stamp writes its own: the version
+  as it is ('0.1.0-dev3'), which the build spells as Python does
+  ('0.1.0.dev3') for PyPI.
 
 The version string is read from the environment variable named by the
 first argument, defaulting to 'VERSION_INFO'. The release workflows call
 'version_get.py' to export the resolved version under that name, then
-call this script to write it into the three files before building.
+call this script to write it into the five files before building.
 
-Before writing anything the script checks that the three files agree on
+Before writing anything the script checks that the five files agree on
 the version they carry now, and it refuses a version string outside the
 release scheme: 'X.Y.Z', 'X.Y.Z-rcN' or 'X.Y.Z-devN'. Given the sole
-argument '--check' instead, it only checks that the three files agree,
+argument '--check' instead, it only checks that the five files agree,
 and names the version they carry.
 """
 #  Apache-2.0 license
@@ -46,6 +51,11 @@ MENTION = re.compile(
   re.IGNORECASE,
 )
 CONSTANT_VALUE = re.compile(r'"([^"]*)"')
+#  The Python package's two lines, as WorkToy's stamp writes them
+PACKAGE_PREFIX = 'version ='
+INIT_PREFIX = '__version__ ='
+INIT_PATH = ('python', 'src', 'unittas', '__init__.py')
+QUOTED = re.compile(r'[\'"]([^\'"]*)[\'"]')
 
 
 class VersionDrift(RuntimeError):
@@ -118,18 +128,21 @@ def _badLocation() -> int:
 
 def _paths() -> dict[str, str]:
   """
-  This function resolves the absolute paths of the three stamped files.
+  This function resolves the absolute paths of the five stamped files.
 
   Returns
   -------
   dict[str, str]
-    The paths under the keys 'properties', 'constant' and 'manual'.
+    The paths under the keys 'properties', 'constant', 'manual',
+    'package' and 'init'.
   """
   root = _root()
   return dict(
       properties=os.path.join(root, 'gradle.properties'),
       constant=os.path.join(root, *MOD_PATH),
       manual=os.path.join(root, 'README.md'),
+      package=os.path.join(root, 'python', 'pyproject.toml'),
+      init=os.path.join(root, *INIT_PATH),
   )
 
 
@@ -220,8 +233,9 @@ def _carried() -> dict[str, list[str]]:
   Returns
   -------
   dict[str, list[str]]
-    Under 'properties' and 'constant' the one version of that file, and
-    under 'manual' every unitTAS version README.md names, in order.
+    Under 'properties', 'constant', 'package' and 'init' the one version
+    of that file, and under 'manual' every unitTAS version README.md
+    names, in order.
   """
   paths = _paths()
   out = dict()
@@ -236,18 +250,26 @@ def _carried() -> dict[str, list[str]]:
     raise VersionDrift(infoSpec % (str.strip(line), paths['constant']))
   out['constant'] = [match.group(1)]
   out['manual'] = MENTION.findall(_readText(paths['manual']))
+  for key, prefix in (('package', PACKAGE_PREFIX), ('init', INIT_PREFIX)):
+    lines = str.split(_readText(paths[key]), '\n')
+    line = lines[_lineIndex(lines, prefix, paths[key])]
+    match = QUOTED.search(line)
+    if match is None:
+      infoSpec = """Found no quoted version in line: '%s' of file: '%s'!"""
+      raise VersionDrift(infoSpec % (str.strip(line), paths[key]))
+    out[key] = [match.group(1)]
   return out
 
 
 def check() -> str:
   """
-  This function checks that the three stamped files carry one and the
+  This function checks that the five stamped files carry one and the
   same version, README.md naming it at least once.
 
   Returns
   -------
   str
-    The version the three files carry.
+    The version the five files carry.
 
   Raises
   ------
@@ -260,13 +282,16 @@ def check() -> str:
     infoSpec = """README.md names no unitTAS version (as in
     'unittas-%s.jar'), so a release would not stamp its recipes!"""
     raise VersionDrift(str.join(' ', str.split(infoSpec % version)))
-  others = [*carried['constant'], *carried['manual']]
+  others = [*carried['constant'], *carried['manual'], *carried['package'],
+            *carried['init']]
   if any(other != version for other in others):
     infoSpec = """The stamped files disagree on the version:
-    gradle.properties says '%s', UnitTasMod.VERSION says '%s' and
-    README.md names %s. Make them agree before releasing!"""
+    gradle.properties says '%s', UnitTasMod.VERSION says '%s',
+    README.md names %s, python/pyproject.toml says '%s' and
+    unittas.__version__ says '%s'. Make them agree before releasing!"""
     named = ', '.join(["'%s'" % item for item in carried['manual']])
-    info = infoSpec % (version, carried['constant'][0], named)
+    info = infoSpec % (version, carried['constant'][0], named,
+                       carried['package'][0], carried['init'][0])
     raise VersionDrift(str.join(' ', str.split(info)))
   return version
 
@@ -274,10 +299,11 @@ def check() -> str:
 def _stampAll(versionStr: str) -> str:
   """
   This function stamps the given version string into 'gradle.properties',
-  'UnitTasMod.java' and 'README.md', having first checked that they agree
-  on the version they carry. All three are rewritten only once all three
-  have been prepared, so a file that disagrees, or lacks its line, leaves
-  none of them changed.
+  'UnitTasMod.java', 'README.md', 'python/pyproject.toml' and the
+  package's '__init__.py', having first checked that they agree on the
+  version they carry. All five are rewritten only once all five have been
+  prepared, so a file that disagrees, or lacks its line, leaves none of
+  them changed.
 
   Parameters
   ----------
@@ -303,7 +329,15 @@ def _stampAll(versionStr: str) -> str:
   lines[i] = '%s%s "%s";' % (indent, CONSTANT_PREFIX, versionStr)
   out['constant'] = str.join('\n', lines)
   out['manual'] = MENTION.sub(versionStr, _readText(paths['manual']))
-  for key in ('properties', 'constant', 'manual'):
+  lines = str.split(_readText(paths['package']), '\n')
+  i = _lineIndex(lines, PACKAGE_PREFIX, paths['package'])
+  lines[i] = '%s "%s"' % (PACKAGE_PREFIX, versionStr)
+  out['package'] = str.join('\n', lines)
+  lines = str.split(_readText(paths['init']), '\n')
+  i = _lineIndex(lines, INIT_PREFIX, paths['init'])
+  lines[i] = "%s '%s'" % (INIT_PREFIX, versionStr)
+  out['init'] = str.join('\n', lines)
+  for key in ('properties', 'constant', 'manual', 'package', 'init'):
     _writeText(paths[key], out[key])
   return before
 

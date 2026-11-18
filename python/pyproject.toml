@@ -6,12 +6,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unittas"
-version = "0.1.0.dev0"
+version = "0.1.0-dev18"
 description = "Tests that play the real Minecraft: the orchestrator, and the protocol it speaks with the probe in the game"
 readme = "README.md"
 requires-python = ">=3.14"
 license = "Apache-2.0"
 authors = [{ name = "Asger Jon Vistisen" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Games/Entertainment",
+  "Topic :: Software Development :: Testing",
+]
 # the one list of what the package needs: the root's environment.yml installs the package, so it installs these too
 dependencies = ["worktoy>=1.2.2", "mcdex>=0.2.0"]
 
@@ -21,6 +30,11 @@ unittas = "unittas.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/AsgerJon/unitTAS"
+"Bug Tracker" = "https://github.com/AsgerJon/unitTAS/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# each version's probe, which a release button puts here before it builds the package (a spec's probe = "bundled")
+unittas = ["probes/*.jar"]

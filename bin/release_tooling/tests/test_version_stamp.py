@@ -1,7 +1,10 @@
 """
 Tests of unitTAS's own stamp, version_stamp.py: the version written into
-gradle.properties (mod_version), UnitTasMod.VERSION and README.md's jar
-names, as the publish job of every button runs it, and its --check. Each
+gradle.properties (mod_version), UnitTasMod.VERSION, README.md's jar
+names, and the Python package's python/pyproject.toml and __version__
+(as WorkToy's stamp writes its own: the version as it is, which the
+build spells as Python does), as the publish job of every button runs it,
+and its --check. Each
 test builds a small repository of its own in a temporary folder (the
 stamped files and a copy of the script), runs the script there as a
 separate process, and checks what it printed and wrote. Nothing in the
@@ -42,6 +45,25 @@ public final class UnitTasMod {
 \tpublic static final String VERSION = "%s";
 }
 """
+
+#  The Python package's: its version line the one stamped
+PACKAGE = """[build-system]
+requires = ["setuptools>=77"]
+
+[project]
+name = "unittas"
+version = "%s"
+requires-python = ">=3.14"
+dependencies = ["worktoy>=1.2.2", "mcdex>=0.2.0"]
+"""
+
+#  The package's own __version__
+INIT = """\"\"\"The 'unittas' package.\"\"\"
+from __future__ import annotations
+
+__version__ = '%s'
+"""
+PACKAGE_INIT = os.path.join('python', 'src', 'unittas', '__init__.py')
 
 #  Every unitTAS version here is '{v}'; the rest must never be stamped.
 MANUAL = """# unitTAS
@@ -87,16 +109,20 @@ class _Repository(unittest.TestCase):
     return os.path.join(self.root, *parts)
 
   def setTree(self, version: str, constant: str = None,
-              manual: str = None) -> None:
+              manual: str = None, package: str = None) -> None:
     _write(self.path('gradle.properties'), PROPERTIES % version)
     _write(self.path(MOD), CONSTANT % (constant or version))
     _write(self.path('README.md'), MANUAL.format(v=manual or version))
+    _write(self.path('python', 'pyproject.toml'), PACKAGE % (package or version))
+    _write(self.path(PACKAGE_INIT), INIT % (package or version))
 
   def tree(self) -> tuple:
     return (
       _read(self.path('gradle.properties')),
       _read(self.path(MOD)),
       _read(self.path('README.md')),
+      _read(self.path('python', 'pyproject.toml')),
+      _read(self.path(PACKAGE_INIT)),
     )
 
   def run_(self, script: str, *args: str, **env: str):
@@ -112,7 +138,7 @@ class VersionStampTests(_Repository):
   def stamp(self, version: str):
     return self.run_('version_stamp.py', 'VERSION_INFO', VERSION_INFO=version)
 
-  def test_stamps_the_three_files(self) -> None:
+  def test_stamps_the_five_files(self) -> None:
     result = self.stamp('0.1.0-dev0')
     self.assertEqual(result.returncode, 0, result.stdout)
     self.assertIn('0.1.0-dev0 (was 0.1.0-beta)', result.stdout)
@@ -120,6 +146,8 @@ class VersionStampTests(_Repository):
       PROPERTIES % '0.1.0-dev0',
       CONSTANT % '0.1.0-dev0',
       MANUAL.format(v='0.1.0-dev0'),
+      PACKAGE % '0.1.0-dev0',
+      INIT % '0.1.0-dev0',
     ))
 
   def test_the_dev_jars_classifier_stays(self) -> None:
@@ -137,6 +165,8 @@ class VersionStampTests(_Repository):
       PROPERTIES % '0.1.1-dev0',
       CONSTANT % '0.1.1-dev0',
       MANUAL.format(v='0.1.1-dev0'),
+      PACKAGE % '0.1.1-dev0',
+      INIT % '0.1.1-dev0',
     ))
 
   def test_check(self) -> None:
@@ -145,10 +175,17 @@ class VersionStampTests(_Repository):
     self.assertIn('0.1.0-beta', result.stdout)
     self.setTree('0.1.0-beta', constant='0.1.0-rc0')
     self.assertEqual(self.run_('version_stamp.py', '--check').returncode, 5)
+    self.setTree('0.1.0-dev2', package='0.1.0-dev1')
+    result = self.run_('version_stamp.py', '--check')
+    self.assertEqual(result.returncode, 5, result.stdout)
+    self.assertIn('pyproject.toml', result.stdout)
 
   def test_refuses_files_that_disagree(self) -> None:
-    for constant, manual in (('0.1.0-rc0', None), (None, '0.0.9')):
-      self.setTree('0.1.0-beta', constant=constant, manual=manual)
+    for constant, manual, package in (('0.1.0-rc0', None, None),
+                                      (None, '0.0.9', None),
+                                      (None, None, '0.0.9')):
+      self.setTree('0.1.0-beta', constant=constant, manual=manual,
+                   package=package)
       before = self.tree()
       result = self.stamp('0.1.0-dev0')
       self.assertEqual(result.returncode, 5, result.stdout)

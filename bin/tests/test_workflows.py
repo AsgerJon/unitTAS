@@ -176,5 +176,49 @@ class ProbeReleasedTests(unittest.TestCase):
       self.assertNotIn('26.3-fabric', text, name)
 
 
+class PyPITests(unittest.TestCase):
+  """
+  Every release button publishes the Python package to PyPI too, as WorkToy's buttons publish WorkToy (its
+  pypa/gh-action-pypi-publish, by trusted publishing: no token kept anywhere). Built in the publish job from the
+  stamped tree (python/pyproject.toml and unittas.__version__ carry the version, and the commit carries them), the
+  release's jars bundled in it (unittas/probes, where a spec's probe = "bundled" finds them; the dev jar left out) and
+  the licence beside it; uploaded by a job of its own once the version commit and its tag are pushed, as the GitHub
+  release is, so either can be re-run alone ("Re-run failed jobs").
+  """
+
+  def text(self, button: str) -> str:
+    with open(os.path.join(WORKFLOWS, button + '.yml'), encoding='utf-8') as file:
+      return re.sub(r' \\\n\s*', ' ', file.read())
+
+  def test_the_package_built_with_the_release_s_probes(self) -> None:
+    jars = ['unittas-$VERSION_INFO.jar'] + ['unittas-probe-%s-$VERSION_INFO.jar' % minecraft for minecraft in VERSIONS]
+    for button in BUTTONS:
+      with self.subTest(button=button):
+        text = self.text(button)
+        copy = 'cp %s python/src/unittas/probes/' % ' '.join('"build/libs/%s"' % jar for jar in jars)
+        self.assertIn(copy, text)
+        self.assertNotIn('-dev.jar" python/src/unittas/probes', text, 'the dev jar is no probe')
+        self.assertIn('cp LICENSE python/LICENSE', text)
+        self.assertIn('python -m build python', text)
+        self.assertIn('python/pyproject.toml python/src/unittas/__init__.py', text, 'the commit carries both')
+
+  def test_uploaded_by_a_job_of_its_own_after_the_tag(self) -> None:
+    for button in BUTTONS:
+      with self.subTest(button=button):
+        text = self.text(button)
+        self.assertIn('uses: pypa/gh-action-pypi-publish@release/v1', text)
+        self.assertIn('packages-dir: python/dist/', text)
+        job = text[text.index('\n  pypi:\n'):]
+        job = job[:job.index('\n  release:\n')] if '\n  release:\n' in job else job
+        self.assertIn('needs: publish', job)
+        self.assertIn('id-token: write', job)
+        self.assertNotIn('contents: write', job, 'the upload needs no more than its token')
+        self.assertEqual(1, text.count('id-token: write'), 'only the upload asks for the token')
+        built = text.index('python -m build python')
+        pushed = text.index('git push --atomic origin')
+        self.assertLess(built, pushed, 'built from the stamped tree, before the version commit')
+        self.assertLess(pushed, text.index('uses: pypa/gh-action-pypi-publish@release/v1'), 'uploaded once tagged')
+
+
 if __name__ == '__main__':
   unittest.main()

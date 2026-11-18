@@ -806,24 +806,34 @@ any button spends every arming.
    `./unittas.sh self` before pressing.
 2. The version is named again from the branch tip (a press another run made obsolete meanwhile is refused there too)
    and stamped into `gradle.properties` (`mod_version`, which names both jars and goes into `mcmod.info`),
-   `UnitTasMod.VERSION` (the `@Mod`'s) and this README's recipes; both jars are built, and every version's probe; the
-   counters advance by the same table. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag
+   `UnitTasMod.VERSION` (the `@Mod`'s), this README's recipes, and the Python package's `python/pyproject.toml` and
+   `unittas.__version__` (as the version is, which the package's build spells as Python does: `0.1.0.dev3`); both jars
+   are built, and every version's probe, and the Python package with the release's jars in it (`unittas/probes`,
+   which a spec's `probe = "bundled"` uses); the counters advance by the same table. One commit (`dev X`, `rc X` or `LTS X`, as "Asger Jon Vistisen") and its tag
    `X` are pushed together, or neither is (if `main` moved meanwhile, or the tag is taken).
 3. A GitHub release of that tag with both 1.7.10 jars, each version's probe (`unittas-probe-26.3-<version>.jar`, and
    1.21.1's and 1.20.1's the same way), and GitHub's generated notes (the commits and pull requests since the last
    release), titled `dev X` or `rc X` (pre-releases) or `X` (the latest release). For a draft you write yourself
    instead, the release step's `--generate-notes` becomes `--draft --notes ""`.
+4. The Python package on PyPI (`pip install unittas`; a dev or rc release is a pre-release there, `pip install --pre
+   unittas`), by a job of its own (`pypi`) with WorkToy's publish step (`pypa/gh-action-pypi-publish`), by trusted
+   publishing: PyPI trusts the button's workflow, and no token is kept anywhere.
 
-Pull after every press. If only the last job fails (the tag is pushed by then), "Re-run failed jobs" makes the
-release from the same tag and jars; pressing the button again would make the next version. The buttons run one at a
-time (one concurrency group), and need `main` open to pushes from Actions. They use only GitHub's own actions and
-the runner's `gh`.
+Pull after every press. If only the last jobs fail (the tag is pushed by then), "Re-run failed jobs" makes the
+release, or the upload, from the same tag, jars and package; pressing the button again would make the next version.
+The buttons run one at a time (one concurrency group), and need `main` open to pushes from Actions. They use
+GitHub's own actions, the runner's `gh`, and PyPA's publish action.
 
-`mod_version` isn't edited by hand: the stamp refuses when `gradle.properties`, `UnitTasMod.VERSION` and this
-README's recipes disagree. JitPack builds a tag the first time someone asks for `com.github.AsgerJon:unitTAS:<tag>`
+**PyPI, once:** PyPI has to trust each button before its first upload. On pypi.org, under the account's publishing
+settings, a trusted publisher for each of the nine: PyPI project `unittas`, owner `AsgerJon`, repository `unitTAS`,
+workflow `minor-dev.yml` (and `micro-dev.yml`, ... each button's own file), no environment. Before the project's
+first upload these are "pending" publishers, and the first upload makes the project.
+
+`mod_version` isn't edited by hand: the stamp refuses when `gradle.properties`, `UnitTasMod.VERSION`, this README's
+recipes, `python/pyproject.toml` and `unittas.__version__` disagree. JitPack builds a tag the first time someone asks for `com.github.AsgerJon:unitTAS:<tag>`
 (`jitpack.yml` gives it Java 21); the tag's commit already carries its version. The state machine, the scripts and the
-safeties are WorkToy's, adapted: unitTAS's runs also push the version commit and its tag together, make the release in
-a job of its own, and paste no expression into a script.
+safeties are WorkToy's, adapted, and so is the PyPI upload: unitTAS's runs also push the version commit and its tag
+together, make the release and the upload in jobs of their own, and paste no expression into a script.
 
 ## Other tools
 
