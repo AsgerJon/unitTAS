@@ -25,10 +25,7 @@ import subprocess
 import sys
 import unittest
 
-from agentgame import buildAgent
-from forgegame import FORGE
-from neoforgegame import NEOFORGE
-from ports import FORGE_PORTS, NEOFORGE_PORTS, V1_7_10, V1_20_1, V1_21_1, V26_3, onlyOn, port, version
+from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, agentSpec, onlyOn, specLoader, version
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -102,17 +99,9 @@ class SelfSuitesAgentTests(unittest.TestCase):
 
   def test_1_unittas_run_on_a_spec_of_the_version(self) -> None:
     minecraft = version()
-    jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), minecraft)
-    folder = os.path.join(results(), 'specs')
-    os.makedirs(folder, exist_ok=True)
-    spec = os.path.join(folder, 'self-%s.toml' % minecraft)
-    loader, loaderVersion = (('forge', FORGE[minecraft]) if port() in FORGE_PORTS
-                             else ('neoforge', NEOFORGE[minecraft]) if port() in NEOFORGE_PORTS
-                             else ('fabric', '0.20.1'))
-    with open(spec, 'w', encoding='utf-8') as file:
-      # no "java": the launcher finds one the version asks for (25, 21, 17), as a user's spec would leave it
-      file.write('minecraft = "%s"\nloader = { %s = "%s" }\nclient = "real"\nprobe = "%s"\ngame = "%s"\n' % (
-        minecraft, loader, loaderVersion, jar, os.path.join(ROOT, 'run', '%s-%s-spec' % (loader, minecraft))))
+    loader, _ = specLoader()
+    spec = agentSpec(os.path.join(results(), 'specs', 'self-%s.toml' % minecraft),
+                     os.path.join(ROOT, 'run', '%s-%s-spec' % (loader, minecraft)))
     run = os.path.join(results(), 'self-%s' % minecraft)
     process = subprocess.Popen([sys.executable, '-m', 'unittas', 'run', 'selfsuite.green', '--instance', spec,
                                 '--results', run], cwd=os.path.join(ROOT, 'python', 'tests'),

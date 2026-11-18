@@ -14,6 +14,11 @@ BEFORE	net/minecraft/client/Minecraft	createTitle	()Ljava/lang/String;	window.ti
 BEFORE	net/minecraft/client/Minecraft	setScreen	(Lnet/minecraft/client/gui/screens/Screen;)V	screen.set
 BEFORE	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.start
 AFTER	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.end
+# what a command's source is told while command.run runs it: its lines (ModernThings.heard); the action bar's none
+BEFORE	net/minecraft/server/level/ServerPlayer	sendSystemMessage	(Lnet/minecraft/network/chat/Component;Z)V	command.heard
+BEFORE	net/minecraft/server/MinecraftServer	sendSystemMessage	(Lnet/minecraft/network/chat/Component;)V	command.heard
+# a crash report saved: the game is crashing, said before the JVM goes (ModernHooks.crashSaved)
+AFTER	net/minecraft/CrashReport	saveToFile	(Ljava/io/File;)Z	crash.saved
 BEFORE	net/minecraft/client/gui/components/ChatComponent	addMessage	(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/GuiMessageTag;)V	chat.line
 # after the engine resolved it: 1.20.1 picks a sound's variant at random as it resolves, so the probe never does first
 AFTER	net/minecraft/client/sounds/SoundManager	play	(Lnet/minecraft/client/resources/sounds/SoundInstance;)V	sound.play

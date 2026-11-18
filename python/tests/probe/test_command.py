@@ -1,6 +1,7 @@
 """
-Step 8a of phase 3 (SPEC.md section 9.3): the 'unittas' command, run as a user runs it ('python -m unittas', a process
-of its own), on unitTAS's development client from an instance spec (client = "gradle").
+Step 8a of phase 3 (SPEC.md section 9.3), on the run's port (19.7 step 9c): the 'unittas' command, run as a user runs
+it ('python -m unittas', a process of its own), from an instance spec: 1.7.10's on unitTAS's development client
+(client = "gradle"); every other port's on a real client of its version, the agent its probe (ports.agentSpec).
 - run: step 7's suites (green, red and one that isn't there), its report checked by bin/self_red_check.py --python,
   each test's line shown as it ended;
 - launch --world: up in the test world, then Ctrl+C: the game gone, and the game folder's own options.txt back.
@@ -18,9 +19,11 @@ import sys
 import time
 import unittest
 
+from ports import V1_7_10, agentSpec, specLoader, version
 from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
 from unittas.release import gameJvms
 
+#  1.7.10's development client's game folder
 GAME = os.path.join(ROOT, 'run', 'client')
 
 
@@ -36,9 +39,14 @@ class CommandTests(unittest.TestCase):
     folder = os.path.join(results(), 'specs')
     os.makedirs(folder, exist_ok=True)
     cls.spec = os.path.join(folder, 'command.toml')
-    with open(cls.spec, 'w', encoding='utf-8') as file:
-      file.write('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "gradle"\n[gradle]\n'
-                 'project = "%s"\ntask = "runClient"\ngame = "%s"\n' % (ROOT, GAME))
+    if version() == V1_7_10:
+      cls.game = GAME
+      with open(cls.spec, 'w', encoding='utf-8') as file:
+        file.write('minecraft = "1.7.10"\nloader = { forge = "10.13.4.1614" }\nclient = "gradle"\n[gradle]\n'
+                   'project = "%s"\ntask = "runClient"\ngame = "%s"\n' % (ROOT, GAME))
+    else:
+      cls.game = os.path.join(ROOT, 'run', '%s-%s-command' % (specLoader()[0], version()))
+      agentSpec(cls.spec, cls.game)
     # unitTAS's own Gradle cache, as ./unittas.sh gives its Gradle (a mod's project would use its own)
     cls.environment = dict(os.environ, GRADLE_USER_HOME=os.path.join(ROOT, '.gradle-home'))
 
@@ -59,12 +67,12 @@ class CommandTests(unittest.TestCase):
     report = os.path.join(folder, 'report.txt')
     self.assertIn('report: %s' % report, said)
     self.assertIn('ChatTests.testTypedTextIsRead ... ok', said, "each test's line shown as it ended")
-    checked = subprocess.run([sys.executable, '-I', os.path.join(ROOT, 'bin', 'self_red_check.py'), '--python', report],
-                             capture_output=True, text=True)
+    checked = subprocess.run([sys.executable, '-I', os.path.join(ROOT, 'bin', 'self_red_check.py'), '--python',
+                              '--game', self.game, report], capture_output=True, text=True)
     self.assertEqual(0, checked.returncode, checked.stdout + checked.stderr)
 
   def test_2_launch_until_ctrl_c(self) -> None:
-    options = os.path.join(GAME, 'options.txt')
+    options = os.path.join(self.game, 'options.txt')
     before = open(options, encoding='utf-8').read() if os.path.isfile(options) else None
     folder = os.path.join(results(), 'command-launch')
     process = self.command('launch', '--world', '--instance', self.spec, '--results', folder,
@@ -81,7 +89,7 @@ class CommandTests(unittest.TestCase):
           break
       self.assertTrue(said and said[-1].startswith('the game is up in the test world'), ''.join(said))
       self.assertIn('for looking at', said[0])
-      self.assertTrue(gameJvms(GAME), 'no game running in %s' % GAME)
+      self.assertTrue(gameJvms(self.game), 'no game running in %s' % self.game)
       process.send_signal(signal.SIGINT)
       rest, _ = process.communicate(timeout=GONE_SECONDS)
       said.append(rest)
@@ -91,7 +99,7 @@ class CommandTests(unittest.TestCase):
         process.wait(30)
     self.assertEqual(0, process.returncode, ''.join(said))
     self.assertIn('Ctrl+C: the game is asked to quit', ''.join(said))
-    self.assertEqual([], gameJvms(GAME), 'the game is still running')
+    self.assertEqual([], gameJvms(self.game), 'the game is still running')
     after = open(options, encoding='utf-8').read() if os.path.isfile(options) else None
     self.assertEqual(before, after, "the game folder's own options.txt isn't back")
 

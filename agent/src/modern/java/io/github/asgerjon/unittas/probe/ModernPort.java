@@ -3,7 +3,6 @@ package io.github.asgerjon.unittas.probe;
 
 import java.lang.reflect.Method;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -82,7 +81,7 @@ public final class ModernPort implements Port {
 
 	@Override
 	public List<String> trace() {
-		return Collections.emptyList();
+		return ModernTrace.lines();
 	}
 
 	@Override

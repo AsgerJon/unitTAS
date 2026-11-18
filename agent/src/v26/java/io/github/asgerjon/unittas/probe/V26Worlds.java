@@ -76,6 +76,12 @@ final class V26Worlds implements GameWorlds {
 		return TEST_LAYERS;
 	}
 
+	/** A flat world's layers as the Customize box writes them (ModernFlat). */
+	@Override
+	public String flatLayers(java.util.List<FlatLayer> layers, String biome) throws ProbeException {
+		return ModernFlat.text(layers, biome);
+	}
+
 	/**
 	 * 26.3's generator options are a flat world's layers only, as its Customize box writes them: layers of [height*]block
 	 * from the bottom up, then ;biome. The game reads text it can't as the classic flat world, villages and all; the
@@ -213,10 +219,12 @@ final class V26Worlds implements GameWorlds {
 	/** 26.3 keeps no trace of a world loading for the probe (debug.trace is empty). */
 	@Override
 	public void traceStart() {
+		ModernTrace.start();
 	}
 
 	@Override
 	public void traceStop() {
+		ModernTrace.stop();
 	}
 
 	/** 26.3's client has no difficulty option of its own: it shows the server's. */

@@ -83,6 +83,10 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 			case "chat.line":
 				ModernChat.heard((Component) arguments[0], Version.chatKind(arguments));
 				return pass;
+			case "command.heard":
+				// a player's or the server's system message: a line of command.run's, if it runs for that source
+				ModernThings.heard(self, (Component) arguments[0], arguments.length > 1 && (Boolean) arguments[1]);
+				return pass;
 			case "sound.play":
 				ModernSounds.heard((SoundManager) self, (SoundInstance) arguments[0]);
 				return pass;
@@ -100,6 +104,9 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 				return pass;
 			case "server.tick.end":
 				ModernHooks.serverTickEnd();
+				return pass;
+			case "crash.saved":
+				ModernHooks.crashSaved((net.minecraft.CrashReport) self);
 				return pass;
 			default:
 				// a hook of the version's own (1.21.1's view keeps its frames and builds by hooks): its Version's

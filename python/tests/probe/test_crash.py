@@ -1,6 +1,6 @@
 """
-Step 8b of phase 3 (SPEC.md section 9.3): a crash, said before the game goes. In the development client, crashed on
-purpose the game's own way (crashsuite.crash):
+Step 8b of phase 3 (SPEC.md section 9.3), on the run's port (19.7 step 9b): a crash, said before the game goes.
+Crashed on purpose the game's own way (crashsuite.crash):
 - the probe's 'crash' event, with the crash report's file and its summary, then 'quit' with reason crash, and the
   game gone;
 - in a Python run, the test it came in is NO RESULT naming the crash and its report, and the test after it isn't run;
@@ -19,9 +19,9 @@ import re
 import unittest
 
 import crashsuite
-from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
+from ports import probeGame
+from probegame import GONE_SECONDS, READY_SECONDS
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.gamefiles import removeTree
 from unittas.run import Run, runSuite
 
@@ -35,9 +35,9 @@ def isEvent(kind: str):
 class CrashTests(unittest.TestCase):
 
   def started(self, name: str) -> tuple:
-    game = DevGame(ROOT, results(), name)
+    game = probeGame(name)
     self.addCleanup(game.stop)
-    connection = game.start()
+    connection = game.start(READY_SECONDS)
     connection.events.waitFor(isEvent('ready'), READY_SECONDS)
     return game, connection
 

@@ -15,7 +15,6 @@ import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
@@ -176,9 +175,26 @@ final class ModernThings {
 
 	// ---------------------------------------------------------------- commands
 
+	/** The command running now on this (the server's) thread, whose source's messages are its lines (heard). */
+	private static final ThreadLocal<Heard> HEARING = new ThreadLocal<>();
+
+	/** What a command's source was told while it ran: its lines, those in red its errors. */
+	private static final class Heard {
+
+		final Object source;
+		final JsonArray lines = new JsonArray();
+		final JsonArray errors = new JsonArray();
+
+		Heard(Object source) {
+			this.source = source;
+		}
+	}
+
 	/**
-	 * Runs the command as the server runs a typed one (8.6), its feedback still going where it would. Its lines are
-	 * what the command said back to its source, those in red its errors (26.3's failures are red, as 1.7.10's are).
+	 * Runs the command as the server runs a typed one (8.6), from the source a typed one has (the player's own, or
+	 * the server's), so the game does as it would: its feedback to that source, its notice to the other operators (a
+	 * player's own command is not told back to it in grey). Its lines are what reached that source meanwhile (the hook
+	 * command.heard on its sendSystemMessage), those in red its errors (26.3's failures are red, as 1.7.10's are).
 	 */
 	private static JsonElement command(Call call) throws ProbeException {
 		String text = call.string("command", null);
@@ -188,56 +204,47 @@ final class ModernThings {
 		MinecraftServer server = server();
 		JsonElement as = call.args.get("as");
 		CommandSourceStack source;
-		CommandSource said;
+		Object told;
 		if (as == null || as.isJsonNull() || (as.isJsonPrimitive() && "player".equals(as.getAsString()))) {
 			ServerPlayer player = serverPlayer(call.string("player", null));
 			source = player.createCommandSourceStack();
-			said = Version.commandSource(player);
+			told = player;
 		} else if (as.isJsonPrimitive() && "server".equals(as.getAsString())) {
 			source = server.createCommandSourceStack();
-			said = server;
+			told = server;
 		} else if (as.isJsonObject() && Json.string(as.getAsJsonObject(), "player") != null) {
 			ServerPlayer player = serverPlayer(Json.string(as.getAsJsonObject(), "player"));
 			source = player.createCommandSourceStack();
-			said = Version.commandSource(player);
+			told = player;
 		} else {
 			throw ProbeException.badRequest("as", "as is \"player\", {\"player\": name} or \"server\", not " + as);
 		}
-		JsonArray lines = new JsonArray();
-		JsonArray errors = new JsonArray();
 		int[] result = {0};
-		CommandSource heard = new CommandSource() {
-			@Override
-			public void sendSystemMessage(Component message) {
-				String plain = message.getString();
-				lines.add(plain);
-				boolean error = RED.equals(message.getStyle().getColor());
-				if (error) {
-					errors.add(plain);
-				}
-				if (error ? said.acceptsFailure() : said.acceptsSuccess()) {
-					said.sendSystemMessage(message);
-				}
-			}
-
-			@Override
-			public boolean acceptsSuccess() {
-				return true;
-			}
-
-			@Override
-			public boolean acceptsFailure() {
-				return true;
-			}
-
-			@Override
-			public boolean shouldInformAdmins() {
-				return said.shouldInformAdmins();
-			}
-		};
+		Heard heard = new Heard(told);
 		String typed = text.startsWith("/") ? text : "/" + text;
-		server.getCommands().performPrefixedCommand(Version.withResult(source.withSource(heard), result), typed);
-		return Json.object("result", result[0], "lines", lines, "errors", errors);
+		HEARING.set(heard);
+		try {
+			server.getCommands().performPrefixedCommand(Version.withResult(source, result), typed);
+		} finally {
+			HEARING.remove();
+		}
+		return Json.object("result", result[0], "lines", heard.lines, "errors", heard.errors);
+	}
+
+	/**
+	 * A system message to a player or the server (the hook command.heard): a line of the command running for that
+	 * source on this thread, if one is; the action bar's (an overlay) is none.
+	 */
+	static void heard(Object to, Component message, boolean overlay) {
+		Heard hearing = HEARING.get();
+		if (hearing == null || hearing.source != to || overlay) {
+			return;
+		}
+		String plain = message.getString();
+		hearing.lines.add(plain);
+		if (RED.equals(message.getStyle().getColor())) {
+			hearing.errors.add(plain);
+		}
 	}
 
 	/** After the command, settle_ticks client ticks, so what it changed has reached the client (as 1.7.10's does). */
@@ -622,7 +629,8 @@ final class ModernThings {
 		String className = call.string("class", null);
 		if (className != null) {
 			try {
-				kind = Class.forName(className, false, Entity.class.getClassLoader());
+				// by its Mojang name, the running one where the game runs under others (1.21.1's, 1.20.1's)
+				kind = Class.forName(Members.runningClass(className), false, Entity.class.getClassLoader());
 			} catch (ClassNotFoundException e) {
 				throw new ProbeException("NotFound", "no class " + className, Json.object("what", className));
 			}

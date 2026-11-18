@@ -1,11 +1,15 @@
 """
-Step 2 of phase 2 (SPEC.md section 8.3): the probe connects. In the real
-development client: the hello, status while the game loads, ready at the
+Step 2 of phase 2 (SPEC.md section 8.3), on the run's port (19.7 step 9):
+the probe connects. The hello, status while the game loads, ready at the
 title screen, an operation the probe doesn't have, events.set, the
-heartbeat, quit; a hello refused; and the orchestrator going away, while the game loads and
-at the title screen. Each class is one launch of its own.
+heartbeat, quit; a hello refused; and the orchestrator going away, while
+the game loads and at the title screen. Each class is one launch of its
+own. What says which game it is (1.7.10's development client by MCP's
+names, LaunchWrapper's order, its mods) is 1.7.10's own here; each other
+port's is its own test's (test_agent, test_fabric, test_neoforge,
+test_forge).
 
-  python -m unittas.selftest connect      (through the watcher: "probe connect")
+  python -m unittas.selftest connect      (through the watcher: "probe connect", "probe connect on 1.21.1")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -16,14 +20,23 @@ import re
 import time
 import unittest
 
-from probegame import GONE_SECONDS, MIXINS, READY_SECONDS, ROOT, modVersion, results
-from unittas.dev import DevGame
+from agentgame import HOOKED
+from ports import FABRIC_PORTS, FORGE_PORTS, NEOFORGE_PORTS, V1_7_10, onlyOn, port, probeGame, title, version
+from probegame import GONE_SECONDS, MIXINS, READY_SECONDS, modVersion
 from unittas.errors import LinkClosed, LinkTimeout, Unsupported
 from unittas.wire import Role
+
+#  each port's own test says which game it is
+ITS_OWN = "each port's game is its own test's (test_agent, test_fabric, test_neoforge, test_forge)"
 
 
 def isReady(event: dict) -> bool:
   return event.get('event') == 'ready'
+
+
+def hooked() -> list:
+  """What the probe puts into the port's game, as its ready says: 1.7.10's mixins, the agent's hooked classes."""
+  return sorted(MIXINS if version() == V1_7_10 else HOOKED[version()])
 
 
 class ConnectTests(unittest.TestCase):
@@ -31,8 +44,8 @@ class ConnectTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.game = DevGame(ROOT, results(), 'connect')
-    cls.connection = cls.game.start()
+    cls.game = probeGame('connect')
+    cls.connection = cls.game.start(READY_SECONDS)
 
   @classmethod
   def tearDownClass(cls) -> None:
@@ -43,15 +56,9 @@ class ConnectTests(unittest.TestCase):
     self.assertEqual((1,), hello.protocol)
     self.assertEqual('connect', hello.name)
     self.assertIs(Role.CLIENT, hello.role)
-    self.assertEqual('1.7.10', hello.minecraft)
-    self.assertEqual(('forge', '10.13.4.1614'), (hello.loaderName, hello.loaderVersion))
+    self.assertEqual(version(), hello.minecraft)
     self.assertEqual(modVersion(), hello.probeVersion)
-    self.assertEqual('1.7.10-forge', hello.probePort)
-    self.assertEqual('mcp', hello.names, 'a development run names Minecraft by MCP')
-    self.assertTrue(hello.development)
-    self.assertRegex(hello.javaVersion, r'^1\.8\.')
     self.assertGreater(hello.pid, 0)
-    self.assertTrue(hello.gameDir.endswith('run/client'), hello.gameDir)
     for op in ('status', 'events.set', 'quit'):
       self.assertIn(op, hello.ops)
     self.assertIn('log', hello.events)
@@ -59,6 +66,17 @@ class ConnectTests(unittest.TestCase):
     self.assertIn('tick', hello.events, 'the heartbeat')
     self.assertIn('crash', hello.events)
 
+  @onlyOn(V1_7_10, why=ITS_OWN)
+  def test_1a_the_development_client_s_hello(self) -> None:
+    hello = self.connection.hello
+    self.assertEqual(('forge', '10.13.4.1614'), (hello.loaderName, hello.loaderVersion))
+    self.assertEqual('1.7.10-forge', hello.probePort)
+    self.assertEqual('mcp', hello.names, 'a development run names Minecraft by MCP')
+    self.assertTrue(hello.development)
+    self.assertRegex(hello.javaVersion, r'^1\.8\.')
+    self.assertTrue(hello.gameDir.endswith('run/client'), hello.gameDir)
+
+  @onlyOn(V1_7_10, why="LaunchWrapper's tweakers are 1.7.10's: the agent dials as the JVM starts")
   def test_1b_dialled_only_once_minecraft_is_launched(self) -> None:
     # Until LaunchWrapper launches Minecraft, its tweakers are still adding class transformers, and its class loader
     # goes through that list without a lock: a class the probe's link thread loaded meanwhile failed (a
@@ -87,11 +105,17 @@ class ConnectTests(unittest.TestCase):
 
   def test_3_ready_at_the_title_screen(self) -> None:
     ready = self.connection.events.waitFor(isReady, READY_SECONDS)
-    self.assertTrue(ready['screen'].endswith('GuiMainMenu'), ready['screen'])
+    self.assertEqual(title(), ready['screen'])
     ids = [mod['id'] for mod in ready['mods']]
-    for mod in ('mcp', 'FML', 'Forge', 'unittas'):
-      self.assertIn(mod, ids)
-    self.assertEqual(sorted(MIXINS), sorted(ready['mixins']['applied']))
+    if version() == V1_7_10:
+      for mod in ('mcp', 'FML', 'Forge', 'unittas'):
+        self.assertIn(mod, ids)
+    elif port() in FABRIC_PORTS + NEOFORGE_PORTS + FORGE_PORTS:
+      self.assertIn('minecraft', ids)
+      self.assertNotIn('unittas', ids, "the agent is no loader's mod")
+    else:
+      self.assertEqual([], ids, 'vanilla: no mods, no loader to list them')
+    self.assertEqual(hooked(), sorted(ready['mixins']['applied']))
     self.assertEqual([], ready['mixins']['missing'])
     self.assertEqual('unitTAS', ready['window']['title'])
     self.assertGreater(ready['load_ms'], 0)
@@ -105,7 +129,7 @@ class ConnectTests(unittest.TestCase):
     self.assertEqual(['client'], second['sides'])
     self.assertIsNone(second['world'])
     self.assertIsNone(second['joined'])
-    self.assertTrue(second['screen'].endswith('GuiMainMenu'), second['screen'])
+    self.assertEqual(title(), second['screen'])
     self.assertEqual('unitTAS', second['window']['title'])
     self.assertFalse(second['window']['pointer_grabbed'])
     self.assertGreater(second['ticks']['client'], first['ticks']['client'], 'the client ticks')
@@ -135,7 +159,7 @@ class ConnectTests(unittest.TestCase):
     self.assertEqual('menu', beat['state'])
     self.assertIsNone(beat['server'], 'no server while no world is open')
     self.assertIsNone(beat['server_ago_ms'])
-    self.assertTrue(beat['screen'].endswith('GuiMainMenu'), beat['screen'])
+    self.assertEqual(title(), beat['screen'])
     self.assertFalse(beat['paused'])
     mark = self.connection.events.mark()
     self.connection.request('debug.lag', {'ms': 10000, 'ticks': 1}, side='client', timeout=30)
@@ -161,7 +185,7 @@ class RefusedTests(unittest.TestCase):
   """A hello with a token the orchestrator didn't give: refused, and the game quits by itself."""
 
   def test_the_game_quits(self) -> None:
-    game = DevGame(ROOT, results(), 'refused')
+    game = probeGame('refused')
     self.addCleanup(game.stop)
 
     def spoil(expected) -> None:
@@ -181,9 +205,9 @@ class GoneWhileLoadingTests(unittest.TestCase):
   """The orchestrator goes away while the game loads: the game quits (no window left behind)."""
 
   def test_the_game_quits(self) -> None:
-    game = DevGame(ROOT, results(), 'gone-loading')
+    game = probeGame('gone-loading')
     self.addCleanup(game.stop)
-    connection = game.start()
+    connection = game.start(READY_SECONDS)
     self.assertEqual('loading', connection.request('status', timeout=10)['state'])
     connection.close()
     self.assertTrue(game.ended(GONE_SECONDS), 'the game is still running %s s after its orchestrator went' % GONE_SECONDS)
@@ -193,9 +217,9 @@ class GoneAtTheTitleScreenTests(unittest.TestCase):
   """The orchestrator goes away once the game is up: the game quits as its own Quit does."""
 
   def test_the_game_quits(self) -> None:
-    game = DevGame(ROOT, results(), 'gone-menu')
+    game = probeGame('gone-menu')
     self.addCleanup(game.stop)
-    connection = game.start()
+    connection = game.start(READY_SECONDS)
     connection.events.waitFor(isReady, READY_SECONDS)
     connection.close()
     self.assertTrue(game.ended(GONE_SECONDS), 'the game is still running %s s after its orchestrator went' % GONE_SECONDS)

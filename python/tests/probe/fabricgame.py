@@ -20,11 +20,6 @@ from unittas.release import gameJvms, putMods
 
 MINECRAFT, LOADER, LOADER_VERSION = '26.3', 'fabric', '0.20.1'
 TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
-#  the test world (step 4): the run's seed; a flat world's layers as 26.3's Customize box writes them, bedrock, two
-#  dirt and grass on plains, no structures (1.7.10's are '2;7,2x3,2;1;')
-SEED = 20261029
-LAYERS_26 = 'minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block;minecraft:plains'
-COPY, TERRAIN = 'unittas-probe-copy', 'unittas-terrain'
 #  where the reset puts the player in 26.3's flat test world: on its grass (the surface y -61), at the spawn
 START_26 = (0.5, -60.0, 0.5)
 

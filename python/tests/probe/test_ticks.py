@@ -1,9 +1,10 @@
 """
-Step 3 of phase 2 (SPEC.md section 8.3): ticks and waiting, on the client side (the server side needs a world, which
-step 4 makes; its waits are tested there). ticks.wait and its stall rule, batch, cancel, wait.until and its tests, and
-debug.lag for a slow game. One launch, its tests in order.
+Step 3 of phase 2 (SPEC.md section 8.3), on the run's port (19.7 step 9): ticks and waiting, on the client side (the
+server side needs a world, which step 4 makes; its waits are tested there). ticks.wait and its stall rule, batch,
+cancel, wait.until and its tests, and debug.lag for a slow game. One launch, its tests in order, at the title screen
+(the port's version's own, ports.title).
 
-  python -m unittas.selftest ticks      (through the watcher: "probe ticks")
+  python -m unittas.selftest ticks      (through the watcher: "probe ticks", "probe ticks. on 1.21.1")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -12,8 +13,8 @@ from __future__ import annotations
 import time
 import unittest
 
-from probegame import READY_SECONDS, ROOT, results
-from unittas.dev import DevGame
+from ports import probeGame, title
+from probegame import READY_SECONDS
 from unittas.errors import BadRequest, Cancelled, NotReady, Stalled
 
 
@@ -21,8 +22,8 @@ class TicksTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.game = DevGame(ROOT, results(), 'ticks')
-    cls.connection = cls.game.start()
+    cls.game = probeGame('ticks')
+    cls.connection = cls.game.start(READY_SECONDS)
 
   @classmethod
   def tearDownClass(cls) -> None:
@@ -82,7 +83,7 @@ class TicksTests(unittest.TestCase):
 
   def test_07_screen_get(self) -> None:
     screen = self.request('screen.get', side='client')
-    self.assertTrue(screen['class'].endswith('GuiMainMenu'), screen)
+    self.assertEqual(title(), screen['class'], screen)
     self.assertEqual((False, False, False), (screen['chat'], screen['container'], screen['pauses']))
     self.assertEqual(screen, self.request('screen.get'), 'the client is screen.get\'s own side')
     with self.assertRaises(BadRequest) as caught:
@@ -134,10 +135,10 @@ class TicksTests(unittest.TestCase):
     return self.request('wait.until', {'side': 'client', 'op': op, 'args': {}, 'test': test, 'max_ticks': maxTicks})
 
   def test_13_wait_until_holds_at_once(self) -> None:
-    found = self.until({'path': ['class'], 'contains': 'GuiMainMenu'})
+    found = self.until({'path': ['class'], 'contains': title().rsplit('.', 1)[1]})
     self.assertTrue(found['held'])
     self.assertEqual(1, found['checks'])
-    self.assertTrue(found['value']['class'].endswith('GuiMainMenu'))
+    self.assertEqual(title(), found['value']['class'])
     self.assertIsInstance(found['tick'], int)
 
   def test_14_wait_until_never_holds(self) -> None:
@@ -147,12 +148,12 @@ class TicksTests(unittest.TestCase):
     self.assertFalse(found['value']['pauses'])
 
   def test_15_the_tests(self) -> None:
-    menu = 'net.minecraft.client.gui.GuiMainMenu'
+    menu = title()
     cases = [
       ({'path': ['class'], 'eq': menu}, True),
       ({'path': ['class'], 'ne': menu}, False),
       ({'path': ['class'], 'in': ['a', menu]}, True),
-      ({'path': ['class'], 'contains': 'Main'}, True),
+      ({'path': ['class'], 'contains': menu.rsplit('.', 1)[1][:5]}, True),
       ({'path': ['class'], 'len': {'gt': 10}}, True),
       ({'path': ['class'], 'len': {'lt': 10}}, False),
       ({'path': ['nothing'], 'exists': False}, True),

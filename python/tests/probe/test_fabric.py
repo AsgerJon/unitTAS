@@ -17,9 +17,8 @@ Phase 4 (SPEC.md section 12.3) and 19.7 step 5: unitTAS's 26.3 probe beside Fabr
   is titled unitTAS, as the 1.7.10 probe's is (PROTOCOL.md 2.5). Its game folder's options.txt is a returning
   player's (onboardAccessibility:false, tutorialStep:none): a first launch of 26.3 opens on its accessibility
   onboarding screen, not the title screen.
-- Step 4, a launch of its own: worlds (FabricWorldTests), as test_worlds has them in 1.7.10: made, read, their rules,
-  time, weather and difficulty set, the steady world, closed, copied and opened again, refused when not there or in
-  the way; a world of real terrain too. The bodies are the core's (WorldOps); the game's calls 26.3's (FabricWorlds).
+- Step 4's worlds are test_worlds' since SPEC.md 19.7 step 9, on every port (they were FabricWorldTests here, on
+  26.3 alone).
 - Step 5a, a launch of its own: the game's things and the reset (FabricThingTests), as test_reset and test_game have
   them in 1.7.10: command.run, players, the inventory with its off hand, items with components, blocks with their
   states, entities by their ids, screens; the reset from anything a command reaches, and from the End.
@@ -35,10 +34,10 @@ import shutil
 import unittest
 
 from agentgame import HOOKED, buildAgent
-from fabricgame import COPY, LAYERS_26, LOADER, LOADER_VERSION, SEED, START_26, TERRAIN, TITLE, FabricGame
+from fabricgame import LOADER, LOADER_VERSION, START_26, TITLE, FabricGame
 from ports import V1_20_1, V1_21_1, V26_3, fabricVersion
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
-from unittas.errors import BadRequest, Exists, NotFound, NotReady
+from unittas.errors import BadRequest, NotFound, NotReady
 from unittas.reset import reset
 
 
@@ -143,217 +142,6 @@ class FabricGameTests(unittest.TestCase):
     gone = self.connection.events.waitFor(lambda event: event.get('event') == 'quit', 30, since=mark)
     self.assertEqual('asked', gone['reason'])
     self.assertTrue(self.game.ended(GONE_SECONDS), 'the game is still running %s s after quit' % GONE_SECONDS)
-
-
-@ONLY_26_3
-class FabricWorldTests(unittest.TestCase):
-  """
-  Step 4 (SPEC.md 12.3): worlds in 26.3, as test_worlds has them in 1.7.10, in one launch, its tests in order. The
-  operations' bodies are the core's (WorldOps, step 4a); the game's calls are 26.3's own (FabricWorlds): a world made
-  as createFreshLevel makes it, opened as the world list's Play opens it, left as the pause menu's Save and Quit
-  leaves it. Its own names where 26.3's differ: the rules (advance_time, not doDaylightCycle), a flat world's layers as
-  its Customize box writes them, and a flat world that starts at the bottom of the world (y -64), so its surface is
-  y -61 and the player stands at y -60.
-  """
-
-  @classmethod
-  def setUpClass(cls) -> None:
-    folder = os.path.join(results(), 'fabric-worlds')
-    jar = buildAgent(os.path.join(folder, 'build.log'))
-    cls.game = FabricGame(results(), jar, name='fabric-worlds')
-    cls.saves = os.path.join(cls.game.gameFolder(), 'saves')
-    #  the orchestrator's part: the folders this test makes are cleared before it, with no world open
-    for save in ('unittas', COPY, TERRAIN):
-      shutil.rmtree(os.path.join(cls.saves, save), ignore_errors=True)
-    cls.connection = cls.game.start(READY_SECONDS)
-    cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
-
-  @classmethod
-  def tearDownClass(cls) -> None:
-    cls.game.stop(30)
-    shutil.rmtree(os.path.join(cls.saves, COPY), ignore_errors=True)
-
-  def request(self, op, args=None, side=None, timeout=60.0):
-    return self.connection.request(op, args, side=side, timeout=timeout)
-
-  def test_01_no_world_yet(self) -> None:
-    for op in ('world.create', 'world.open', 'world.close', 'world.get', 'world.rules.set', 'world.time.set',
-               'world.weather.set', 'world.difficulty.set', 'world.prepare'):
-      self.assertIn(op, self.connection.hello.ops)
-    with self.assertRaises(NotReady):
-      self.request('world.get')
-    with self.assertRaises(NotReady):
-      self.request('world.close')
-    self.assertIsNone(self.request('status')['world'])
-
-  def test_01b_a_generator_26_3_can_t_read_is_refused_first(self) -> None:
-    """The Customize box's text, read as the game reads it; one it would read otherwise is refused, nothing made."""
-    for args in ({'generator': 'minecraft:bedrock,2*minecraft:no_such_block;minecraft:plains'},
-                 {'generator': 'minecraft:bedrock,x*minecraft:dirt'},
-                 {'type': 'default', 'generator': LAYERS_26}):
-      with self.subTest(args=args):
-        with self.assertRaises(BadRequest) as caught:
-          self.request('world.create', args)
-        self.assertEqual('generator', caught.exception.fields.get('field'), caught.exception.message)
-    self.assertFalse(os.path.exists(os.path.join(self.saves, 'unittas')), 'a refused world.create makes nothing')
-
-  def test_02_create(self) -> None:
-    mark = self.connection.events.mark()
-    made = self.request('world.create', {}, timeout=240)
-    self.assertEqual('unittas', made['folder'])
-    self.assertGreater(made['load_ms'], 0)
-    self.assertEqual(3, len(made['spawn']))
-    states = [event['state'] for event in self.connection.events.since(mark) if event.get('event') == 'world']
-    self.assertIn('open', states)
-    status = self.request('status')
-    self.assertEqual('world', status['state'])
-    self.assertEqual(['client', 'server'], status['sides'])
-    self.assertEqual({'folder': 'unittas', 'dimension': 'minecraft:overworld'}, status['world'])
-    self.assertIsNotNone(status['ticks']['server'])
-
-  def test_03_the_spec_s_world(self) -> None:
-    world = self.request('world.get')
-    self.assertEqual('unittas', world['folder'])
-    self.assertEqual('unitTAS', world['name'])
-    self.assertEqual(SEED, world['seed'])
-    self.assertEqual('flat', world['type'])
-    self.assertEqual(LAYERS_26, world['generator'])
-    self.assertEqual('creative', world['game_mode'])
-    self.assertTrue(world['cheats'])
-    self.assertFalse(world['hardcore'])
-    self.assertEqual(-60, world['spawn'][1], 'on the grass, at the bottom of the world')
-    self.assertIn('minecraft:overworld', world['dimensions'])
-    self.assertIn('advance_time', world['rules'])
-    again = self.request('world.get', side='server')
-    #  the same world, its time a tick or two on
-    self.assertEqual({key: value for key, value in world.items() if 'time' not in key},
-                     {key: value for key, value in again.items() if 'time' not in key})
-    with self.assertRaises(BadRequest):
-      self.request('world.get', side='client')
-
-  def test_04_one_world_at_a_time(self) -> None:
-    with self.assertRaises(NotReady):
-      self.request('world.create', {'folder': 'another'})
-    with self.assertRaises(NotReady):
-      self.request('world.open', {'folder': 'unittas'})
-
-  def test_05_the_server_side_waits(self) -> None:
-    value = self.request('ticks.wait', {'side': 'server', 'n': 20})
-    self.assertEqual(20, value['tick'] - value['from'])
-    entries = self.request('batch', {'ops': [{'op': 'world.get'}, {'op': 'world.get'}]}, side='server')
-    self.assertEqual(1, len({entry['at']['server'] for entry in entries}), entries)
-    self.assertEqual(entries[0]['value']['time'], entries[1]['value']['time'], 'one tick, one time')
-
-  def test_06_wait_until_holds_later(self) -> None:
-    goal = self.request('world.get')['time'] + 10
-    found = self.request('wait.until', {'side': 'server', 'op': 'world.get', 'max_ticks': 100,
-                                        'test': {'path': ['time'], 'ge': goal}})
-    self.assertTrue(found['held'])
-    self.assertGreaterEqual(found['value']['time'], goal)
-    self.assertGreater(found['checks'], 5)
-    self.assertLess(found['checks'], 15)
-
-  def test_07_rules(self) -> None:
-    self.request('world.rules.set', {'rules': {'advance_time': False, 'spawn_mobs': False,
-                                               'fire_spread_radius_around_player': 0, 'mob_griefing': False,
-                                               'minecraft:keep_inventory': True}})
-    rules = self.request('world.get')['rules']
-    self.assertEqual('false', rules['advance_time'])
-    self.assertEqual('0', rules['fire_spread_radius_around_player'])
-    self.assertEqual('true', rules['keep_inventory'], 'by its full name too, as /gamerule takes it')
-    with self.assertRaises(NotFound) as caught:
-      self.request('world.rules.set', {'rules': {'doDaylightCycle': False}})
-    self.assertIn('doDaylightCycle', caught.exception.message, "1.7.10's name isn't 26.3's")
-    with self.assertRaises(BadRequest):
-      self.request('world.rules.set', {'rules': {'advance_time': 'sometimes'}})
-    self.assertEqual('false', self.request('world.get')['rules']['advance_time'], 'a refused value sets nothing')
-
-  def test_08_time(self) -> None:
-    self.request('world.time.set', {'time': 6000})
-    self.assertEqual(6000, self.request('world.get')['day_time'])
-    self.request('world.time.set', {'time': 7000, 'dimension': 'minecraft:overworld'})
-    self.assertEqual(7000, self.request('world.get')['day_time'])
-    with self.assertRaises(NotFound):
-      self.request('world.time.set', {'time': 6000, 'dimension': 'minecraft:the_moon'})
-
-  def test_09_weather(self) -> None:
-    self.request('world.weather.set', {'weather': 'rain'})
-    world = self.request('world.get')
-    self.assertEqual((True, False), (world['raining'], world['thundering']))
-    self.request('world.weather.set', {'weather': 'thunder'})
-    self.assertTrue(self.request('world.get')['thundering'])
-    self.request('world.weather.set', {'weather': 'clear', 'hold': True})
-    world = self.request('world.get')
-    self.assertEqual((False, False), (world['raining'], world['thundering']))
-
-  def test_10_difficulty(self) -> None:
-    self.request('world.difficulty.set', {'difficulty': 'hard'})
-    self.assertEqual('hard', self.request('world.get')['difficulty'])
-    self.request('world.difficulty.set', {'difficulty': 'easy'})
-    self.assertEqual('easy', self.request('world.get')['difficulty'])
-
-  def test_10b_prepare(self) -> None:
-    #  the steady world both runners give a test world, by 26.3's rules: four off, noon, clear
-    steady = {'advance_time': 'false', 'spawn_mobs': 'false', 'fire_spread_radius_around_player': '0',
-              'mob_griefing': 'false'}
-    self.request('world.rules.set', {'rules': {'advance_time': True, 'spawn_mobs': True,
-                                               'fire_spread_radius_around_player': 128, 'mob_griefing': True}})
-    self.request('world.time.set', {'time': 1000})
-    self.request('world.weather.set', {'weather': 'rain'})
-    self.assertEqual({}, self.request('world.prepare'))
-    world = self.request('world.get')
-    self.assertEqual(steady, {rule: world['rules'][rule] for rule in steady})
-    self.assertEqual(6000, world['day_time'])
-    self.assertEqual((False, False), (world['raining'], world['thundering']))
-    self.request('ticks.wait', {'side': 'server', 'n': 20})
-    self.assertEqual(6000, self.request('world.get')['day_time'], "advance_time off: the day's clock is still")
-
-  def test_11_close(self) -> None:
-    mark = self.connection.events.mark()
-    closed = self.request('world.close', timeout=240)
-    self.assertGreater(closed['close_ms'], 0)
-    states = [event['state'] for event in self.connection.events.since(mark) if event.get('event') == 'world']
-    self.assertIn('closed', states)
-    status = self.request('status')
-    self.assertEqual('menu', status['state'])
-    self.assertEqual(TITLE, status['screen'])
-    self.assertEqual(['client'], status['sides'])
-    with self.assertRaises(NotReady):
-      self.request('ticks.wait', {'side': 'server', 'n': 1})
-
-  def test_12_the_folder_is_whole_and_opens_again(self) -> None:
-    #  the orchestrator's part: with no world open, the folder is files, copied in Python
-    shutil.copytree(os.path.join(self.saves, 'unittas'), os.path.join(self.saves, COPY))
-    opened = self.request('world.open', {'folder': COPY}, timeout=240)
-    self.assertEqual(COPY, opened['folder'])
-    self.assertEqual('unitTAS', opened['name'])
-    world = self.request('world.get')
-    self.assertEqual(SEED, world['seed'])
-    self.assertEqual(LAYERS_26, world['generator'])
-    self.assertEqual('false', world['rules']['advance_time'])
-    self.assertEqual('true', world['rules']['keep_inventory'])
-    self.assertEqual(6000, world['day_time'])
-    self.request('world.close', timeout=240)
-
-  def test_13_not_there_and_in_the_way(self) -> None:
-    with self.assertRaises(NotFound):
-      self.request('world.open', {'folder': 'no-such-save'})
-    with self.assertRaises(Exists):
-      self.request('world.create', {'folder': 'unittas'})
-    self.assertEqual('menu', self.request('status')['state'])
-
-  def test_13b_real_terrain(self) -> None:
-    """A world of the default type (a class's own world asks for one: real terrain, for maps and the like)."""
-    made = self.request('world.create', {'folder': TERRAIN, 'type': 'default', 'seed': 1234}, timeout=240)
-    world = self.request('world.get')
-    self.assertEqual(('default', '', 1234), (world['type'], world['generator'], world['seed']))
-    self.assertEqual(made['spawn'], world['spawn'])
-    self.assertGreater(world['spawn'][1], -60, 'real terrain is above the bottom of the world')
-    self.request('world.close', timeout=240)
-
-  def test_14_quit(self) -> None:
-    self.assertEqual({}, self.request('quit', {'reason': 'test_14'}))
-    self.assertTrue(self.game.ended(GONE_SECONDS))
 
 
 @ONLY_26_3

@@ -1,6 +1,6 @@
 """
-Step 8b of phase 3 (SPEC.md section 9.3): the watch on a Python run, in the development client, with the self-stuck
-suite's twin (tests/selfsuite/stuck.py, TimeLimitTests: a test past its 3 s time limit).
+Step 8b of phase 3 (SPEC.md section 9.3), on the run's port (19.7 step 9c): the watch on a Python run, with the
+self-stuck suite's twin (tests/selfsuite/stuck.py, TimeLimitTests: a test past its 3 s time limit).
 - Unwatched: that test is stopped, NO RESULT, and the next one runs as ever.
 - Watched: an alarm asks first. The test bench answers it as a watcher would (alarm.txt read, its pictures there,
   '1 wait 30' written to decision.txt), and the test reaches its verdict: ok, and the next one too.
@@ -19,9 +19,9 @@ import threading
 import time
 import unittest
 
+from ports import probeGame
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.run import Run, runSuites
 from unittas.watch import Watch
 
@@ -33,9 +33,9 @@ RESULT = re.compile(r'^(\S+) \.\.\. (.+?) \(\d+\.\d s\)$')
 class WatchRunTests(unittest.TestCase):
 
   def run_(self, name: str, watched: bool, watcher=None) -> list:
-    """The stuck suite on a watched or unwatched Run of a development client; the report's lines."""
-    game = DevGame(ROOT, results(), name)
-    connection = game.start()
+    """The stuck suite on a watched or unwatched Run of the port's game; the report's lines."""
+    game = probeGame(name)
+    connection = game.start(READY_SECONDS)
     connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
     run = Run(Game(connection), game.gameDir, os.path.join(game.results, 'run'), stop=game.stop)
     watch = Watch(run, watched=watched, pictures=5, decide=120)

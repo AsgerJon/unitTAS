@@ -17,7 +17,7 @@ import unittest
 from fakeprobe import FakeError, FakeProbe, inThread
 from unittas.api import Game
 from unittas.link import Listener
-from unittas.run import Run
+from unittas.run import Run, layerText
 from unittas.wire import Role
 from test_values import PLAYER
 
@@ -376,6 +376,20 @@ class OpeningGuardTests(FakeRun, unittest.TestCase):
     outcomes = [line.split(' ... ')[1].split(' (')[0] for line in lines if ' ... ' in line]
     self.assertEqual(['NO RESULT', 'NO RESULT', 'NO RESULT'], outcomes, '\n'.join(lines))
     self.assertIn("the test world didn't open", '\n'.join(lines))
+
+
+class LayerTextTests(unittest.TestCase):
+  """A flat world's layer as its world line says it (SPEC.md 19.7 step 9c)."""
+
+  def test_with_its_meta_before_1_13(self) -> None:
+    self.assertEqual('1xminecraft:wool:14',
+                     layerText({'id': 'minecraft:wool', 'meta': 14, 'count': 1}))
+
+  def test_without_one_from_1_13_on(self) -> None:
+    """A layer of a version without metas has none (World.flatArgs leaves it out)."""
+    self.assertEqual('2xminecraft:red_wool',
+                     layerText({'id': 'minecraft:red_wool', 'count': 2}))
+
 
 
 if __name__ == '__main__':

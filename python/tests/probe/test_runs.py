@@ -1,7 +1,8 @@
 """
-Step 6a of phase 3 (SPEC.md section 9.3): a run's lifecycle and GameTestCase in the development client. gamesuite.py's
-classes run on a Run (unittas.run) through unittest's own runner, and the run's report is read back: the world lines
-(the run's first, a fresh one, a shared one), each test's outcome, the failure's screenshot on disk, the counts.
+Step 6a of phase 3 (SPEC.md section 9.3), on the run's port (19.7 step 9c): a run's lifecycle and GameTestCase.
+gamesuite.py's classes run on a Run (unittas.run) through unittest's own runner, and the run's report is read back:
+the world lines (the run's first, a fresh one, a shared one), each test's outcome, the failure's screenshot on disk,
+the counts.
 
   python -m unittas.selftest test_runs.      (through the watcher: "probe test_runs.")
 """
@@ -15,9 +16,9 @@ import re
 import unittest
 
 import gamesuite
-from probegame import READY_SECONDS, ROOT, results
+from ports import V1_7_10, probeGame, version
+from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.launcher import Sources
 from unittas.mappings import Mappings
 from unittas.run import Run
@@ -28,12 +29,12 @@ RESULT = re.compile(r'^(\S+) \.\.\. (.+?) \(\d+\.\d s\)$')
 class RunTests(unittest.TestCase):
 
   def test_a_run_of_game_test_cases(self) -> None:
-    launched = DevGame(ROOT, results(), 'runs')
-    connection = launched.start()
+    launched = probeGame('runs')
+    connection = launched.start(READY_SECONDS)
     connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
     folder = os.path.join(launched.results, 'run')
-    run = Run(Game(connection, mappings=Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))),
-              launched.gameDir, folder, stop=launched.stop)
+    mappings = Mappings.load(Sources(gradleHome=os.path.join(ROOT, '.gradle-home'))) if version() == V1_7_10 else None
+    run = Run(Game(connection, mappings=mappings), launched.gameDir, folder, stop=launched.stop)
     Run.current = run
     try:
       run.begin()

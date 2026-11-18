@@ -23,14 +23,14 @@ JAR = os.path.join(ROOT, 'agent', 'build', 'unittas-probe-%s.jar')
 #  the game's classes each version's agent hooks (its hooks file), by their Mojang internal names, as ready names
 #  them rewritten
 HOOKED = {
-  '26.3': ['net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
+  '26.3': ['net/minecraft/CrashReport', 'net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
            'net/minecraft/client/MouseHandler', 'net/minecraft/client/gui/Gui',
            'net/minecraft/client/gui/components/ChatComponent', 'net/minecraft/client/sounds/SoundManager',
-           'net/minecraft/server/MinecraftServer'],
-  '1.21.1': ['net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
+           'net/minecraft/server/MinecraftServer', 'net/minecraft/server/level/ServerPlayer'],
+  '1.21.1': ['net/minecraft/CrashReport', 'net/minecraft/client/KeyboardHandler', 'net/minecraft/client/Minecraft',
              'net/minecraft/client/MouseHandler', 'net/minecraft/client/gui/components/ChatComponent',
              'net/minecraft/client/renderer/LevelRenderer', 'net/minecraft/client/sounds/SoundManager',
-             'net/minecraft/server/MinecraftServer'],
+             'net/minecraft/server/MinecraftServer', 'net/minecraft/server/level/ServerPlayer'],
 }
 #  1.20.1 hooks 1.21.1's classes (three of their methods by its own descriptors or names)
 HOOKED['1.20.1'] = HOOKED['1.21.1']

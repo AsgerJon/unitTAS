@@ -1,9 +1,10 @@
 """
-Worlds as classes in the development client (SPEC.md 17.7 step 1):
-worldsuite.py's class, loaded as the run loads tests (grouped by world),
-run on a Run; its report read back: each test ok, in its world, and the
-world lines (the run's first, Terrain made, Arena made, Arena again as
-its setUp left it).
+Worlds as classes (SPEC.md 17.7 step 1), on the run's port (19.7 step
+9c): worldsuite.py's class, loaded as the run loads tests (grouped by
+world), run on a Run; its report read back: each test ok, in its world,
+and the world lines (the run's first, Terrain made, Arena made, Arena
+again as its setUp left it, Layered by the version's own blocks, a map
+the game saved itself).
 
   python -m unittas.selftest test_worldruns.
   (through the watcher: "probe test_worldruns.")
@@ -21,18 +22,40 @@ import unittest
 
 from worktoy.desc import FixBox
 
-from probegame import READY_SECONDS, ROOT, results
+from mcdex import MCBlocks
+
+from ports import V1_7_10, V26_3, at, probeGame, version
+from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
-from unittas.dev import DevGame
 from unittas.launcher import Sources
 from unittas.mappings import Mappings
 from unittas._test_world import World
 from unittas.run import Run, loadSuites
 from unittas.testcase import GameTestCase
-from unittas.values import Block
 
 RESULT = re.compile(r'^(\S+) \.\.\. (.+?) \(\d+\.\d s\)$')
-GOLD = [2, 4, 2]
+#  the layered world's line, as each version's blocks and rule name it
+LAYERED = {
+  V1_7_10: (r'layers 1xminecraft:bedrock:0 2xminecraft:stone:0 '
+            r'1xminecraft:wool:14.*rules doDaylightCycle=False'),
+}
+MODERN_LAYERS = (r'layers 1xminecraft:bedrock 2xminecraft:stone '
+                 r'1xminecraft:red_wool.*rules %s=False')
+
+
+def gold():
+  """Where the map holds its gold, on the port's flat world."""
+  return at(2, 4, 2)
+
+
+def layered() -> str:
+  """
+  The layered world's line's layers and rule, as the version has them (26.3's
+  rule by its full name, as mcdex gives it).
+  """
+  rule = ('minecraft:advance_time' if version() == V26_3
+          else 'doDaylightCycle')
+  return LAYERED.get(version(), MODERN_LAYERS % rule)
 
 
 def digest(folder: str) -> str:
@@ -54,10 +77,9 @@ def houseTests(house: str) -> type:
   world = House()
 
   def test_the_map_as_saved(self) -> None:
-    self.assertEqual(Block('minecraft:gold_block', 0),
-                     self.game.block(GOLD))
+    self.assertThing(self.game.block(gold()), MCBlocks.GoldBlock)
     #  into the copy only: the map itself stays as saved
-    self.game.setBlock(GOLD, 'minecraft:air')
+    self.game.setBlock(gold(), 'minecraft:air')
 
   return type('HouseTests', (GameTestCase,), {
     'house': world, 'test_the_map_as_saved': world(test_the_map_as_saved)})
@@ -66,21 +88,24 @@ def houseTests(house: str) -> type:
 class WorldRunTests(unittest.TestCase):
 
   def test_tests_in_worlds_of_their_own(self) -> None:
-    launched = DevGame(ROOT, results(), 'worldruns')
-    connection = launched.start()
+    launched = probeGame('worldruns')
+    connection = launched.start(READY_SECONDS)
     connection.events.waitFor(
       lambda event: event.get('event') == 'ready', READY_SECONDS)
     folder = os.path.join(launched.results, 'run')
-    sources = Sources(gradleHome=os.path.join(ROOT, '.gradle-home'))
-    game = Game(connection, mappings=Mappings.load(sources))
+    if version() == V1_7_10:
+      sources = Sources(gradleHome=os.path.join(ROOT, '.gradle-home'))
+      game = Game(connection, mappings=Mappings.load(sources))
+    else:
+      game = Game(connection)
     run = Run(game, launched.gameDir, folder, stop=launched.stop)
-    #  a map, made by the game itself: its flat test world with gold at GOLD,
+    #  a map, made by the game itself: its flat test world with gold in it,
     #  closed, and copied beside the run's results
     saves = os.path.join(launched.gameDir, 'saves')
     shutil.rmtree(os.path.join(saves, 'unittas-mapsrc'), ignore_errors=True)
     game.request('world.create', {'folder': 'unittas-mapsrc'}, timeout=240)
-    game.request('block.set', {'pos': GOLD, 'block': {
-      'id': 'minecraft:gold_block', 'meta': 0}}, side='server')
+    #  on the server only, as the map holds it (no client's view needed)
+    game.setBlock(gold(), MCBlocks.GoldBlock, verify=False)
     game.request('world.close', timeout=240)
     house = os.path.join(launched.results, 'maps', 'house')
     shutil.rmtree(house, ignore_errors=True)
@@ -124,9 +149,7 @@ class WorldRunTests(unittest.TestCase):
                                 r'EWorldTests, as its setUp left it')
     self.assertRegex(worlds[4], r'^world 5: EWorldTests\.layered for '
                                 r'EWorldTests, made as it says \(type '
-                                r'flat, .*layers 1xminecraft:bedrock:0 '
-                                r'2xminecraft:stone:0 1xminecraft:wool:14'
-                                r'.*rules doDaylightCycle=False')
+                                r'flat, .*' + layered())
     self.assertRegex(worlds[5], r'^world \d+: HouseTests\.house for '
                                 r'HouseTests, opened from a fresh copy of '
                                 r'the saved map .*house')

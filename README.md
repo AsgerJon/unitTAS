@@ -373,8 +373,9 @@ class GiveTests(GameTestCase):
   `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), `ticks(n)`, `waitUntil`, `screenshot`, and
   `reflect` by readable names (a real client's are translated). Its values are typed (`unittas.values`). An error
   from the game is the package's exception (`unittas.errors`): a mod that threw is a `GameError`.
-- `command` gives back the command's `result` (1 for success in 1.7.10), `lines` (the chat lines that came in while it
-  ran, plain) and `errors` (the red ones among them). A refusal's text is checked with a substring:
+- `command` gives back the command's `result` (1 for success in 1.7.10; from 1.13 on the command's own value, as
+  `/time set 6000`'s 6000), `lines` (plain: in 1.7.10 the chat lines that came in while it ran; from 1.13 on what the
+  command said back, at once) and `errors` (the red ones among them). A refusal's text is checked with a substring:
   `any('higher than the maximum' in line for line in said.errors)`.
 - The levels are the Java runner's. Each class gets the kept world back unless it says `shared_world = True`, and
   a class that needs real terrain says `world = {'type': 'default', 'seed': 1234}` (above). The
@@ -754,12 +755,17 @@ obfuscated), `1.21.1-fabric` (the same with Fabric Loader, under its intermediar
 with NeoForge, under Mojang's names), `26.3-neoforge` (26.3 with NeoForge), `1.20.1` or `1.20.1-fabric` (the same for
 1.20.1), `1.20.1-forge` (1.20.1 with Forge, under SRG's names); on every port but 1.7.10's the probe is the Java agent.
 A test written for every port names things by mcdex member and places from the port's start; one its version can't do
-yet skips, saying which step brings it (`ports.py`).
+yet skips, saying which step brings it (`ports.py`). Every module runs on every port but those of 1.7.10 itself: its
+live download (`test_download`), its release jar (`test_realclient`), the Java runner (`test_noresult`, `test_oldsaves`,
+`test_core`'s `java.run`), its login race (`test_opening`), unitTAS's own 1.7.10 clients and test mod
+(`test_specgames`, `test_mptest`), and its numbers for mcdex's members (`test_mcdexthings`). Multiplayer is 1.7.10's
+so far (`test_server`, `test_join`, `test_players`, `test_multiplayer_run`).
 
 unitTAS's own tests are in `src/self/java`: on `runClient`'s class path, in neither jar. `./unittas.sh self` must be
 all ok. The `self-red` suite is red on purpose, in known ways (the report's outcomes and counts, the warnings, the
 config put back): `./unittas.sh "self,self-red,nosuch"`, then `python3 bin/self_red_check.py` checks the report line
-by line. The development run starts Mixin as a real game does (UniMixins' `MixinTweaker`, `--tweakClass`) and names
+by line (`--python` for the Python twins' run, `--game DIR` for a run in another game folder than the development
+client's). The development run starts Mixin as a real game does (UniMixins' `MixinTweaker`, `--tweakClass`) and names
 the coremods FML doesn't find there on its own: UniMixins' (`AllCore`) and unitTAS's.
 
 ## Releasing

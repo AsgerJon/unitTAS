@@ -21,7 +21,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.multiplayer.chat.GuiMessageSource;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
-import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.HolderLookup;
@@ -337,11 +336,6 @@ final class Version {
 		player.connection.send(new ClientboundSetHeldSlotPacket(slot));
 	}
 
-	/** What hears a command's lines for a player. */
-	static CommandSource commandSource(ServerPlayer player) {
-		return player.commandSource();
-	}
-
 	/** An entity's data, without its id, as /data reads it. */
 	static CompoundTag save(Entity entity, HolderLookup.Provider registries) {
 		TagValueOutput data = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, registries);
@@ -468,5 +462,11 @@ final class Version {
 	/** The class of a click's mode, for the screen's own slotClicked. */
 	static Class<?> clickModeClass() {
 		return ContainerInput.class;
+	}
+
+	/** The file a crash report was saved to, or null where it couldn't be (its save file is a Path here). */
+	static java.io.File crashFile(net.minecraft.CrashReport report) {
+		java.nio.file.Path saved = report.getSaveFile();
+		return saved == null ? null : saved.toFile();
 	}
 }

@@ -23,8 +23,8 @@ from typing import Callable
 
 from agentgame import AgentGame, buildAgent
 from fabricgame import FabricGame
-from forgegame import ForgeGame
-from neoforgegame import NeoForgeGame
+from forgegame import FORGE, ForgeGame
+from neoforgegame import NEOFORGE, NeoForgeGame
 from probegame import ROOT, results
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
@@ -58,9 +58,16 @@ COMMANDS = {
                               V26_3: '/effect give @p minecraft:speed 30 1'},
   'instant damage': {V1_7_10: '/effect @p 7 1 0',
                      V26_3: '/effect give @p minecraft:instant_damage 1 0'},
+  'three red wool': {V1_7_10: '/give @p wool 3 14', V26_3: '/give @p minecraft:red_wool 3'},
+  'one red wool': {V1_7_10: '/give @p wool 1 14', V26_3: '/give @p minecraft:red_wool 1'},
+  'survival': {V1_7_10: '/gamemode 0', V26_3: '/gamemode survival'},
+  'creative': {V1_7_10: '/gamemode 1', V26_3: '/gamemode creative'},
 }
 #  a key's raw code, as each version numbers its keys: 1.7.10's LWJGL codes, 26.3's SDL3 scancodes
 CODES = {'space': {V1_7_10: 57, V1_20_1: 32, V1_21_1: 32, V26_3: 44}}
+#  the title screen's class, as the probe names it: 1.7.10's by MCP, the rest by Mojang's names
+_TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
+TITLES = {V1_7_10: 'net.minecraft.client.gui.GuiMainMenu', V1_20_1: _TITLE, V1_21_1: _TITLE, V26_3: _TITLE}
 
 
 def _door(kind: str, half: str) -> Block:
@@ -189,6 +196,11 @@ def code(key: str) -> int:
   return CODES[key][version()]
 
 
+def title() -> str:
+  """The title screen's class, as the probe names it on the port's version."""
+  return TITLES[version()]
+
+
 def damageable(item: Item) -> Item:
   """
   A new damageable item (boots, a sword) as the port's game makes it: 1.20.1 writes an item's damage into its NBT as
@@ -211,6 +223,34 @@ def neoForgeVersion() -> str:
 def onlyOn(*versions: str, why: str) -> Callable:
   """A test (or class) run on those versions' ports only; on another it skips, saying why."""
   return unittest.skipUnless(version() in versions, 'not on %s: %s' % (port(), why))
+
+
+def specLoader() -> tuple:
+  """
+  The loader a spec of the port's version names, and its version: the port's own (Forge, NeoForge); Fabric Loader's
+  on a Fabric or a vanilla port, as a Fabric mod's spec would name it.
+  """
+  if port() in FORGE_PORTS:
+    return 'forge', FORGE[version()]
+  if port() in NEOFORGE_PORTS:
+    return 'neoforge', NEOFORGE[version()]
+  return 'fabric', '0.20.1'
+
+
+def agentSpec(path: str, game: str) -> str:
+  """
+  An instance spec of the port's version on a real client, written to 'path': the loader specLoader names, the
+  agent's jar (built for the run) its probe, 'game' its game folder. No "java": the launcher finds the one the version
+  asks for, as a user's spec would leave it. Its path.
+  """
+  minecraft = version()
+  jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), minecraft)
+  loader, loaderVersion = specLoader()
+  os.makedirs(os.path.dirname(path), exist_ok=True)
+  with open(path, 'w', encoding='utf-8') as file:
+    file.write('minecraft = "%s"\nloader = { %s = "%s" }\nclient = "real"\nprobe = "%s"\ngame = "%s"\n' % (
+      minecraft, loader, loaderVersion, jar, game))
+  return path
 
 
 def probeGame(name: str) -> LaunchedGame:

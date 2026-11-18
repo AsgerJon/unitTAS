@@ -13,8 +13,9 @@ import unittest
 from unittas.run import Run
 from unittas.testcase import GameTestCase
 
-#  As RedTests.CONFIG_MARK and CONFIG_MADE (and bin/self_red_check.py's): appended to forge.cfg, a file made beside it;
-#  both gone once the run has put the config back
+#  As RedTests.CONFIG_MARK and CONFIG_MADE (and bin/self_red_check.py's): appended to a file the game keeps in its
+#  config/ (1.7.10 Forge's forge.cfg; another game's first, where it has one), a file made beside it; both gone once
+#  the run has put the config back (a config/ the game had none of, gone with them)
 CONFIG_MARK = "# changed by unitTAS's self-red run"
 CONFIG_MADE = 'unittas-red.cfg'
 
@@ -95,8 +96,12 @@ class RedTests(GameTestCase):
 
   def testLeavesTheConfigChanged(self) -> None:
     config = os.path.join(Run.current.gameDir, 'config')
-    with open(os.path.join(config, 'forge.cfg'), 'a', encoding='utf-8') as file:
-      file.write('\n' + CONFIG_MARK + '\n')
+    os.makedirs(config, exist_ok=True)
+    kept = sorted(name for name in os.listdir(config) if os.path.isfile(os.path.join(config, name)))
+    changed = 'forge.cfg' if 'forge.cfg' in kept else kept[0] if kept else None
+    if changed is not None:
+      with open(os.path.join(config, changed), 'a', encoding='utf-8') as file:
+        file.write('\n' + CONFIG_MARK + '\n')
     with open(os.path.join(config, CONFIG_MADE), 'w', encoding='utf-8') as file:
       file.write("made by unitTAS's self-red run\n")
 

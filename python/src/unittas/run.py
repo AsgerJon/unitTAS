@@ -24,6 +24,7 @@ the counts. So bin/compare_reports.py and the self-red checker read both.
 - loadSuites: the tests by unittest's names, or discovered; reportNames
   the report's names for them.
 - runSuite, runSuites: a loaded suite, or suites by name, run on a Run.
+- layerText: a flat world's layer as its world line says it.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -130,6 +131,15 @@ def classWorld(world: Any, name: str) -> dict:
     elif not isinstance(value, kinds[key]):
       raise TypeError('%s.world: %s is a %s, not %r' % (name, key, kinds[key].__name__, value))
   return dict(world)
+
+
+def layerText(layer: dict) -> str:
+  """
+  A flat world's layer as its world line says it: COUNTxID, then :META where the version has metas (before 1.13; from
+  1.13 on a layer has none, SPEC.md 19.7 step 9c).
+  """
+  meta = ':%d' % layer['meta'] if 'meta' in layer else ''
+  return '%dx%s%s' % (layer['count'], layer['id'], meta)
 
 
 class Run:
@@ -423,7 +433,7 @@ class Run:
     else:
       asked = ', '.join('%s %s' % (key, value) for key, value in args.items() if key != 'layers')
     if 'layers' in args:
-      asked += ', layers %s' % ' '.join('%dx%s:%d' % (each['count'], each['id'], each['meta']) for each in args['layers'])
+      asked += ', layers %s' % ' '.join(layerText(each) for each in args['layers'])
     if rules:
       asked += ', rules %s' % ' '.join('%s=%s' % pair for pair in rules.items())
     if world.save:

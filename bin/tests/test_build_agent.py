@@ -116,7 +116,7 @@ class VersionsTests(unittest.TestCase):
     self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
 
   def test_each_version_s_hooks_file(self) -> None:
-    counts = {'26.3': 18, '1.21.1': 19, '1.20.1': 19}
+    counts = {'26.3': 21, '1.21.1': 22, '1.20.1': 22}
     for minecraft, version in build_agent.VERSIONS.items():
       with self.subTest(minecraft=minecraft):
         with open(version.hooks, encoding='utf-8') as file:

@@ -73,6 +73,12 @@ final class V1_20_1Worlds implements GameWorlds {
 		return TEST_LAYERS;
 	}
 
+	/** A flat world's layers as the Customize box writes them (ModernFlat). */
+	@Override
+	public String flatLayers(java.util.List<FlatLayer> layers, String biome) throws ProbeException {
+		return ModernFlat.text(layers, biome);
+	}
+
 	/**
 	 * 1.20.1's generator options are a flat world's layers only, as its Customize box writes them: layers of
 	 * [height*]block from the bottom up, then ;biome. The game reads text it can't as the classic flat world; the
@@ -217,10 +223,12 @@ final class V1_20_1Worlds implements GameWorlds {
 	/** 1.20.1 keeps no trace of a world loading for the probe (debug.trace is empty). */
 	@Override
 	public void traceStart() {
+		ModernTrace.start();
 	}
 
 	@Override
 	public void traceStop() {
+		ModernTrace.stop();
 	}
 
 	/** 1.20.1's client has no difficulty option of its own: it shows the server's. */
@@ -263,8 +271,9 @@ final class V1_20_1Worlds implements GameWorlds {
 			"difficulty", data.getDifficulty().getSerializedName(),
 			"time", overworld.getGameTime(),
 			"day_time", overworld.getDayTime(),
-			"raining", overworld.isRaining(),
-			"thundering", overworld.isThundering(),
+			// the weather as /weather sets it (the level data's), not the rain's fading strength (Level.isRaining)
+			"raining", overworld.getLevelData().isRaining(),
+			"thundering", overworld.getLevelData().isThundering(),
 			"rules", ruleValues,
 			"spawn", Arrays.asList(spawn.getX(), spawn.getY(), spawn.getZ()),
 			"dimensions", dimensions);

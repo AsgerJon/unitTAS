@@ -3,10 +3,14 @@ Checks the report of unitTAS's own red run line by line, for what a green run ca
 counts, the class fixtures, the worlds each class ran in, the warnings, and what the run puts back after it.
 
   ./unittas.sh "self,self-red,nosuch"
-  python3 bin/self_red_check.py [--python] [report.txt]
+  python3 bin/self_red_check.py [--python] [--game DIR] [report.txt]
 
 --python checks the Python twins' run instead (python/tests/selfsuite, SPEC.md 9.3 step 7): the same table, less what
 Python doesn't twin (StepTests, RedTests.testWarnsOutsideAStep, and so the warning in the Ran line).
+
+--game names the game folder the run ran in (1.7.10's development client's, run/client, by default; another port's,
+SPEC.md 19.7 step 9c): no file in its config/ may still hold the red test's mark, nor its own file be there. The
+development client's forge.cfg must be back too.
 
 The report defaults to unittas-results/latest/report.txt. `self` must be all ok; the self-red suite's tests
 (src/self/java/.../self/Red*.java) and the unknown suite 'nosuch' must come out exactly as listed below. Exits 0 when
@@ -21,7 +25,8 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG = os.path.join(ROOT, 'run', 'client', 'config')
+#  1.7.10's development client's game folder, which the run ran in unless --game names another
+GAME = os.path.join(ROOT, 'run', 'client')
 #  As RedTests.CONFIG_MARK and RedTests.CONFIG_MADE.
 CONFIG_MARK = "# changed by unitTAS's self-red run"
 CONFIG_MADE = 'unittas-red.cfg'
@@ -125,7 +130,7 @@ JAVA_ONLY_CLASSES = ('StepTests.',)
 JAVA_ONLY_TESTS = (WARNED,)
 
 
-def check(text: str, python: bool = False) -> list:
+def check(text: str, python: bool = False, game: str = GAME) -> list:
   """Every way the report differs from what the red run should give; 'python' for the Python twins' run."""
   out = []
   expected = {name: outcome for name, outcome in EXPECTED.items() if not (python and name in JAVA_ONLY_TESTS)}
@@ -177,13 +182,17 @@ def check(text: str, python: bool = False) -> list:
   lines = [line for line in text.split('\n') if line.strip()]
   if not lines or lines[-1] != LAST_LINE:
     out.append('the last line is %r, should be %r' % (lines[-1] if lines else None, LAST_LINE))
-  forge = os.path.join(CONFIG, 'forge.cfg')
-  if not os.path.isfile(forge):
+  config = os.path.join(game, 'config')
+  forge = os.path.join(config, 'forge.cfg')
+  if game == GAME and not os.path.isfile(forge):
     out.append('no %s to check (the run should have put it back as it was)' % forge)
-  elif CONFIG_MARK in open(forge, encoding='utf-8').read():
-    out.append('%s still holds the test\'s change: the config wasn\'t put back' % forge)
-  if os.path.exists(os.path.join(CONFIG, CONFIG_MADE)):
-    out.append('%s is still there: the config wasn\'t put back exactly' % os.path.join(CONFIG, CONFIG_MADE))
+  for where, _, names in os.walk(config):
+    for name in sorted(names):
+      path = os.path.join(where, name)
+      if name != CONFIG_MADE and CONFIG_MARK in open(path, encoding='utf-8', errors='replace').read():
+        out.append('%s still holds the test\'s change: the config wasn\'t put back' % path)
+  if os.path.exists(os.path.join(config, CONFIG_MADE)):
+    out.append('%s is still there: the config wasn\'t put back exactly' % os.path.join(config, CONFIG_MADE))
   return out
 
 
@@ -192,10 +201,18 @@ def main(*args: str) -> int:
   python = '--python' in args
   if python:
     args.remove('--python')
+  game = GAME
+  if '--game' in args:
+    at = args.index('--game')
+    if at + 1 >= len(args):
+      print('--game names the game folder the run ran in')
+      return 2
+    game = os.path.abspath(args[at + 1])
+    del args[at:at + 2]
   path = args[0] if args else os.path.join(ROOT, 'unittas-results', 'latest', 'report.txt')
   with open(path, encoding='utf-8') as f:
     text = f.read()
-  differences = check(text, python)
+  differences = check(text, python, game)
   for difference in differences:
     print('- ' + difference)
   print('self-red: %s (%s)' % ('as it should be' if not differences else '%d differences' % len(differences), path))

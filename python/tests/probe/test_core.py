@@ -1,11 +1,13 @@
 """
-Step 8 of phase 2 (SPEC.md section 8.3): the rest of the core. log.write; debug.threads, answering while the server
-sleeps in its tick, and debug.trace of a world load; hooks.run, counted by unitTAS's own SelfPlugin; java.run, today's
-Java runner driven over the socket: unitTAS's own suites self, self-red and nosuch, their report as
-bin/self_red_check.py wants it, a java.result for each of its lines, the game's operations NotReady meanwhile, the
-game back at the title screen after it, and a cancelled run. One launch, its tests in order.
+Step 8 of phase 2 (SPEC.md section 8.3), on the run's port (19.7 step 9): the rest of the core. log.write;
+debug.threads, answering while the server sleeps in its tick, and debug.trace of a world load; hooks.run, counted by
+unitTAS's own SelfPlugin; java.run, today's Java runner driven over the socket: unitTAS's own suites self, self-red
+and nosuch, their report as bin/self_red_check.py wants it, a java.result for each of its lines, the game's operations
+NotReady meanwhile, the game back at the title screen after it, and a cancelled run. One launch, its tests in order.
+The SelfPlugin and the Java runner are 1.7.10's development client's; the rest is every port's, each version's log
+line and client thread by the tables below.
 
-  python -m unittas.selftest test_core.      (through the watcher: "probe test_core.")
+  python -m unittas.selftest test_core.      (through the watcher: "probe test_core.", "probe test_core. on 1.21.1")
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -19,8 +21,8 @@ import sys
 import time
 import unittest
 
-from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
-from unittas.dev import DevGame
+from ports import V1_7_10, onlyOn, probeGame, title, version
+from probegame import GONE_SECONDS, READY_SECONDS, ROOT
 from unittas.errors import BadRequest, Cancelled, LinkTimeout, NoResult, NotReady
 
 SELF_PLUGIN = 'io.github.asgerjon.unittas.self.SelfPlugin'
@@ -34,6 +36,22 @@ RED_COUNTS = {'failures': 0, 'errors': 3, 'skipped': 2, 'expected_failures': 3, 
               'no_results': 0, 'problems': 1}
 #  a whole Java run of unitTAS's own suites, its fresh worlds included
 JAVA_SECONDS = 900.0
+#  the client's thread, as each version names it
+CLIENT_THREADS = {V1_7_10: 'Client thread'}
+#  why the Java runner's tests and the SelfPlugin's are 1.7.10's alone
+JAVA_RUNNER = "the Java runner (java.run) is 1.7.10's development client's front end"
+SELF_PLUGIN_ONLY = "unitTAS's own SelfPlugin is in 1.7.10's development client; a modern game has none of its"
+
+
+def logLine(level: str, message: str) -> str:
+  """
+  The line log.write's message makes in the game's output, as a pattern: 1.7.10's console line; from 1.13 on the
+  Log4j event the version's own logging configuration writes (an XML event, its message in CDATA).
+  """
+  if version() == V1_7_10:
+    return r'(?m)/%s\] \[unitTAS\]: %s$' % (level, re.escape(message))
+  return (r'<log4j:Event logger="unitTAS" [^>]*level="%s"[^>]*>\s*<log4j:Message><!\[CDATA\[%s\]\]>'
+          % (level, re.escape(message)))
 
 
 def isJavaResult(event: dict) -> bool:
@@ -44,9 +62,9 @@ class CoreTests(unittest.TestCase):
 
   @classmethod
   def setUpClass(cls) -> None:
-    cls.game = DevGame(ROOT, results(), 'core')
+    cls.game = probeGame('core')
     shutil.rmtree(os.path.join(cls.game.gameDir, 'saves', 'unittas'), ignore_errors=True)
-    cls.connection = cls.game.start()
+    cls.connection = cls.game.start(READY_SECONDS)
     cls.connection.events.waitFor(lambda event: event.get('event') == 'ready', READY_SECONDS)
 
   @classmethod
@@ -60,7 +78,7 @@ class CoreTests(unittest.TestCase):
     """The game's log, once it holds the text (the game's output reaches the file a little later)."""
     deadline = time.monotonic() + seconds
     while True:
-      with open(os.path.join(self.game.results, 'gradle.log'), encoding='utf-8', errors='replace') as log:
+      with open(os.path.join(self.game.results, self.game.outputName()), encoding='utf-8', errors='replace') as log:
         found = log.read()
       if text in found or time.monotonic() > deadline:
         return found
@@ -91,8 +109,8 @@ class CoreTests(unittest.TestCase):
     self.assertEqual({}, self.request('log.write', {'message': '=== CoreTests.test_01_log_write ==='}))
     self.assertEqual({}, self.request('log.write', {'message': 'a warning from the tests', 'level': 'warn'}))
     log = self.logOnceItHas('a warning from the tests')
-    self.assertRegex(log, r'(?m)/INFO\] \[unitTAS\]: === CoreTests\.test_01_log_write ===$')
-    self.assertRegex(log, r'(?m)/WARN\] \[unitTAS\]: a warning from the tests$')
+    self.assertRegex(log, logLine('INFO', '=== CoreTests.test_01_log_write ==='))
+    self.assertRegex(log, logLine('WARN', 'a warning from the tests'))
 
   def test_02_log_write_refuses(self) -> None:
     for args, field in (({}, 'message'), ({'message': 7}, 'message'), ({'message': 'x', 'level': 'loud'}, 'level')):
@@ -104,8 +122,8 @@ class CoreTests(unittest.TestCase):
 
   def test_03_debug_threads(self) -> None:
     text = self.request('debug.threads')['text']
-    self.assertIn('screen: net.minecraft.client.gui.GuiMainMenu', text)
-    self.assertIn('"Client thread"', text)
+    self.assertIn('screen: ' + title(), text)
+    self.assertIn('"%s"' % CLIENT_THREADS.get(version(), 'Render thread'), text)
     self.assertIn('"unitTAS link"', text)
 
   def test_04_debug_trace_of_a_world_load(self) -> None:
@@ -133,6 +151,7 @@ class CoreTests(unittest.TestCase):
 
   # ---------------------------------------------------------------- the mods' hooks
 
+  @onlyOn(V1_7_10, why=SELF_PLUGIN_ONLY)
   def test_06_hooks_are_called(self) -> None:
     setUp, tornDown = self.selfPlugin('worldsSetUp'), self.selfPlugin('worldsTornDown')
     self.request('hooks.run', {'hook': 'setUpWorld'})
@@ -142,11 +161,13 @@ class CoreTests(unittest.TestCase):
 
   # ---------------------------------------------------------------- java.run
 
+  @onlyOn(V1_7_10, why=JAVA_RUNNER)
   def test_07_java_run_needs_the_title_screen(self) -> None:
     with self.assertRaises(NotReady):
       self.request('java.run', {'suites': ['self'], 'results': self.javaResults('never')})
     self.request('world.close', timeout=240)
 
+  @onlyOn(V1_7_10, why=JAVA_RUNNER)
   def test_08_java_run_refuses(self) -> None:
     folder = self.javaResults('never')
     for args, field in (({'suites': ['self']}, 'results'),
@@ -160,6 +181,7 @@ class CoreTests(unittest.TestCase):
       self.assertEqual(field, refused.exception.fields.get('field'), args)
     self.assertFalse(os.path.exists(folder), 'a refused java.run made nothing')
 
+  @onlyOn(V1_7_10, why=JAVA_RUNNER)
   def test_09_java_run_of_unitTAS_s_own_suites(self) -> None:
     folder = self.javaResults('red')
     mark = self.connection.events.mark()
@@ -191,10 +213,12 @@ class CoreTests(unittest.TestCase):
     self.assertEqual(lines, [(event['test'], WORDS[event['outcome']]) for event in events])
     self.assertEqual(ran, sum(1 for _, outcome in lines if outcome != 'problem'))
 
+  @onlyOn(V1_7_10, why=JAVA_RUNNER)
   def test_10_after_the_java_run(self) -> None:
     self.assertEqual('menu', self.request('status')['state'])
     self.assertTrue(self.request('screen.get')['class'].endswith('GuiMainMenu'), 'the game answers again')
 
+  @onlyOn(V1_7_10, why=JAVA_RUNNER)
   def test_11_a_cancelled_java_run(self) -> None:
     folder = self.javaResults('cancelled')
     mark = self.connection.events.mark()

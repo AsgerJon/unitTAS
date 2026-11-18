@@ -30,6 +30,8 @@ public final class ModernHooks {
 
 	/** Minecraft is made: the client's own operations get their bodies (declared by ModernPort), the worlds' too. */
 	static void register(Probe probe) {
+		// the game's state, first in debug.threads (and a hang's dump), as 1.7.10's TasHang.state says it
+		probe.gameState = ModernHooks::state;
 		WorldOps.bind(probe);
 		ModernThings.bind(probe);
 		ModernReset.bind(probe);
@@ -83,10 +85,26 @@ public final class ModernHooks {
 	}
 
 	/** The end of a client tick: the snapshot, then "ready" once, then the client side's steps (PROTOCOL.md 4.1). */
+	/**
+	 * A crash report saved (the hook crash.saved, after CrashReport.saveToFile): the game is crashing (the client's own
+	 * crash, or the integrated server's, which crashes the client with it), so the orchestrator hears it, with the
+	 * report's file and what it says, before the JVM goes, and then the quit, with reason crash (Probe.crashed, as
+	 * 1.7.10's MixinMinecraft says it).
+	 */
+	static void crashSaved(net.minecraft.CrashReport report) {
+		Probe.crashed(Version.crashFile(report), report.getTitle(), report.getException());
+	}
+
 	public static void clientTickEnd(Minecraft mc) {
 		Probe probe = Probe.get();
 		if (probe == null) {
 			return;
+		}
+		if (mc.level != null) {
+			ModernTrace.once("the client has its level");
+		}
+		if (mc.player != null) {
+			ModernTrace.once("the client has its player");
 		}
 		Sides sides = Sides.get();
 		Snapshot snapshot = probe.snapshot;
@@ -110,11 +128,14 @@ public final class ModernHooks {
 		// whether the window holds the pointer (SDL3's relative mouse mode, which the game's grab sets), as 1.7.10's
 		// Mouse.isGrabbed(): never, while the probe is awake (PROTOCOL.md 2.5)
 		snapshot.pointerGrabbed = Version.pointerGrabbed();
+		// loading until the game has loaded (the loading overlay gone, a screen up), as ready says it: 1.21.1's client
+		// ticks under its loading overlay, so a tick alone is no sign the game is up
+		boolean loaded = readySent || !(Version.loading() || screen == null);
 		if (!probe.quitting()) {
-			snapshot.state = snapshot.changing ? "changing" : mc.level == null ? "menu" : "world";
+			snapshot.state = !loaded ? "loading" : snapshot.changing ? "changing" : mc.level == null ? "menu" : "world";
 		}
 		if (!readySent) {
-			if (Version.loading() || screen == null) {
+			if (!loaded) {
 				// still loading (the loading overlay is up): not ready, and no tick counted
 				return;
 			}
@@ -154,7 +175,29 @@ public final class ModernHooks {
 	public static void serverTickStart() {
 		if (Probe.get() != null) {
 			Sides.get().noteThread(Side.SERVER);
+			ModernTrace.once("the integrated server's first tick");
 		}
+	}
+
+	/**
+	 * The game's state as debug.threads says it first (on a thread of its own: Ops.threads): the screen, the client's
+	 * level and player, the integrated server, and the world's loading so far (ModernTrace).
+	 */
+	static String state() {
+		Minecraft mc = Minecraft.getInstance();
+		Screen screen = Version.screen();
+		IntegratedServer server = mc.getSingleplayerServer();
+		StringBuilder out = new StringBuilder();
+		out.append("screen: ").append(screen == null ? "none" : Members.className(screen.getClass())).append('\n');
+		out.append("client world: ").append(mc.level != null).append(", client player: ").append(mc.player != null)
+			.append('\n');
+		out.append("integrated server: ").append(server == null ? "none" : "running " + server.isRunning()
+			+ ", players " + server.getPlayerCount()).append('\n');
+		out.append("\nthe world's loading so far (debug.trace):\n");
+		for (String line : ModernTrace.lines()) {
+			out.append(line).append('\n');
+		}
+		return out.toString();
 	}
 
 	/** The end of the integrated server's tick: its steps run (PROTOCOL.md 4.1). */
