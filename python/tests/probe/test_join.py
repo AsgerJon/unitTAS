@@ -23,11 +23,9 @@ import os
 import shutil
 import unittest
 
-from agentgame import buildAgent
-from ports import AGENT_SERVERS, GRASS, V1_7_10, onlyOn, port, probeGame, start, title, version
+from ports import AGENT_SERVERS, GRASS, V1_7_10, onlyOn, port, probeGame, serverGame, start, title, version
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
-from unittas.cache import Cache, defaultRoot
 from unittas.errors import BadRequest, Disconnected, NotReady
 from unittas.launcher import Sources
 from unittas.release import ReleaseGame, releaseJar
@@ -45,8 +43,8 @@ class JoinTests(unittest.TestCase):
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       raise unittest.SkipTest("a dedicated server needs Mojang's EULA accepted: this runs on Asger's standing yes only")
     if version() != V1_7_10 and port() not in AGENT_SERVERS:
-      raise unittest.SkipTest('not on %s yet: the agent in a server comes on 26.3 first (SPEC.md 19.7 step 10b)'
-                              % port())
+      raise unittest.SkipTest("not on %s yet: NeoForge's and Forge's servers come after Fabric's (SPEC.md 19.7 "
+                              "step 10f)" % port())
     os.makedirs(os.path.join(results(), 'join-server'), exist_ok=True)
     folder = os.path.join(results(), 'join-server-folder')
     shutil.rmtree(folder, ignore_errors=True)
@@ -56,10 +54,7 @@ class JoinTests(unittest.TestCase):
       cls.server = ServerGame(ROOT, results(), 'join-server', folder=folder, mods=[cls.jar, mixins], players=(PLAYER,),
                               eula=True, memory='1G', sources=Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
     else:
-      agent = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
-      cls.server = ServerGame(ROOT, results(), 'join-server', folder=folder, players=(PLAYER,), eula=True,
-                              memory='2G', sources=Sources(cache=Cache(defaultRoot())), minecraft=version(),
-                              probe=agent)
+      cls.server = serverGame('join-server', folder, (PLAYER,))
     cls.serverConnection, _ = cls.server.ready(READY_SECONDS)
     try:
       if version() == V1_7_10:

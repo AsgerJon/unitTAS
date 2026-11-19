@@ -1,6 +1,7 @@
 """
-The test across versions (SPEC.md 12.3 step 9, 19.7 steps 4 and 6f): one scene played on 1.7.10 Forge's development
-client and on real vanilla clients of 26.3, 1.21.1 and 1.20.1 (the probe a Java agent; 1.21.1 and 1.20.1 obfuscated),
+The test across versions (SPEC.md 12.3 step 9, 19.7 steps 4, 6f and 11g): one scene played on 1.7.10 Forge's
+development client and on real vanilla clients of 26.3, 1.21.1, 1.20.1 and 1.16.1 (the probe a Java agent; all but 26.3
+obfuscated; 1.16.1 on Java 8),
 one game after the other, never two at once. On each, red wool and then blue wool placed by their mcdex members a step
 from the world's start and read back, each read recorded with the members its version reads it as; the game stopped
 before the next starts. The reads differ as the versions do (1.7.10's minecraft:wool with meta 14, the flattened
@@ -23,7 +24,7 @@ from typing import Any
 from mcdex import MCBlocks
 
 from agentgame import AgentGame, buildAgent
-from ports import STARTS, V1_7_10, V1_20_1, V1_21_1, V26_3
+from ports import STARTS, V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3
 from probegame import READY_SECONDS, ROOT, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -33,7 +34,7 @@ from unittas.values import Vec3
 #  what the scene places, by its name in the record
 PLACED = {'red wool': MCBlocks.RedWool, 'blue wool': MCBlocks.BlueWool}
 #  the versions played, in their order: 1.7.10's development client, then each agent version's vanilla client
-PLAYED = (V1_7_10, V26_3, V1_21_1, V1_20_1)
+PLAYED = (V1_7_10, V26_3, V1_21_1, V1_20_1, V1_16_1)
 
 
 def sameThing(first: tuple, second: tuple) -> frozenset:

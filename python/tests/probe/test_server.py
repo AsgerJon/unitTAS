@@ -3,8 +3,9 @@ Phase 3b (SPEC.md section 11.3), the dedicated server in the game, on the run's 
 - Step 1, no probe yet: a dedicated server, its folder written as a run writes it (the EULA on Asger's standing yes,
   asger_accepts_all_eulas.txt in the repository): 1.7.10 Forge's from the project's Gradle cache, started as FML starts
   a server; a modern version's as Mojang ships it (its server jar from the download cache, run as its bundler runs it,
-  19.7 step 10a). It says Done, listens on 127.0.0.1 alone at the port given (the system's own table says so, not
-  only its log), and stops on /stop with its world saved. A modern loader's server comes after vanilla's.
+  19.7 step 10a); a Fabric port's with Fabric Loader (its server profile, KnotServer: 19.7 step 10f-i). It says Done,
+  listens on 127.0.0.1 alone at the port given (the system's own table says so, not only its log), and stops on /stop
+  with its world saved. NeoForge's and Forge's servers to come (10f-ii, 10f-iii).
 - Step 2, the probe in it: the release jar and UniMixins in its mods/, its start file saying role server. It says hello
   as a server by Searge's names, with a server's operations only; its ready names the world and every address it
   listens on (127.0.0.1 alone, let through by the orchestrator's check, and so by the system's table); it ticks; a
@@ -12,7 +13,8 @@ Phase 3b (SPEC.md section 11.3), the dedicated server in the game, on the run's 
   as an error; a command as a player with nobody in is NotReady; its quit is /stop: the world saved, the process gone.
   A modern version's (19.7 step 10b): the agent in it, its start file saying role server, its server's hooks; the
   same checks, each version's own world and command results (test_worlds', test_player's); its operations' bodies
-  the same as its client's integrated server's, none naming a client class (bin/tests/test_agent_server.py).
+  the same as its client's integrated server's, none naming a client class (bin/tests/test_agent_server.py). A
+  Fabric port's server by its client's names (intermediary's before 26.1: V26).
 
   python -m unittas.selftest test_server.      (through the watcher: "probe test_server.")
 """
@@ -27,10 +29,9 @@ import subprocess
 import time
 import unittest
 
-from agentgame import buildAgent
 from test_player import timeSet
 from test_worlds import FIRE, LAYERS, rule, text
-from ports import AGENT_SERVERS, V1_7_10, V26_3, VANILLA_1_20_1, VANILLA_1_21_1, VANILLA_26_3, port, version
+from ports import AGENT_SERVERS, V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3, port, serverGame, serverLoader, version
 from probegame import GONE_SECONDS, READY_SECONDS, ROOT, results
 from unittas.cache import Cache, defaultRoot
 from unittas.errors import BadRequest, NotReady, Unsupported
@@ -39,8 +40,11 @@ from unittas.release import releaseJar
 from unittas.servergame import LOOPBACK_FORMS, ServerGame, freePort, serverFiles
 from unittas.wire import Role
 
-#  the ports whose version's server step 1 runs as Mojang ships it (a loader's after: SPEC.md 19.7 step 10a)
-VANILLA_SERVERS = (VANILLA_26_3, VANILLA_1_21_1, VANILLA_1_20_1)
+#  the names a modern server's hello gives, by the loader it runs with (None: as Mojang ships it): 26.x unobfuscated;
+#  before it vanilla's server obfuscated, Fabric's under intermediary's (SPEC.md 19.7 steps 10b and 10f)
+SERVER_NAMES = {None: {V26_3: 'mojang', V1_21_1: 'obfuscated', V1_20_1: 'obfuscated', V1_16_1: 'obfuscated'},
+                'fabric': {V26_3: 'mojang', V1_21_1: 'intermediary', V1_20_1: 'intermediary',
+                           V1_16_1: 'intermediary'}}
 #  a modern dedicated server's operations (SPEC.md 19.7 step 10b): 1.7.10's server's, and the world's setters
 MODERN_SERVER_OPS = ('status', 'quit', 'ticks.wait', 'wait.until', 'batch', 'debug.threads', 'world.get',
                      'world.rules.set', 'world.time.set', 'world.weather.set', 'world.prepare', 'command.run',
@@ -91,8 +95,9 @@ class ServerTests(unittest.TestCase):
   def test_1_it_starts_on_loopback_alone_and_stops(self) -> None:
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       self.skipTest("a dedicated server needs Mojang's EULA accepted: this test runs on Asger's standing yes only")
-    if version() != V1_7_10 and port() not in VANILLA_SERVERS:
-      self.skipTest("not on %s: a modern loader's server comes after vanilla's (SPEC.md 19.7 step 10a)" % port())
+    if version() != V1_7_10 and port() not in AGENT_SERVERS:
+      self.skipTest("not on %s yet: NeoForge's and Forge's servers come after Fabric's (SPEC.md 19.7 step 10f)"
+                    % port())
     folder = os.path.join(results(), 'server-step1')
     shutil.rmtree(folder, ignore_errors=True)
     port_ = freePort()
@@ -100,7 +105,9 @@ class ServerTests(unittest.TestCase):
     if version() == V1_7_10:
       launch = serverCommand(folder, findJava(), Sources(gradleHome=os.path.join(ROOT, '.gradle-home')), memory='1G')
     else:
-      launch = serverVersionCommand(folder, None, Sources(cache=Cache(defaultRoot())), version(), memory='2G')
+      loader, loaderVersion = serverLoader()
+      launch = serverVersionCommand(folder, None, Sources(cache=Cache(defaultRoot())), version(), memory='2G',
+                                    loader=loader, loaderVersion=loaderVersion)
     log = os.path.join(folder, 'server-output.log')
     with open(log, 'wb') as out:
       process = subprocess.Popen(launch.java, cwd=folder, stdin=subprocess.PIPE, stdout=out,
@@ -141,8 +148,8 @@ class ServerProbeTests(unittest.TestCase):
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       raise unittest.SkipTest("a dedicated server needs Mojang's EULA accepted: this runs on Asger's standing yes only")
     if version() != V1_7_10 and port() not in AGENT_SERVERS:
-      raise unittest.SkipTest('not on %s yet: the agent in a server comes on 26.3 first (SPEC.md 19.7 step 10b)'
-                              % port())
+      raise unittest.SkipTest("not on %s yet: NeoForge's and Forge's servers come after Fabric's (SPEC.md 19.7 "
+                              "step 10f)" % port())
     folder = os.path.join(results(), 'server-step2')
     shutil.rmtree(folder, ignore_errors=True)
     os.makedirs(os.path.join(results(), 'server-probe'), exist_ok=True)
@@ -152,9 +159,7 @@ class ServerProbeTests(unittest.TestCase):
       cls.game = ServerGame(ROOT, results(), 'server-probe', folder=folder, mods=[jar, mixins], players=('alice',),
                             eula=True, memory='1G', sources=Sources(gradleHome=os.path.join(ROOT, '.gradle-home')))
     else:
-      jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
-      cls.game = ServerGame(ROOT, results(), 'server-probe', folder=folder, players=('alice',), eula=True,
-                            memory='2G', sources=Sources(cache=Cache(defaultRoot())), minecraft=version(), probe=jar)
+      cls.game = serverGame('server-probe', folder, ('alice',))
     cls.connection, cls.ready = cls.game.ready(READY_SECONDS)
 
   @classmethod
@@ -170,8 +175,7 @@ class ServerProbeTests(unittest.TestCase):
              'debug.threads', 'debug.drop_login', 'players.list', 'player.get', 'player.kick', 'player.reset',
              'world.reset', 'hooks.run', 'hooks.things')
     else:
-      #  26.x is unobfuscated; before it a server is obfuscated apart from its client, and named by its own table
-      self.assertEqual('mojang' if version() == V26_3 else 'obfuscated', hello.names)
+      self.assertEqual(SERVER_NAMES[serverLoader()[0]][version()], hello.names)
       self.assertEqual(version(), hello.minecraft)
       ops = MODERN_SERVER_OPS
       self.assertNotIn('hooks.things', hello.ops, 'no modern probe has plugins yet: no declarations')

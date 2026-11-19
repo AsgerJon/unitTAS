@@ -33,8 +33,8 @@ final class ModernCrash {
 			saveFile = method;
 		}
 		Object saved = Members.call(method, report);
-		if (saved instanceof Path path) {
-			return path.toFile();
+		if (saved instanceof Path) {
+			return ((Path) saved).toFile();
 		}
 		return (File) saved;
 	}

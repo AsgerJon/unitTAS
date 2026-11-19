@@ -6,7 +6,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.apache.logging.log4j.core.config.Property;
 
 /**
  * The game's log in 26.3 (PROTOCOL.md 7; SPEC.md 19.7 step 2), as 1.7.10's ProbeLog: an appender on Log4j's root
@@ -20,7 +19,8 @@ final class ModernLog extends AbstractAppender {
 	private final Probe probe;
 
 	private ModernLog(Probe probe) {
-		super("unitTAS probe log", null, null, true, Property.EMPTY_ARRAY);
+		// the four-argument form: every version's log4j has it (1.16.1's 2.8.1 has no properties' form)
+		super("unitTAS probe log", null, null, true);
 		this.probe = probe;
 	}
 

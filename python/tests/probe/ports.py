@@ -7,7 +7,7 @@ Mojang ships it, the probe a Java agent; or beside Fabric or NeoForge), puts
 the player where its flat test world's start is (start), says a command as
 that version reads it where the versions' texts differ (command), and skips
 what its version can't do yet, saying why (onlyOn). The tables are by version
-(V1_7_10, V1_20_1, V1_21_1, V26_3): each version's ports share its own, and
+(V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3): each version's ports share its own, and
 1.21.1 has 26.3's block states and command texts (the same from 1.13 and
 1.20.5 on) but for its own keys' codes (GLFW's, not SDL3's); 1.20.1 has
 1.21.1's but for its items' data in a block entity (NBT, before 1.20.5's
@@ -22,39 +22,45 @@ import unittest
 from typing import Callable
 
 from agentgame import AgentGame, buildAgent
-from fabricgame import FabricGame
+from fabricgame import LOADER_VERSION as FABRIC_LOADER, FabricGame
 from forgegame import FORGE, ForgeGame
 from neoforgegame import NEOFORGE, NeoForgeGame
 from probegame import ROOT, results
+from unittas.cache import Cache, defaultRoot
 from unittas.dev import DevGame
 from unittas.game import LaunchedGame
+from unittas.launcher import Sources
+from unittas.servergame import ServerGame
 from unittas.selftest import PORTS
 from unittas.values import Block, BlockPos, Item, Vec3
 
 (FORGE_1_7_10, FABRIC_26_3, VANILLA_26_3, VANILLA_1_21_1, FABRIC_1_21_1, VANILLA_1_20_1, FABRIC_1_20_1,
- NEOFORGE_1_21_1, NEOFORGE_26_3, FORGE_1_20_1) = PORTS
+ NEOFORGE_1_21_1, NEOFORGE_26_3, FORGE_1_20_1, VANILLA_1_16_1, FABRIC_1_16_1, FORGE_1_16_1) = PORTS
 #  the versions, which the tables are by
-V1_7_10, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.20.1', '1.21.1', '26.3'
+V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3 = '1.7.10', '1.16.1', '1.20.1', '1.21.1', '26.3'
 VERSIONS = {FORGE_1_7_10: V1_7_10, FABRIC_26_3: V26_3, VANILLA_26_3: V26_3, VANILLA_1_21_1: V1_21_1,
             FABRIC_1_21_1: V1_21_1, VANILLA_1_20_1: V1_20_1, FABRIC_1_20_1: V1_20_1, NEOFORGE_1_21_1: V1_21_1,
-            NEOFORGE_26_3: V26_3, FORGE_1_20_1: V1_20_1}
+            NEOFORGE_26_3: V26_3, FORGE_1_20_1: V1_20_1, VANILLA_1_16_1: V1_16_1, FABRIC_1_16_1: V1_16_1,
+            FORGE_1_16_1: V1_16_1}
 #  the ports with Fabric Loader beside the probe, and with NeoForge
-FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1)
+FABRIC_PORTS = (FABRIC_26_3, FABRIC_1_21_1, FABRIC_1_20_1, FABRIC_1_16_1)
 NEOFORGE_PORTS = (NEOFORGE_1_21_1, NEOFORGE_26_3)
 #  the ports with Forge on a modern version (1.7.10's is the development client's own)
-FORGE_PORTS = (FORGE_1_20_1,)
+FORGE_PORTS = (FORGE_1_20_1, FORGE_1_16_1)
 #  the versions whose items keep their data as NBT (data components from 1.20.5 on)
-NBT_ITEMS = (V1_7_10, V1_20_1)
-#  where the reset puts the player in each version's flat test world: on its grass, at y 3 in 1.7.10 and y -61 from
-#  1.18 on (the world's bottom at y -64)
-STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_20_1: (0.5, -60.0, 0.5), V1_21_1: (0.5, -60.0, 0.5),
-          V26_3: (0.5, -60.0, 0.5)}
+NBT_ITEMS = (V1_7_10, V1_16_1, V1_20_1)
+#  where the reset puts the player in each version's flat test world: on its grass, at y 3 before 1.18 (1.7.10,
+#  1.16.1) and y -61 from 1.18 on (the world's bottom at y -64)
+STARTS = {V1_7_10: (0.5, 4.0, 0.5), V1_16_1: (0.5, 4.0, 0.5), V1_20_1: (0.5, -60.0, 0.5),
+          V1_21_1: (0.5, -60.0, 0.5), V26_3: (0.5, -60.0, 0.5)}
 #  the flat test world's grass, under a player at the start
-GRASS = {V1_7_10: 'minecraft:grass', V1_20_1: 'minecraft:grass_block', V1_21_1: 'minecraft:grass_block',
+GRASS = {V1_7_10: 'minecraft:grass', V1_16_1: 'minecraft:grass_block', V1_20_1: 'minecraft:grass_block',
+         V1_21_1: 'minecraft:grass_block',
          V26_3: 'minecraft:grass_block'}
-#  the ports whose dedicated server has the agent in (SPEC.md 19.7 step 10b): 26.3's by Mojang's names, 1.21.1's and
-#  1.20.1's by their servers' own tables (V21); a loader's server comes after vanilla's
-AGENT_SERVERS = (VANILLA_26_3, VANILLA_1_21_1, VANILLA_1_20_1)
+#  the ports whose dedicated server has the agent in (SPEC.md 19.7 steps 10b, 10f and 11f): vanilla's, 26.3's by
+#  Mojang's names, 1.21.1's, 1.20.1's and 1.16.1's by their servers' own tables (V21; 1.16.1's a plain jar); Fabric's
+#  by its client's (V26). NeoForge's and Forge's to come (10f-ii, 10f-iii)
+AGENT_SERVERS = (VANILLA_26_3, VANILLA_1_21_1, VANILLA_1_20_1, VANILLA_1_16_1) + FABRIC_PORTS
 #  the commands whose text differs between the versions, by what they do
 COMMANDS = {
   'xp 30 levels': {V1_7_10: '/xp 30L', V26_3: '/xp add @p 30 levels'},
@@ -70,10 +76,11 @@ COMMANDS = {
   'creative': {V1_7_10: '/gamemode 1', V26_3: '/gamemode creative'},
 }
 #  a key's raw code, as each version numbers its keys: 1.7.10's LWJGL codes, 26.3's SDL3 scancodes
-CODES = {'space': {V1_7_10: 57, V1_20_1: 32, V1_21_1: 32, V26_3: 44}}
+CODES = {'space': {V1_7_10: 57, V1_16_1: 32, V1_20_1: 32, V1_21_1: 32, V26_3: 44}}
 #  the title screen's class, as the probe names it: 1.7.10's by MCP, the rest by Mojang's names
 _TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
-TITLES = {V1_7_10: 'net.minecraft.client.gui.GuiMainMenu', V1_20_1: _TITLE, V1_21_1: _TITLE, V26_3: _TITLE}
+TITLES = {V1_7_10: 'net.minecraft.client.gui.GuiMainMenu', V1_16_1: _TITLE, V1_20_1: _TITLE, V1_21_1: _TITLE,
+          V26_3: _TITLE}
 
 
 def _door(kind: str, half: str) -> Block:
@@ -132,18 +139,21 @@ BLOCKS = {
 }
 
 
-#  1.21.1's block states and command texts are 26.3's: the same from 1.13 (states) and 1.20.5 (commands, items' data)
+#  1.21.1's, 1.20.1's and 1.16.1's block states and command texts are 26.3's: the same from 1.13 (states, commands)
+#  and 1.20.5 (items' data)
 for _table in (COMMANDS, BLOCKS):
   for _entry in _table.values():
     _entry[V1_21_1] = _entry[V26_3]
     _entry[V1_20_1] = _entry[V26_3]
-#  but 1.20.1's items in a block entity are NBT: an id and Count, a byte (count, an int, from 1.20.5)
-BLOCKS['chest of three pink wool'][V1_20_1] = Block(
-  'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:3b}]}',
-  (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))
-BLOCKS['chest of one pink wool'][V1_20_1] = Block(
-  'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:1b}]}',
-  (('facing', 'south'), ('type', 'single'), ('waterlogged', 'false')))
+    _entry[V1_16_1] = _entry[V26_3]
+#  but 1.20.1's and 1.16.1's items in a block entity are NBT: an id and Count, a byte (count, an int, from 1.20.5)
+for _nbt in (V1_20_1, V1_16_1):
+  BLOCKS['chest of three pink wool'][_nbt] = Block(
+    'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:3b}]}',
+    (('facing', 'north'), ('type', 'single'), ('waterlogged', 'false')))
+  BLOCKS['chest of one pink wool'][_nbt] = Block(
+    'minecraft:chest', -1, True, '{Items:[{Slot:0b,id:"minecraft:pink_wool",Count:1b}]}',
+    (('facing', 'south'), ('type', 'single'), ('waterlogged', 'false')))
 
 
 def port() -> str:
@@ -209,11 +219,11 @@ def title() -> str:
 
 def damageable(item: Item) -> Item:
   """
-  A new damageable item (boots, a sword) as the port's game makes it: 1.20.1 writes an item's damage into its NBT as
-  it makes it, a new one's too ({Damage:0}); 1.7.10 keeps damage in the meta, and a 1.20.5 stack lists only a damage
-  taken among its components.
+  A new damageable item (boots, a sword) as the port's game makes it: 1.20.1 and 1.16.1 write an item's damage into
+  its NBT as they make it, a new one's too ({Damage:0}); 1.7.10 keeps damage in the meta, and a 1.20.5 stack lists
+  only a damage taken among its components.
   """
-  return item.replace(snbt='{Damage:0}') if version() == V1_20_1 else item
+  return item.replace(snbt='{Damage:0}') if version() in (V1_20_1, V1_16_1) else item
 
 
 def forgeVersion() -> str:
@@ -241,6 +251,33 @@ def specLoader() -> tuple:
   if port() in NEOFORGE_PORTS:
     return 'neoforge', NEOFORGE[version()]
   return 'fabric', '0.20.1'
+
+
+def serverLoader() -> tuple:
+  """
+  The loader the port's dedicated server runs with, and its version (SPEC.md 19.7 step 10f): the port's own on a
+  loader's port (Fabric Loader's, NeoForge's, Forge's); (None, None) on a vanilla port, the server as Mojang ships it.
+  """
+  if port() in FABRIC_PORTS:
+    return 'fabric', FABRIC_LOADER
+  if port() in FORGE_PORTS:
+    return 'forge', FORGE[version()]
+  if port() in NEOFORGE_PORTS:
+    return 'neoforge', NEOFORGE[version()]
+  return None, None
+
+
+def serverGame(name: str, folder: str, players: tuple) -> ServerGame:
+  """
+  The port's modern dedicated server with the agent in (SPEC.md 19.7 steps 10b and 10f), in 'folder', its output in
+  '<results>/<name>/', 'players' its operators: with the port's loader (serverLoader), 2 GB, the EULA on Asger's
+  standing yes, its files from the download cache.
+  """
+  agent = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
+  loader, loaderVersion = serverLoader()
+  return ServerGame(ROOT, results(), name, folder=folder, players=players, eula=True, memory='2G',
+                    sources=Sources(cache=Cache(defaultRoot())), minecraft=version(), probe=agent, loader=loader,
+                    loaderVersion=loaderVersion)
 
 
 def agentSpec(path: str, game: str) -> str:
@@ -283,4 +320,10 @@ def probeGame(name: str) -> LaunchedGame:
   if port() == FABRIC_1_20_1:
     return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_20_1), name,
                       minecraft=V1_20_1)
+  if port() == VANILLA_1_16_1:
+    return AgentGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_16_1), name,
+                     minecraft=V1_16_1)
+  if port() == FABRIC_1_16_1:
+    return FabricGame(results(), buildAgent(os.path.join(results(), 'agent-build', 'build.log'), V1_16_1), name,
+                      minecraft=V1_16_1)
   return DevGame(ROOT, results(), name)

@@ -5,6 +5,11 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.serialization.DynamicOps;
 import com.mojang.serialization.JsonOps;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -17,6 +22,8 @@ import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.ReceivingLevelScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.client.resources.sounds.SoundInstance;
@@ -25,12 +32,10 @@ import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import org.lwjgl.glfw.GLFW;
-
-import java.util.Map;
-import java.util.function.Consumer;
 
 /**
  * What 1.21.1 does its own way, for the probe's code shared by the versions (agent/src/modern/java; SPEC.md 19.7 step
@@ -304,4 +309,50 @@ final class Version {
 	}
 
 	// ---------------------------------------------------------------- containers
+
+	// ---- what 1.16.1 does another way (SPEC.md 19.7 step 11b): the shared code asks each version
+
+	/** The camera's view: 0 first person, 1 behind, 2 in front. */
+	static int camera() {
+		return Minecraft.getInstance().options.getCameraType().ordinal();
+	}
+
+	/** The camera's view, set (0, 1 or 2, as camera() says it). */
+	static void setCamera(int view) {
+		Minecraft.getInstance().options.setCameraType(CameraType.values()[view]);
+	}
+
+	/** The creative inventory's screen, as its key opens it. */
+	static Screen creativeScreen(Minecraft mc) {
+		return new CreativeModeInventoryScreen(mc.player, mc.player.connection.enabledFeatures(),
+			mc.options.operatorItemsTab().get());
+	}
+
+	/** The chat's command usage lines (CommandSuggestions' own) as plain text. */
+	static List<String> usageLines(List<?> lines) {
+		List<String> plain = new ArrayList<>();
+		for (Object each : lines) {
+			StringBuilder line = new StringBuilder();
+			((FormattedCharSequence) each).accept((index, style, codePoint) -> {
+				line.appendCodePoint(codePoint);
+				return true;
+			});
+			plain.add(line.toString());
+		}
+		return plain;
+	}
+
+	/** A line sent as the chat sends it: a command as one, slash and all. */
+	static void sendChat(ClientPacketListener connection, String text) {
+		if (text.startsWith("/")) {
+			connection.sendCommand(text.substring(1));
+		} else {
+			connection.sendChat(text);
+		}
+	}
+
+	/** The chat line the hooked chat.line method was given (its first argument). */
+	static Component chatLine(Object[] arguments) {
+		return (Component) arguments[0];
+	}
 }

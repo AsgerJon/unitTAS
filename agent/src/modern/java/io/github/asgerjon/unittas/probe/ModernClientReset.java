@@ -3,7 +3,6 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 
@@ -33,8 +32,8 @@ final class ModernClientReset {
 		}
 		KeyMapping.releaseAll();
 		// the first hotbar slot, so a given item is the held one
-		VersionCommon.selectSlot(mc.player.getInventory(), 0);
-		mc.options.setCameraType(CameraType.FIRST_PERSON);
+		VersionCommon.selectSlot(VersionCommon.inventory(mc.player), 0);
+		Version.setCamera(0);
 		if (Version.hudHidden()) {
 			Version.toggleHud();
 		}

@@ -5,8 +5,6 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -37,12 +35,12 @@ final class ModernValues {
 	// ---------------------------------------------------------------- items
 
 	/** An item: its id and count, and its data when it has any of its own (Version's); null for an empty slot. */
-	static JsonElement item(ItemStack stack, HolderLookup.Provider registries) {
+	static JsonElement item(ItemStack stack, Object registries) {
 		if (stack == null || stack.isEmpty()) {
 			return JsonNull.INSTANCE;
 		}
 		JsonObject item = Json.object(
-			"id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(),
+			"id", VersionCommon.items().getKey(stack.getItem()).toString(),
 			"count", stack.getCount());
 		VersionCommon.itemData(stack, registries, item);
 		return item;
@@ -53,7 +51,7 @@ final class ModernValues {
 	 * BadRequest for meta, which no flattened version's items have (the colour is in the id), and for data that isn't
 	 * the version's (Version's: components or NBT).
 	 */
-	static ItemStack stack(JsonElement value, HolderLookup.Provider registries) throws ProbeException {
+	static ItemStack stack(JsonElement value, Object registries) throws ProbeException {
 		if (value == null || value.isJsonNull()) {
 			return ItemStack.EMPTY;
 		}
@@ -66,8 +64,8 @@ final class ModernValues {
 			throw ProbeException.badRequest("item", VersionName.port() + "'s items have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), damage is the item's data");
 		}
-		Optional<Item> item = VersionCommon.byId(BuiltInRegistries.ITEM, id);
-		if (item.isEmpty()) {
+		Optional<Item> item = VersionCommon.byId(VersionCommon.items(), id);
+		if (!item.isPresent()) {
 			throw new ProbeException("NotFound", "this game has no item " + id, Json.object("what", id));
 		}
 		int count = given.has("count") ? given.get("count").getAsInt() : 1;
@@ -89,7 +87,7 @@ final class ModernValues {
 
 	/** A block: its id, and its state's properties when it has any (each by its name and its value's name). */
 	static JsonObject block(BlockState state) {
-		JsonObject block = Json.object("id", BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString());
+		JsonObject block = Json.object("id", VersionCommon.blocks().getKey(state.getBlock()).toString());
 		JsonObject properties = new JsonObject();
 		VersionCommon.properties(state, properties::addProperty);
 		if (properties.size() > 0) {
@@ -105,7 +103,7 @@ final class ModernValues {
 	}
 
 	static JsonObject look(Entity entity) {
-		return Json.object("yaw", (double) entity.getYRot(), "pitch", (double) entity.getXRot());
+		return Json.object("yaw", (double) VersionCommon.yRot(entity), "pitch", (double) VersionCommon.xRot(entity));
 	}
 
 	static List<Double> motion(Entity entity) {
@@ -118,7 +116,7 @@ final class ModernValues {
 	}
 
 	static String dimension(Entity entity) {
-		return VersionCommon.id(entity.level().dimension());
+		return VersionCommon.id(VersionCommon.levelOf(entity).dimension());
 	}
 
 	private static JsonElement riding(Entity entity) {
@@ -136,13 +134,14 @@ final class ModernValues {
 			"look", look(entity),
 			"motion", motion(entity),
 			"dimension", dimension(entity),
-			"alive", !entity.isRemoved(),
-			"on_ground", entity.onGround(),
+			"alive", !VersionCommon.removed(entity),
+			"on_ground", VersionCommon.onGround(entity),
 			"name", entity.getName().getString(),
 			"custom_name", entity.hasCustomName() ? entity.getCustomName().getString() : null,
 			"riding", riding(entity),
 			"fire_ticks", Math.max(0, entity.getRemainingFireTicks()));
-		if (entity instanceof LivingEntity living) {
+		if (entity instanceof LivingEntity) {
+			LivingEntity living = (LivingEntity) entity;
 			summary.addProperty("health", (double) living.getHealth());
 			summary.addProperty("max_health", (double) living.getMaxHealth());
 		}
@@ -151,7 +150,8 @@ final class ModernValues {
 
 	/** A player (8.4's player.get): the server's player, or the client's own view of itself. */
 	static JsonObject player(Player player) {
-		String mode = player instanceof ServerPlayer server ? server.gameMode.getGameModeForPlayer().getName()
+		String mode = player instanceof ServerPlayer
+			? ((ServerPlayer) player).gameMode.getGameModeForPlayer().getName()
 			: ModernThings.client().gameMode();
 		List<Object> effects = new ArrayList<>();
 		for (MobEffectInstance effect : player.getActiveEffects()) {
@@ -178,9 +178,9 @@ final class ModernValues {
 			"saturation", (double) player.getFoodData().getSaturationLevel(),
 			"xp", Json.object("level", player.experienceLevel, "progress", (double) player.experienceProgress,
 				"total", player.totalExperience),
-			"on_ground", player.onGround(),
-			"flying", player.getAbilities().flying,
-			"may_fly", player.getAbilities().mayfly,
+			"on_ground", VersionCommon.onGround(player),
+			"flying", VersionCommon.abilities(player).flying,
+			"may_fly", VersionCommon.abilities(player).mayfly,
 			"sneaking", player.isShiftKeyDown(),
 			"sprinting", player.isSprinting(),
 			"sleeping", player.isSleeping(),

@@ -159,6 +159,15 @@ final class Members {
 		}
 	}
 
+	/** The field set to the value on the object (a primitive field's unboxed). */
+	static void set(Field field, Object on, Object value) {
+		try {
+			field.set(on, value);
+		} catch (IllegalAccessException e) {
+			throw new IllegalStateException("can't set " + field + ": " + e, e);
+		}
+	}
+
 	/** The method called on the object; what it throws, thrown on. */
 	@SuppressWarnings("unchecked")
 	static <T> T call(Method method, Object on, Object... arguments) {

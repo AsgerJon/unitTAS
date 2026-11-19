@@ -19,7 +19,7 @@ import os
 import shutil
 import unittest
 
-from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, onlyOn, probeGame, start, title, version
+from ports import V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3, onlyOn, probeGame, start, title, version
 from probegame import GONE_SECONDS, READY_SECONDS
 from unittas.errors import BadRequest, Exists, NotFound, NotReady
 
@@ -28,29 +28,33 @@ COPY, TERRAIN, LAYERED = 'unittas-probe-copy', 'unittas-terrain', 'unittas-layer
 #  the Customize box's text from 1.13 on: bedrock, two dirt, grass, on plains
 MODERN_LAYERS = 'minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block;minecraft:plains'
 #  the spec's flat world, as each version writes it
-LAYERS = {V1_7_10: '2;7,2x3,2;1;', V1_20_1: MODERN_LAYERS, V1_21_1: MODERN_LAYERS, V26_3: MODERN_LAYERS}
+LAYERS = {V1_7_10: '2;7,2x3,2;1;', V1_16_1: MODERN_LAYERS, V1_20_1: MODERN_LAYERS, V1_21_1: MODERN_LAYERS,
+          V26_3: MODERN_LAYERS}
 #  the rules the tests set, by what they do, as each version names them
 CAMEL = {'daylight': 'doDaylightCycle', 'mobs': 'doMobSpawning', 'fire': 'doFireTick', 'griefing': 'mobGriefing',
          'keep': 'keepInventory'}
-RULES = {V1_7_10: CAMEL, V1_20_1: CAMEL, V1_21_1: CAMEL,
+RULES = {V1_7_10: CAMEL, V1_16_1: CAMEL, V1_20_1: CAMEL, V1_21_1: CAMEL,
          V26_3: {'daylight': 'advance_time', 'mobs': 'spawn_mobs', 'fire': 'fire_spread_radius_around_player',
                  'griefing': 'mob_griefing', 'keep': 'keep_inventory'}}
 #  fire off and on: a rule that is false or true; 26.3's spread radius, 0 or the default 128
-FIRE = {V1_7_10: (False, True), V1_20_1: (False, True), V1_21_1: (False, True), V26_3: (0, 128)}
+FIRE = {V1_7_10: (False, True), V1_16_1: (False, True), V1_20_1: (False, True), V1_21_1: (False, True),
+        V26_3: (0, 128)}
 #  a rule by the other naming's name, which the version hasn't
-OTHER_NAMING = {V1_7_10: 'advance_time', V1_20_1: 'advance_time', V1_21_1: 'advance_time', V26_3: 'doDaylightCycle'}
+OTHER_NAMING = {V1_7_10: 'advance_time', V1_16_1: 'advance_time', V1_20_1: 'advance_time', V1_21_1: 'advance_time',
+                V26_3: 'doDaylightCycle'}
 #  a flat world by its layers: the layers, the biome, the text the version writes of them, its top block and where
 LAYERED_WORLD = {
   V1_7_10: ([{'id': 'minecraft:bedrock', 'meta': 0, 'count': 1}, {'id': 'minecraft:stone', 'meta': 0, 'count': 2},
              {'id': 'minecraft:wool', 'meta': 14, 'count': 1}], '2', '2;7,2x1,35:14;2;',
             {'id': 'minecraft:wool', 'meta': 14}, [0, 3, 0]),
 }
-for _modern in (V1_20_1, V1_21_1, V26_3):
+for _modern in (V1_16_1, V1_20_1, V1_21_1, V26_3):
   LAYERED_WORLD[_modern] = (
     [{'id': 'minecraft:bedrock', 'count': 1}, {'id': 'minecraft:stone', 'count': 2},
      {'id': 'minecraft:red_wool', 'count': 1}], 'minecraft:desert',
     'minecraft:bedrock,2*minecraft:stone,minecraft:red_wool;minecraft:desert', {'id': 'minecraft:red_wool'},
-    [0, -61, 0])
+    #  the top layer: y 3 where the world's bottom is y 0 (1.16.1), y -61 from 1.18 on
+    [0, 3 if _modern == V1_16_1 else -61, 0])
 
 
 def rule(what: str) -> str:
@@ -100,7 +104,7 @@ class WorldTests(unittest.TestCase):
       self.request('world.close')
     self.assertIsNone(self.request('status')['world'])
 
-  @onlyOn(V1_20_1, V1_21_1, V26_3, why="1.7.10's flat text is its own numbers (test_13b has its layers)")
+  @onlyOn(V1_16_1, V1_20_1, V1_21_1, V26_3, why="1.7.10's flat text is its own numbers (test_13b has its layers)")
   def test_01b_a_generator_the_version_can_t_read_is_refused_first(self) -> None:
     """The Customize box's text, read as the game reads it; one it would read otherwise is refused, nothing made."""
     for args in ({'generator': 'minecraft:bedrock,2*minecraft:no_such_block;minecraft:plains'},

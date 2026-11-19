@@ -6,6 +6,9 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,8 +30,10 @@ final class Renamer {
 
 	/** The bootstrap methods whose call site names the method of the interface it makes (a lambda's). */
 	private static final String LAMBDAS = "java/lang/invoke/LambdaMetafactory";
-	private static final Set<String> STUB_CLASS_ATTRIBUTES = Set.of("Signature", "InnerClasses");
-	private static final Set<String> STUB_MEMBER_ATTRIBUTES = Set.of("Signature", "Exceptions", "ConstantValue");
+	private static final Set<String> STUB_CLASS_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+		"Signature", "InnerClasses")));
+	private static final Set<String> STUB_MEMBER_ATTRIBUTES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+		"Signature", "Exceptions", "ConstantValue")));
 
 	private final Names names;
 	private final Map<String, String> declarers;
@@ -47,7 +52,7 @@ final class Renamer {
 
 	/** The stubs' renamer: the game's classes, from their running names back to Mojang's (names.inverse()). */
 	static Renamer stubs(Names inverse) {
-		return new Renamer(inverse, Map.of(), true);
+		return new Renamer(inverse, Collections.emptyMap(), true);
 	}
 
 	byte[] rename(byte[] bytes) throws IOException {

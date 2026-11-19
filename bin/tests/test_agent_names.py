@@ -3,8 +3,9 @@ The agent's names (SPEC.md 19.7 step 6b) with no game: agent/src/test/
 java's RenameCheck obfuscates a small game of its own, renames it and the
 probe written against it as the agent renames its probe at run time, runs
 them, and turns the obfuscated game back into stubs, on every Java the
-agent runs on (17, 21, 25). The probe is then compiled against those
-stubs alone, as bin/build_agent.py compiles a port against a version's.
+agent runs on (8, 17, 21, 25; compiled for Java 8, SPEC.md 19.7 step
+11a). The probe is then compiled against those stubs alone, as
+bin/build_agent.py compiles a port against a version's.
 A Java not installed is skipped, saying so; no javac fails.
 """
 #  Apache-2.0 license
@@ -20,7 +21,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from test_agent_wrap import JAVAS, ROOT, java, javac  # noqa: E402
+from test_agent_wrap import JAVAS, RELEASE, ROOT, java, javac  # noqa: E402
 
 AGENT = os.path.join(ROOT, 'agent', 'src')
 SOURCES = (os.path.join(AGENT, 'bootstrap', 'java'),
@@ -60,7 +61,7 @@ class NamesTests(unittest.TestCase):
     if cls.javac is None:
       return
     cls.compiled = subprocess.run(
-      [cls.javac, '--release', '17', '-encoding', 'UTF-8', '-nowarn', '-d',
+      [cls.javac, '--release', RELEASE, '-encoding', 'UTF-8', '-nowarn', '-d',
        cls.classes] + sources(SOURCES),
       stdin=subprocess.DEVNULL, capture_output=True, text=True)
 
@@ -72,10 +73,10 @@ class NamesTests(unittest.TestCase):
     home = self.homes[major]
     if home is None:
       self.skipTest('no Java %d installed' % major)
-    self.assertIsNotNone(self.javac, 'no javac from 17 on found')
+    self.assertIsNotNone(self.javac, 'no javac found')
     self.assertEqual(0, self.compiled.returncode,
-                     'javac --release 17:\n' + self.compiled.stdout
-                     + self.compiled.stderr)
+                     'javac --release %s:\n' % RELEASE
+                     + self.compiled.stdout + self.compiled.stderr)
     done = subprocess.run(
       [os.path.join(home, 'bin', 'java'), '-cp', self.classes, CHECK,
        stubs], stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -85,6 +86,9 @@ class NamesTests(unittest.TestCase):
                           if not line.startswith('ok ')], done.stderr)
     self.assertEqual(EXPECTED, [line[3:] for line in lines])
     self.assertEqual(0, done.returncode, done.stderr)
+
+  def test_on_java_8(self) -> None:
+    self.check(8, os.path.join(self.folder, 'stubs-8'))
 
   def test_on_java_17(self) -> None:
     self.check(17, os.path.join(self.folder, 'stubs-17'))
@@ -103,7 +107,7 @@ class NamesTests(unittest.TestCase):
     self.check(major, stubs)
     into = os.path.join(self.folder, 'probe-classes')
     done = subprocess.run(
-      [self.javac, '--release', '17', '-encoding', 'UTF-8', '-nowarn',
+      [self.javac, '--release', RELEASE, '-encoding', 'UTF-8', '-nowarn',
        '-cp', stubs, '-d', into] + sources((PROBE,)),
       stdin=subprocess.DEVNULL, capture_output=True, text=True)
     self.assertEqual(0, done.returncode, done.stdout + done.stderr)

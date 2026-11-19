@@ -25,7 +25,7 @@ import subprocess
 import sys
 import unittest
 
-from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, agentSpec, onlyOn, specLoader, version
+from ports import V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3, agentSpec, onlyOn, specLoader, version
 from probegame import READY_SECONDS, ROOT, modVersion, results
 from unittas.api import Game
 from unittas.dev import DevGame
@@ -94,7 +94,8 @@ class SelfSuitesTests(unittest.TestCase):
     self.assertEqual('OK', [line for line in lines if line][-1])
 
 
-@onlyOn(V26_3, V1_21_1, V1_20_1, why="the agent's versions' real client from a spec; 1.7.10's are SelfSuitesTests'")
+@onlyOn(V26_3, V1_21_1, V1_20_1, V1_16_1,
+        why="the agent's versions' real client from a spec; 1.7.10's are SelfSuitesTests'")
 class SelfSuitesAgentTests(unittest.TestCase):
 
   def test_1_unittas_run_on_a_spec_of_the_version(self) -> None:

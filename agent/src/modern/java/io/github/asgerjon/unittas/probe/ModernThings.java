@@ -9,9 +9,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
@@ -52,6 +49,10 @@ final class ModernThings {
 
 	/** How long the client may take to arrive in another dimension, in its ticks (as the reset allows). */
 	private static final int ARRIVE_TICKS = 200;
+	/** A block's change sent to the clients, its neighbours told (Block.UPDATE_ALL: 3 in every version). */
+	private static final int UPDATE_ALL = 3;
+	/** A block's change sent to the clients alone (Block.UPDATE_CLIENTS: 2 in every version). */
+	private static final int UPDATE_CLIENTS = 2;
 	private static final TextColor RED = TextColor.fromLegacyFormat(ChatFormatting.RED);
 	private static final String[] ARMOR = {"armor.feet", "armor.legs", "armor.chest", "armor.head"};
 	private static final EquipmentSlot[] ARMOR_SLOTS = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST,
@@ -83,7 +84,7 @@ final class ModernThings {
 			return value;
 		});
 		probe.op("entity.remove").does(call -> {
-			entity(call).discard();
+			VersionCommon.discard(entity(call));
 			return new JsonObject();
 		});
 	}
@@ -130,11 +131,11 @@ final class ModernThings {
 	}
 
 	/** The side's registries: the server's, or the client's level's. */
-	static HolderLookup.Provider registries(Call call) throws ProbeException {
+	static Object registries(Call call) throws ProbeException {
 		if (call.side == Side.CLIENT) {
 			return client().registries();
 		}
-		return ModernServer.get().registryAccess();
+		return VersionCommon.registries(ModernServer.get());
 	}
 
 	/** The side's player: the client's own, or on the server the one named by "player" (the only one when unnamed). */
@@ -229,7 +230,7 @@ final class ModernThings {
 		String typed = text.startsWith("/") ? text : "/" + text;
 		HEARING.set(heard);
 		try {
-			server.getCommands().performPrefixedCommand(VersionCommon.withResult(source, result), typed);
+			VersionCommon.perform(server, VersionCommon.withResult(source, result), typed);
 		} finally {
 			HEARING.remove();
 		}
@@ -281,7 +282,7 @@ final class ModernThings {
 		if (name == null) {
 			throw ProbeException.badRequest("player", "player.kick names the player to kick");
 		}
-		serverPlayer(name).connection.disconnect(Component.literal(call.string("reason", "kicked by unitTAS")));
+		serverPlayer(name).connection.disconnect(VersionCommon.literal(call.string("reason", "kicked by unitTAS")));
 		return new JsonObject();
 	}
 
@@ -302,7 +303,7 @@ final class ModernThings {
 	/** The level a protocol name names; NotFound for none. */
 	static ServerLevel level(MinecraftServer server, JsonElement dimension) throws ProbeException {
 		ResourceKey<Level> key = dimension.isJsonPrimitive()
-			? VersionCommon.key(Registries.DIMENSION, dimension.getAsString()) : null;
+			? VersionCommon.key(VersionCommon.dimensionRegistry(), dimension.getAsString()) : null;
 		ServerLevel level = key == null ? null : server.getLevel(key);
 		if (level == null) {
 			throw new ProbeException("NotFound", "no dimension " + dimension, Json.object("what", dimension));
@@ -314,8 +315,8 @@ final class ModernThings {
 		ServerPlayer player = serverPlayer(call.string("player", null));
 		double[] pos = call.has("pos") ? vec(call, "pos") : null;
 		JsonObject look = call.object("look");
-		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : player.getYRot();
-		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : player.getXRot();
+		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : VersionCommon.yRot(player);
+		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : VersionCommon.xRot(player);
 		ServerLevel to = call.has("dimension") ? level(ModernServer.get(), call.args.get("dimension"))
 			: VersionCommon.level(player);
 		call.note = null;
@@ -358,12 +359,12 @@ final class ModernThings {
 
 	private static JsonElement inventory(Call call) throws ProbeException {
 		Player player = player(call);
-		HolderLookup.Provider registries = registries(call);
+		Object registries = registries(call);
 		String slot = call.string("slot", null);
 		if (slot != null) {
 			return ModernValues.item(slot(player, slot), registries);
 		}
-		Inventory inventory = player.getInventory();
+		Inventory inventory = VersionCommon.inventory(player);
 		JsonArray main = new JsonArray();
 		for (ItemStack stack : VersionCommon.mainItems(inventory)) {
 			main.add(ModernValues.item(stack, registries));
@@ -377,17 +378,17 @@ final class ModernThings {
 				"chest", ModernValues.item(player.getItemBySlot(EquipmentSlot.CHEST), registries),
 				"head", ModernValues.item(player.getItemBySlot(EquipmentSlot.HEAD), registries)),
 			"offhand", ModernValues.item(player.getItemBySlot(EquipmentSlot.OFFHAND), registries),
-			"cursor", ModernValues.item(player.containerMenu.getCarried(), registries));
+			"cursor", ModernValues.item(VersionCommon.carried(player), registries));
 	}
 
 	/** The stack in a named slot (PROTOCOL.md 8.5): main.N, armor.feet ... head, offhand, held, cursor. */
 	static ItemStack slot(Player player, String name) throws ProbeException {
-		Inventory inventory = player.getInventory();
+		Inventory inventory = VersionCommon.inventory(player);
 		if (name.equals("held")) {
 			return VersionCommon.selectedItem(inventory);
 		}
 		if (name.equals("cursor")) {
-			return player.containerMenu.getCarried();
+			return VersionCommon.carried(player);
 		}
 		if (name.equals("offhand")) {
 			return player.getItemBySlot(EquipmentSlot.OFFHAND);
@@ -431,7 +432,8 @@ final class ModernThings {
 		List<Object[]> changes = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> entry : items.entrySet()) {
 			slot(player, entry.getKey());
-			changes.add(new Object[]{entry.getKey(), ModernValues.stack(entry.getValue(), player.level().registryAccess())});
+			changes.add(new Object[]{entry.getKey(),
+				ModernValues.stack(entry.getValue(), VersionCommon.registries(VersionCommon.levelOf(player)))});
 		}
 		for (Object[] change : changes) {
 			set(player, (String) change[0], (ItemStack) change[1]);
@@ -443,11 +445,11 @@ final class ModernThings {
 
 	/** Puts the stack in the named slot; the caller sends the changes. */
 	static void set(ServerPlayer player, String slot, ItemStack stack) {
-		Inventory inventory = player.getInventory();
+		Inventory inventory = VersionCommon.inventory(player);
 		if (slot.equals("held")) {
 			inventory.setItem(VersionCommon.selectedSlot(inventory), stack);
 		} else if (slot.equals("cursor")) {
-			player.containerMenu.setCarried(stack);
+			VersionCommon.setCarried(player, stack);
 		} else if (slot.equals("offhand")) {
 			player.setItemSlot(EquipmentSlot.OFFHAND, stack);
 		} else if (slot.startsWith("main.")) {
@@ -463,14 +465,14 @@ final class ModernThings {
 
 	private static JsonElement container(Call call) throws ProbeException {
 		Player player = player(call);
-		HolderLookup.Provider registries = registries(call);
+		Object registries = registries(call);
 		AbstractContainerMenu open = player.containerMenu;
 		JsonArray slots = new JsonArray();
 		int first = -1;
 		int last = -1;
 		for (Slot slot : open.slots) {
 			slots.add(Json.object("index", slot.index, "item", ModernValues.item(slot.getItem(), registries)));
-			if (slot.container == player.getInventory()) {
+			if (slot.container == VersionCommon.inventory(player)) {
 				first = first < 0 ? slot.index : Math.min(first, slot.index);
 				last = Math.max(last, slot.index);
 			}
@@ -501,14 +503,14 @@ final class ModernThings {
 
 	private static JsonElement blockGet(Call call) throws ProbeException {
 		BlockPos pos = blockPos(call);
-		Level level = player(call).level();
+		Level level = VersionCommon.levelOf(player(call));
 		JsonObject value = ModernValues.block(level.getBlockState(pos));
 		if (call.flag("tile", false)) {
 			BlockEntity tile = level.getBlockEntity(pos);
 			if (tile == null) {
 				value.add("tile", com.google.gson.JsonNull.INSTANCE);
 			} else {
-				value.addProperty("tile", VersionCommon.tileData(tile, level.registryAccess()).toString());
+				value.addProperty("tile", VersionCommon.tileData(tile, VersionCommon.registries(level)).toString());
 			}
 		}
 		return value;
@@ -529,7 +531,7 @@ final class ModernThings {
 			throw ProbeException.badRequest("block", VersionName.port() + "'s blocks have no meta: a colour is in the id"
 				+ " (minecraft:red_wool), the rest is the state's properties");
 		}
-		if (!VersionCommon.known(BuiltInRegistries.BLOCK, id)) {
+		if (!VersionCommon.known(VersionCommon.blocks(), id)) {
 			throw new ProbeException("NotFound", "this game has no block " + id, Json.object("what", id));
 		}
 		StringBuilder text = new StringBuilder(id);
@@ -554,25 +556,25 @@ final class ModernThings {
 		switch (update) {
 			case "default":
 				// neighbours told, and the clients sent it, as a player's placing does
-				flags = Block.UPDATE_ALL;
+				flags = UPDATE_ALL;
 				break;
 			case "none":
 				// no neighbour updates; still sent, or the client would never see it
-				flags = Block.UPDATE_CLIENTS;
+				flags = UPDATE_CLIENTS;
 				break;
 			default:
 				throw ProbeException.badRequest("update", "update is default or none, not " + update);
 		}
-		Level level = player(call).level();
+		Level level = VersionCommon.levelOf(player(call));
 		level.setBlock(pos, state, flags);
 		if (tileData != null) {
 			BlockEntity tile = level.getBlockEntity(pos);
 			if (tile == null) {
 				throw ProbeException.badRequest("tile", id + " has no block entity to take the data");
 			}
-			VersionCommon.loadTile(tile, tileData, level.registryAccess());
+			VersionCommon.loadTile(tile, tileData, VersionCommon.registries(level));
 			tile.setChanged();
-			level.sendBlockUpdated(pos, state, state, Block.UPDATE_ALL);
+			level.sendBlockUpdated(pos, state, state, UPDATE_ALL);
 		}
 		return new JsonObject();
 	}
@@ -584,8 +586,8 @@ final class ModernThings {
 			throw ProbeException.badRequest("entity", "the entity's id is needed: {\"entity\": n}");
 		}
 		int id = (int) call.number("entity", 0, Integer.MIN_VALUE, Integer.MAX_VALUE);
-		Entity found = player(call).level().getEntity(id);
-		if (found == null || found.isRemoved()) {
+		Entity found = VersionCommon.levelOf(player(call)).getEntity(id);
+		if (found == null || VersionCommon.removed(found)) {
 			throw new ProbeException("NotFound", "no entity " + id + " in the world (gone, or never there)",
 				Json.object("what", id));
 		}
@@ -600,11 +602,11 @@ final class ModernThings {
 		}
 		double[] at = vec(call, "pos");
 		ServerLevel level = VersionCommon.level(serverPlayer(call.string("player", null)));
-		Optional<EntityType<?>> kind = VersionCommon.byId(BuiltInRegistries.ENTITY_TYPE, type);
-		if (kind.isEmpty()) {
+		Optional<EntityType<?>> kind = VersionCommon.byId(VersionCommon.entityTypes(), type);
+		if (!kind.isPresent()) {
 			throw new ProbeException("NotFound", "this game has no entity " + type, Json.object("what", type));
 		}
-		if (!level.isLoaded(BlockPos.containing(at[0], at[1], at[2]))) {
+		if (!level.isLoaded(VersionCommon.containing(at[0], at[1], at[2]))) {
 			throw new ProbeException("NotReady", "no chunk is loaded at " + at[0] + " " + at[1] + " " + at[2]
 				+ ": the " + type + " would have nowhere to be", Json.object("what", type));
 		}
@@ -618,12 +620,12 @@ final class ModernThings {
 		if (call.has("nbt")) {
 			// the given data over the entity's own, as /summon's does
 			CompoundTag given = ModernValues.compound(call.string("nbt", null), "nbt");
-			CompoundTag data = VersionCommon.save(entity, level.registryAccess()).merge(given);
-			VersionCommon.load(entity, data, level.registryAccess());
+			CompoundTag data = VersionCommon.save(entity, VersionCommon.registries(level)).merge(given);
+			VersionCommon.load(entity, data, VersionCommon.registries(level));
 		}
 		VersionCommon.place(entity, at[0], at[1], at[2], yaw, pitch);
-		if (call.flag("initialize", false) && entity instanceof Mob mob) {
-			VersionCommon.finalizeSpawn(mob, level);
+		if (call.flag("initialize", false) && entity instanceof Mob) {
+			VersionCommon.finalizeSpawn((Mob) entity, level);
 		}
 		if (!level.addFreshEntity(entity)) {
 			throw new ProbeException("NotReady", "the world refused the " + type + " at " + at[0] + " " + at[1] + " "
@@ -634,7 +636,7 @@ final class ModernThings {
 
 	private static JsonElement entities(Call call) throws ProbeException {
 		Player player = player(call);
-		Level level = player.level();
+		Level level = VersionCommon.levelOf(player);
 		double[] at = null;
 		double radius = Double.MAX_VALUE;
 		JsonObject near = call.object("near");
@@ -671,10 +673,11 @@ final class ModernThings {
 		}
 		boolean players = call.flag("players", false);
 		double[] from = at != null ? at : new double[]{player.getX(), player.getY(), player.getZ()};
-		Iterable<Entity> all = level instanceof ServerLevel server ? server.getAllEntities() : client().entities(level);
+		Iterable<Entity> all = level instanceof ServerLevel ? ((ServerLevel) level).getAllEntities()
+			: client().entities(level);
 		List<Entity> found = new ArrayList<>();
 		for (Entity entity : all) {
-			if (entity.isRemoved() || (!players && entity instanceof Player)) {
+			if (VersionCommon.removed(entity) || (!players && entity instanceof Player)) {
 				continue;
 			}
 			if (!types.isEmpty() && !types.contains(ModernValues.type(entity))) {

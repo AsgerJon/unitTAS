@@ -24,7 +24,9 @@ from unittas.things import (ThingId, blockOf, dimensionOf, entityOf, itemOf,
                             membersOf, parse, resolve)
 from unittas.values import Block, Effect, Entity, Item
 
-VERSIONS = (Version.V1_7_10, Version.V26_3)
+#  1.16.1's ids may carry a block state (1.13 to 1.16.5's shape: SPEC.md
+#  19.7 step 11)
+VERSIONS = (Version.V1_7_10, Version.V1_16_1, Version.V26_3)
 
 
 def held(catalogue: type, version: Version) -> list:
@@ -102,6 +104,10 @@ class ProbeValueTests(unittest.TestCase):
                      blockOf(MCBlocks.WitherSkeletonSkull, Version.V1_7_10))
     self.assertEqual((Block('minecraft:flower_pot', 0), '{Item:38,Data:0}'),
                      blockOf(MCBlocks.PottedPoppy, Version.V1_7_10))
+    #  before 1.17 a cauldron of water was a cauldron in a state: its
+    #  state given, as the modern probes take a block's
+    self.assertEqual((Block('minecraft:cauldron', -1, state=(('level', '1'),)),
+                      ''), blockOf(MCBlocks.WaterCauldron, Version.V1_16_1))
 
   def test_an_entity(self) -> None:
     """Its type and its data, '' for none."""
@@ -251,6 +257,18 @@ class ReadBackTests(unittest.TestCase):
     named = Item('minecraft:pink_wool', 3, -1, '',
                  '{"minecraft:custom_name":"Pink"}')
     self.assertEqual({MCItems.PinkWool}, membersOf(named, v))
+
+  def test_a_state_tells_blocks_apart(self) -> None:
+    """
+    1.16.1's water cauldron is a cauldron at level 1 (mcdex's id names the
+    state): a state fitting the id's is that member, more telling than the
+    name alone; another state the plain cauldron.
+    """
+    v = Version.V1_16_1
+    water = Block('minecraft:cauldron', -1, state=(('level', '1'),))
+    self.assertEqual({MCBlocks.WaterCauldron}, membersOf(water, v))
+    empty = Block('minecraft:cauldron', -1, state=(('level', '0'),))
+    self.assertEqual({MCBlocks.Cauldron}, membersOf(empty, v))
 
   def test_an_id_mcdex_has_no_member_for_is_an_empty_set(self) -> None:
     """1.7.10's lit furnace (M6): the assertion says what that means."""

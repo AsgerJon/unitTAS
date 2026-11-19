@@ -3,7 +3,6 @@ package io.github.asgerjon.unittas.probe;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -26,12 +25,12 @@ final class ModernClientLookup implements ModernClientSide {
 	}
 
 	@Override
-	public HolderLookup.Provider registries() throws ProbeException {
+	public Object registries() throws ProbeException {
 		ClientLevel level = Minecraft.getInstance().level;
 		if (level == null) {
 			throw new ProbeException("NotReady", "the client has no world", null);
 		}
-		return level.registryAccess();
+		return VersionCommon.registries(level);
 	}
 
 	@Override
@@ -41,7 +40,7 @@ final class ModernClientLookup implements ModernClientSide {
 
 	@Override
 	public int camera() {
-		return Minecraft.getInstance().options.getCameraType().ordinal();
+		return Version.camera();
 	}
 
 	@Override

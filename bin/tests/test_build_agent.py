@@ -126,8 +126,17 @@ class VersionsTests(unittest.TestCase):
     self.assertIn(os.path.join(build_agent.AGENT, 'v1_20_1', 'java'), version.sources)
     self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
 
+  def test_1_16_1(self) -> None:
+    """Java 8, its own (SPEC.md 19.7 step 11, V30), obfuscated, as 1.20.1: the shared code and its own folder."""
+    version = build_agent.VERSIONS['1.16.1']
+    self.assertEqual('8', version.release)
+    self.assertTrue(version.obfuscated)
+    self.assertIn(build_agent.MODERN, version.sources)
+    self.assertIn(os.path.join(build_agent.AGENT, 'v1_16_1', 'java'), version.sources)
+    self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
+
   def test_each_version_s_hooks_file(self) -> None:
-    counts = {'26.3': 21, '1.21.1': 22, '1.20.1': 22}
+    counts = {'26.3': 21, '1.21.1': 22, '1.20.1': 22, '1.16.1': 22}
     for minecraft, version in build_agent.VERSIONS.items():
       with self.subTest(minecraft=minecraft):
         with open(version.hooks, encoding='utf-8') as file:

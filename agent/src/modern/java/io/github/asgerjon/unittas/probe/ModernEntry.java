@@ -1,15 +1,15 @@
 package io.github.asgerjon.unittas.probe;
 
+import java.io.File;
+import java.util.Collections;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.network.chat.Component;
-
-import java.io.File;
-import java.util.Set;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /**
  * The probe as the agent's hooks reach it (SPEC.md 19.7 steps 5 and 6c), for every version from 1.20.1 on: each hook by
@@ -24,8 +24,8 @@ import java.util.function.Function;
 public final class ModernEntry implements BiFunction<String, Object[], Object> {
 
 	private static volatile Object pass;
-	private static volatile Set<String> hooked = Set.of();
-	private static volatile Set<String> rewritten = Set.of();
+	private static volatile Set<String> hooked = Collections.<String>emptySet();
+	private static volatile Set<String> rewritten = Collections.<String>emptySet();
 
 	private ModernEntry() {
 	}
@@ -80,12 +80,18 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 			case "server.tick.start":
 				ModernHooks.serverTickStart();
 				return pass;
-			case "chat.line":
-				ModernChat.heard((Component) arguments[0], Version.chatKind(arguments));
+			case "chat.line": {
+				// the line as the hooked method has it (none: not the chat's, as 1.16.1's action bar)
+				Component line = Version.chatLine(arguments);
+				if (line != null) {
+					ModernChat.heard(line, Version.chatKind(arguments));
+				}
 				return pass;
+			}
 			case "command.heard":
 				// a player's or the server's system message: a line of command.run's, if it runs for that source
-				ModernThings.heard(self, (Component) arguments[0], arguments.length > 1 && (Boolean) arguments[1]);
+				ModernThings.heard(self, (Component) arguments[0],
+					VersionCommon.overlay(arguments.length > 1 ? arguments[1] : null));
 				return pass;
 			case "sound.play":
 				ModernSounds.heard((SoundManager) self, (SoundInstance) arguments[0]);

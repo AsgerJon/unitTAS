@@ -4,7 +4,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import io.github.asgerjon.unittas.probe.link.Json;
-import net.minecraft.client.CameraType;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -54,8 +53,7 @@ final class ModernInput {
 		}
 		float yaw = (float) call.args.get("yaw").getAsDouble();
 		float pitch = (float) call.args.get("pitch").getAsDouble();
-		player.setYRot(yaw);
-		player.setXRot(pitch);
+		VersionCommon.setRot(player, yaw, pitch);
 		player.yRotO = yaw;
 		player.xRotO = pitch;
 		return new JsonObject();
@@ -114,7 +112,7 @@ final class ModernInput {
 		if (view < 0) {
 			throw ProbeException.badRequest("view", "camera.set needs the view: 0, 1 or 2");
 		}
-		Minecraft.getInstance().options.setCameraType(CameraType.values()[(int) view]);
+		Version.setCamera((int) view);
 		return new JsonObject();
 	}
 

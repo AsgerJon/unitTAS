@@ -1,17 +1,17 @@
 package io.github.asgerjon.unittas.agent;
 
+import io.github.asgerjon.unittas.agent.sample.Sample;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
-
-import io.github.asgerjon.unittas.agent.sample.Sample;
 
 /**
  * The agent's rewriter checked on class files of its own (SPEC.md 19.7 step 6a), with no game: the samples wrapped,
@@ -48,7 +48,7 @@ public final class WrapCheck {
 	public static void main(String[] args) throws Exception {
 		System.getProperties().put(Bridge.PASS, PASS);
 		System.getProperties().put(Bridge.HOOKS, (BiFunction<String, Object[], Object>) WrapCheck::hook);
-		List<Hooks.Hook> hooks = List.of(
+		List<Hooks.Hook> hooks = Arrays.asList(
 			new Hooks.Hook(SAMPLE, "count", "(I)I", Hooks.When.BEFORE, "count"),
 			new Hooks.Hook(SAMPLE, "tick", "()V", Hooks.When.BEFORE, "tick.start"),
 			new Hooks.Hook(SAMPLE, "tick", "()V", Hooks.When.AFTER, "tick.end"),
@@ -79,7 +79,7 @@ public final class WrapCheck {
 			Object it = make(sample);
 			same(5, call(it, "count", 5));
 			same(5, sample.getField("counted").get(it));
-			same(List.of("@count", "count"), seen());
+			same(Arrays.asList("@count", "count"), seen());
 			Object[] call = CALLS.get(0);
 			same(Arrays.asList("count", sample, it, 5), Arrays.asList(call));
 		});
@@ -88,23 +88,23 @@ public final class WrapCheck {
 			Object it = make(sample);
 			same(99, call(it, "count", 5));
 			same(0, sample.getField("counted").get(it));
-			same(List.of("@count"), seen());
+			same(Arrays.asList("@count"), seen());
 		});
 		check("before-and-after", () -> {
 			call(make(sample), "tick");
-			same(List.of("@tick.start", "tick", "@tick.end"), seen());
+			same(Arrays.asList("@tick.start", "tick", "@tick.end"), seen());
 		});
 		check("static-arguments", () -> {
 			Method mix = sample.getMethod("mix", long.class, double.class, String.class, boolean.class, char.class,
 				float.class);
 			same(79L, mix.invoke(null, 7L, 2.5, "abc", true, 'A', 1.5f));
-			same(List.of("@mix", "mix"), seen());
+			same(Arrays.asList("@mix", "mix"), seen());
 			same(Arrays.asList("mix", sample, null, 7L, 2.5, "abc", true, 'A', 1.5f), Arrays.asList(CALLS.get(0)));
 		});
 		check("reference-answer", () -> {
 			ANSWERS.put("title", "unitTAS");
 			same("unitTAS", call(make(sample), "title"));
-			same(List.of("@title"), seen());
+			same(Arrays.asList("@title"), seen());
 		});
 		check("boolean-answer", () -> {
 			Object it = make(sample);
@@ -112,11 +112,11 @@ public final class WrapCheck {
 			same(true, call(it, "grabbed"));
 			ANSWERS.clear();
 			same(false, call(it, "grabbed"));
-			same(List.of("@grabbed", "@grabbed", "grabbed"), seen());
+			same(Arrays.asList("@grabbed", "@grabbed", "grabbed"), seen());
 		});
 		check("after-primitive", () -> {
 			same(2.25, call(make(sample), "half", 4.5));
-			same(List.of("half", "@half"), seen());
+			same(Arrays.asList("half", "@half"), seen());
 		});
 		check("overloads", () -> {
 			Object it = make(sample);
@@ -125,7 +125,7 @@ public final class WrapCheck {
 			ANSWERS.put("pick", "both");
 			same("both", sample.getMethod("pick", int.class).invoke(it, 3));
 			same("both", sample.getMethod("pick", String.class).invoke(it, "x"));
-			same(List.of("@pick", "@pick", "@pick", "@pick"), seen());
+			same(Arrays.asList("@pick", "@pick", "@pick", "@pick"), seen());
 		});
 		check("own-branches", () -> {
 			Object it = make(sample);
@@ -137,7 +137,7 @@ public final class WrapCheck {
 		});
 		check("super-call", () -> {
 			call(make(sub), "tick");
-			same(List.of("sub", "@tick.start", "tick", "@tick.end"), seen());
+			same(Arrays.asList("sub", "@tick.start", "tick", "@tick.end"), seen());
 		});
 		check("reflection", () -> {
 			Method tick = sample.getMethod("tick");
@@ -152,16 +152,16 @@ public final class WrapCheck {
 			() -> refused(ABSTRACT, new Hooks.Hook(ABSTRACT, "nothing", "()V", Hooks.When.BEFORE, "x")));
 		check("refuses-interface",
 			() -> refused(INTERFACE, new Hooks.Hook(INTERFACE, "answer", "()I", Hooks.When.BEFORE, "x")));
-		check("others-untouched", () -> same(null, new Rewriter(List.of(new Hooks.Hook(SAMPLE, "tick", "()V",
+		check("others-untouched", () -> same(null, new Rewriter(Arrays.asList(new Hooks.Hook(SAMPLE, "tick", "()V",
 			Hooks.When.BEFORE, "x"))).transform(null, SUB, null, null, bytesOf(SUB))));
 		check("hooks-read", () -> {
 			Hooks.Table table = Hooks.read(new java.io.ByteArrayInputStream(("# a comment\n\nentry\tx.y.Entry\n"
 				+ "BEFORE\ta/B\ttick\t()V\ttick.start\nAFTER\ta/B\tpick\t*\tpicked\n").getBytes(
 				java.nio.charset.StandardCharsets.UTF_8)), "the check's");
 			same("x.y.Entry", table.entry());
-			same(List.of(new Hooks.Hook("a/B", "tick", "()V", Hooks.When.BEFORE, "tick.start"),
+			same(Arrays.asList(new Hooks.Hook("a/B", "tick", "()V", Hooks.When.BEFORE, "tick.start"),
 				new Hooks.Hook("a/B", "pick", null, Hooks.When.AFTER, "picked")), table.hooks());
-			for (String bad : List.of("BEFORE\ta/B\ttick\t()V\tx\n", "entry\tx.Entry\nWHILE\ta/B\tt\t()V\tx\n",
+			for (String bad : Arrays.asList("BEFORE\ta/B\ttick\t()V\tx\n", "entry\tx.Entry\nWHILE\ta/B\tt\t()V\tx\n",
 				"entry\tx.Entry\nBEFORE\ta/B\t()V\tx\n")) {
 				try {
 					Hooks.read(new java.io.ByteArrayInputStream(bad.getBytes(java.nio.charset.StandardCharsets.UTF_8)), "bad");
@@ -208,7 +208,7 @@ public final class WrapCheck {
 	}
 
 	private static void refused(String name, Hooks.Hook hook) throws IOException {
-		if (rewrite(List.of(hook), name) != null) {
+		if (rewrite(Arrays.asList(hook), name) != null) {
 			throw new AssertionError("rewritten, where it should have been refused: " + hook);
 		}
 	}
@@ -246,7 +246,7 @@ public final class WrapCheck {
 			if (in == null) {
 				throw new IOException("no class file for " + name);
 			}
-			return in.readAllBytes();
+			return ClassBytes.readAll(in);
 		}
 	}
 

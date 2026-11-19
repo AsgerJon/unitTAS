@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,8 +63,23 @@ final class ClassBytes {
 		}
 	}
 
-	/** An attribute: its name's entry and its body. */
-	record Attribute(int name, byte[] body) {
+	/** An attribute: its name's entry and its body (a class, not a record: the bootstrap is Java 8's). */
+	static final class Attribute {
+		private final int name;
+		private final byte[] body;
+
+		Attribute(int name, byte[] body) {
+			this.name = name;
+			this.body = body;
+		}
+
+		int name() {
+			return name;
+		}
+
+		byte[] body() {
+			return body;
+		}
 	}
 
 	private final int minor;
@@ -275,6 +291,16 @@ final class ClassBytes {
 			throw new IllegalArgumentException("entry " + index + " isn't of tag " + tag);
 		}
 		return entry;
+	}
+
+	/** Every byte left in the stream (InputStream.readAllBytes is Java 9's; the bootstrap is Java 8's). */
+	static byte[] readAll(InputStream in) throws IOException {
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		byte[] buffer = new byte[8192];
+		for (int read = in.read(buffer); read != -1; read = in.read(buffer)) {
+			out.write(buffer, 0, read);
+		}
+		return out.toByteArray();
 	}
 
 	private static byte[] entryOf(int tag, int... references) {

@@ -8,8 +8,8 @@ Asger's standing yes and 1G. selfsuite.multiplayer's four classes, in order:
 - a singleplayer class after them: the run's own client in its own world again.
 The report has every test ok and a world line for each; the server and bob are gone after.
 Three games at once (about 5 GB; 10 GB on a modern version): asked for before it is run.
-On a modern port (SPEC.md 19.7 step 10e): a spec of the version as Mojang ships it, the agent its probe, on the
-ports whose server has the agent (ports.AGENT_SERVERS).
+On a modern port (SPEC.md 19.7 step 10e): a spec of the version as Mojang ships it, or with the port's Fabric Loader
+(10f), the agent its probe, on the ports whose server has the agent (ports.AGENT_SERVERS).
 
   python -m unittas.selftest test_multiplayer_run.      (through the watcher: "probe test_multiplayer_run.")
 """
@@ -24,7 +24,7 @@ import sys
 import unittest
 
 from agentgame import buildAgent
-from ports import AGENT_SERVERS, V1_7_10, port, version
+from ports import AGENT_SERVERS, V1_7_10, port, serverLoader, version
 from probegame import READY_SECONDS, ROOT, results
 from unittas.release import releaseJar
 
@@ -35,7 +35,8 @@ class MultiplayerRunTests(unittest.TestCase):
     if not os.path.isfile(os.path.join(ROOT, 'asger_accepts_all_eulas.txt')):
       self.skipTest("a dedicated server needs Mojang's EULA accepted: this runs on Asger's standing yes only")
     if version() != V1_7_10 and port() not in AGENT_SERVERS:
-      self.skipTest('not on %s yet: the agent in a server comes on 26.3 first (SPEC.md 19.7 step 10b)' % port())
+      self.skipTest("not on %s yet: NeoForge's and Forge's servers come after Fabric's (SPEC.md 19.7 step 10f)"
+                    % port())
     folder = os.path.join(results(), 'mp-run')
     os.makedirs(folder, exist_ok=True)
     game = os.path.join(results(), 'mp-client')
@@ -49,8 +50,11 @@ class MultiplayerRunTests(unittest.TestCase):
               % (jar, mixins, jar, game))
     else:
       jar = buildAgent(os.path.join(results(), 'agent-build', 'build.log'), version())
-      text = ('minecraft = "%s"\nclient = "real"\nprobe = "%s"\ngame = "%s"\n[server]\neula = true\nmemory = "2G"\n'
-              % (version(), jar, game))
+      #  a loader's port's spec names its loader (SPEC.md 19.7 step 10f): its server runs with it too
+      loader, loaderVersion = serverLoader()
+      text = ('minecraft = "%s"\n%sclient = "real"\nprobe = "%s"\ngame = "%s"\n[server]\neula = true\n'
+              'memory = "2G"\n' % (version(), 'loader = { %s = "%s" }\n' % (loader, loaderVersion) if loader else '',
+                                   jar, game))
     with open(spec, 'w', encoding='utf-8') as file:
       file.write(text)
     run = os.path.join(folder, 'run')

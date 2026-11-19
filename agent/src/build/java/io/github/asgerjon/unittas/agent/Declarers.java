@@ -5,7 +5,9 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,8 +34,38 @@ public final class Declarers {
 
 	private static final String LAMBDAS = "java/lang/invoke/LambdaMetafactory";
 
-	/** A class as far as finding a declarer needs: its supertypes, and what it declares (name and descriptor). */
-	private record Header(String superName, List<String> interfaces, Set<String> fields, Map<String, Integer> methods) {
+	/**
+	 * A class as far as finding a declarer needs: its supertypes, and what it declares (name and descriptor). A class,
+	 * not a record: the agent's code is Java 8's (SPEC.md 19.7 step 11a).
+	 */
+	private static final class Header {
+		private final String superName;
+		private final List<String> interfaces;
+		private final Set<String> fields;
+		private final Map<String, Integer> methods;
+
+		Header(String superName, List<String> interfaces, Set<String> fields, Map<String, Integer> methods) {
+			this.superName = superName;
+			this.interfaces = interfaces;
+			this.fields = fields;
+			this.methods = methods;
+		}
+
+		String superName() {
+			return superName;
+		}
+
+		List<String> interfaces() {
+			return interfaces;
+		}
+
+		Set<String> fields() {
+			return fields;
+		}
+
+		Map<String, Integer> methods() {
+			return methods;
+		}
 	}
 
 	private final Map<String, Header> headers = new HashMap<>();
@@ -54,13 +86,13 @@ public final class Declarers {
 				ZipEntry entry = entries.nextElement();
 				if (entry.getName().endsWith(".class")) {
 					try (InputStream in = jar.getInputStream(entry)) {
-						stubs.put(entry.getName().substring(0, entry.getName().length() - 6), in.readAllBytes());
+						stubs.put(entry.getName().substring(0, entry.getName().length() - 6), ClassBytes.readAll(in));
 					}
 				}
 			}
 		}
 		Map<String, byte[]> probe = new HashMap<>();
-		Path root = Path.of(args[1]);
+		Path root = Paths.get(args[1]);
 		try (Stream<Path> paths = Files.walk(root)) {
 			for (Path path : (Iterable<Path>) paths::iterator) {
 				String name = root.relativize(path).toString().replace('\\', '/');
@@ -74,7 +106,7 @@ public final class Declarers {
 		for (Map.Entry<String, String> each : found.entrySet()) {
 			lines.add(each.getKey() + "\t" + each.getValue());
 		}
-		Files.write(Path.of(args[2]), lines, StandardCharsets.UTF_8);
+		Files.write(Paths.get(args[2]), lines, StandardCharsets.UTF_8);
 	}
 
 	/**
@@ -86,7 +118,7 @@ public final class Declarers {
 		throws IOException {
 		Declarers declarers = new Declarers(gameClasses.keySet());
 		Map<String, ClassBytes> files = new TreeMap<>();
-		for (Map<String, byte[]> classes : List.of(gameClasses, probeClasses)) {
+		for (Map<String, byte[]> classes : Arrays.asList(gameClasses, probeClasses)) {
 			for (Map.Entry<String, byte[]> each : classes.entrySet()) {
 				ClassBytes file = new ClassBytes(each.getValue());
 				files.put(each.getKey(), file);

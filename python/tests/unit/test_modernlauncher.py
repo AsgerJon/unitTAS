@@ -22,8 +22,8 @@ import tempfile
 import unittest
 
 from unittas.cache import Cache
-from unittas.launcher import (FABRIC_META, FAILED, MANIFEST, Missing, Sources, classPath, findJavaFor, main,
-                              versionCommand)
+from unittas.launcher import (FABRIC_META, FABRIC_SERVER_META, FAILED, MANIFEST, Missing, Sources, classPath,
+                              findJavaFor, main, versionCommand)
 
 VERSIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'versions')
 
@@ -67,7 +67,16 @@ class ModernFixture:
     self.served[MANIFEST] = json.dumps({'versions': [
       {'id': '26.3', 'url': 'https://piston-meta.mojang.com/v1/packages/x/26.3.json', 'sha1': sha1(versionJson)}
     ]}).encode('utf-8')
-    profile = copy.deepcopy(recorded('fabric-loader-0.20.1-26.3.json'))
+    self.profile = self._fabric('fabric-loader-0.20.1-26.3.json')
+    self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(self.profile).encode('utf-8')
+    # Fabric's server profile (SPEC.md 19.7 step 10f-i): the same jars, KnotServer
+    self.serverProfile = self._fabric('fabric-loader-0.20.1-26.3-server.json')
+    self.served[FABRIC_SERVER_META % ('26.3', '0.20.1')] = json.dumps(self.serverProfile).encode('utf-8')
+    self.asked = []
+
+  def _fabric(self, name: str) -> dict:
+    """A recorded Fabric profile, each of its libraries served fake, its sha1 its own."""
+    profile = copy.deepcopy(recorded(name))
     for library in profile['libraries']:
       group, artifact, version = library['name'].split(':')
       path = '%s/%s/%s/%s-%s.jar' % (group.replace('.', '/'), artifact, version, artifact, version)
@@ -79,9 +88,7 @@ class ModernFixture:
       else:
         # as Fabric's profile has the loader's own jar: no checksum there, its maven's .sha1 beside it
         self.served[url + '.sha1'] = sha1(data).encode('ascii')
-    self.profile = profile
-    self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(profile).encode('utf-8')
-    self.asked = []
+    return profile
 
   def withServer(self, data: bytes) -> None:
     """The version's server jar served (SPEC.md 19.7 step 10a): its JSON's downloads.server, its sha1 its own."""
@@ -117,8 +124,9 @@ class ModernFixture:
 
   def withIntermediary(self, tiny: str, classes: dict) -> None:
     """
-    Fabric's profile with its intermediary jar (as for a version before 26.1), and the client jar as class files of
-    those classes ({name: (superclass, interfaces)}), whose supertypes the names are composed along.
+    Fabric's profiles (the client's, the server's) with its intermediary jar (as for a version before 26.1), and the
+    client jar as class files of those classes ({name: (superclass, interfaces)}), whose supertypes the names are
+    composed along.
     """
     import io
     import zipfile
@@ -129,9 +137,10 @@ class ModernFixture:
     data = inner.getvalue()
     maven = 'https://maven.fabricmc.net/'
     self.served[maven + 'net/fabricmc/intermediary/26.3/intermediary-26.3.jar'] = data
-    self.profile['libraries'].append({'name': 'net.fabricmc:intermediary:26.3', 'url': maven, 'sha1': sha1(data),
-                                      'size': len(data)})
-    self.served[FABRIC_META % ('26.3', '0.20.1')] = json.dumps(self.profile).encode('utf-8')
+    for profile, meta in ((self.profile, FABRIC_META), (self.serverProfile, FABRIC_SERVER_META)):
+      profile['libraries'].append({'name': 'net.fabricmc:intermediary:26.3', 'url': maven, 'sha1': sha1(data),
+                                   'size': len(data)})
+      self.served[meta % ('26.3', '0.20.1')] = json.dumps(profile).encode('utf-8')
     client = io.BytesIO()
     with zipfile.ZipFile(client, 'w') as archive:
       for name, (superclass, interfaces) in classes.items():

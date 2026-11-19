@@ -34,6 +34,14 @@ HOOKED = {
 }
 #  1.20.1 hooks 1.21.1's classes (three of their methods by its own descriptors or names)
 HOOKED['1.20.1'] = HOOKED['1.21.1']
+#  1.16.1's: a chat line on Gui (handleChat, with its type), a section's build where it starts (RenderChunk's
+#  createCompileTask: SPEC.md 19.7 step 11)
+HOOKED['1.16.1'] = ['net/minecraft/CrashReport', 'net/minecraft/client/KeyboardHandler',
+                    'net/minecraft/client/Minecraft', 'net/minecraft/client/MouseHandler', 'net/minecraft/client/gui/Gui',
+                    'net/minecraft/client/renderer/LevelRenderer',
+                    'net/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk',
+                    'net/minecraft/client/sounds/SoundManager', 'net/minecraft/server/MinecraftServer',
+                    'net/minecraft/server/level/ServerPlayer']
 
 #  the jars this run built, by version: each built once a run, whichever class asks first
 _BUILT = {}

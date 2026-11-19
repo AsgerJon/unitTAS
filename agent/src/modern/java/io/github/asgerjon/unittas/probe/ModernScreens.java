@@ -6,7 +6,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 
 /**
@@ -48,8 +47,7 @@ final class ModernScreens {
 		} else if ("inventory".equals(name)) {
 			screen = new InventoryScreen(mc.player);
 		} else if ("creative".equals(name)) {
-			screen = new CreativeModeInventoryScreen(mc.player, mc.player.connection.enabledFeatures(),
-				mc.options.operatorItemsTab().get());
+			screen = Version.creativeScreen(mc);
 		} else if ("pause".equals(name)) {
 			screen = new PauseScreen(true);
 		} else {

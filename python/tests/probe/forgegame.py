@@ -16,7 +16,7 @@ from fabricgame import FabricGame
 
 LOADER = 'forge'
 #  each version's one Forge (SPEC.md 19.7 V14), as unittas.spec's
-FORGE = {'1.20.1': '47.4.28'}
+FORGE = {'1.20.1': '47.4.28', '1.16.1': '32.0.108'}
 
 
 class ForgeGame(FabricGame):

@@ -5,11 +5,12 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.TreeMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -35,9 +36,9 @@ public final class Stubs {
 		if (args.length != 3) {
 			throw new IllegalArgumentException("Stubs CLIENT.jar TABLE OUT.jar");
 		}
-		Names names = Names.read(Path.of(args[1]));
-		Map<String, byte[]> stubs = of(Path.of(args[0]), names);
-		Path out = Path.of(args[2]);
+		Names names = Names.read(Paths.get(args[1]));
+		Map<String, byte[]> stubs = of(Paths.get(args[0]), names);
+		Path out = Paths.get(args[2]);
 		Path part = out.resolveSibling(out.getFileName() + ".part");
 		try (OutputStream file = Files.newOutputStream(part); ZipOutputStream jar = new ZipOutputStream(file)) {
 			for (Map.Entry<String, byte[]> each : stubs.entrySet()) {
@@ -72,7 +73,7 @@ public final class Stubs {
 					continue;
 				}
 				try (InputStream in = jar.getInputStream(entry)) {
-					stubs.put(back.className(running), renamer.rename(in.readAllBytes()));
+					stubs.put(back.className(running), renamer.rename(ClassBytes.readAll(in)));
 				}
 			}
 		}

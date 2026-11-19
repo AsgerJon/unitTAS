@@ -428,10 +428,11 @@ def multiplayerFor(spec: InstanceSpec, run: Run, results: str, launched: Launche
   in a folder of its own in the results. The server gets the clients'
   mods but those the spec's [server] exclude names, the spec's EULA
   acceptance and memory, and the Gradle cache and the download cache. A
-  modern spec's (19.7 step 10d; only where its spec takes [server]: 26.3
-  as Mojang ships it) has the spec's agent in, as its clients do, and no
-  mods (a vanilla server loads none), on its version's own Java; its
-  clients are counted at a modern client's memory.
+  modern spec's (19.7 step 10d; only where its spec takes [server]: as
+  Mojang ships it, or with Fabric, 10f) has the spec's agent in, as its
+  clients do, on its version's own Java; with a loader, the spec's at
+  its version, and the clients' mods as 1.7.10's (a vanilla server loads
+  none); its clients are counted at a modern client's memory.
   """
   if spec.client != 'real':
     return None
@@ -454,9 +455,11 @@ def multiplayerFor(spec: InstanceSpec, run: Run, results: str, launched: Launche
       return ServerGame(spec.folder, results, 'server', folder=folder, mods=launched.serverMods(), players=players,
                         eula=spec.serverEula, memory=spec.serverMemory, java=findJava(spec.java),
                         sources=Sources(gradleHome=gradleHome, cache=cache))
-    return ServerGame(spec.folder, results, 'server', folder=folder, players=players, eula=spec.serverEula,
-                      memory=spec.serverMemory, java=spec.java, sources=Sources(cache=cache),
-                      minecraft=spec.minecraft, probe=launched.probeJar())
+    loader = spec.loaderName or None
+    return ServerGame(spec.folder, results, 'server', folder=folder, mods=launched.serverMods() if loader else (),
+                      players=players, eula=spec.serverEula, memory=spec.serverMemory, java=spec.java,
+                      sources=Sources(cache=cache), minecraft=spec.minecraft, probe=launched.probeJar(), loader=loader,
+                      loaderVersion=spec.loaderVersion or None)
 
   clientMb = CLIENT_MB if spec.minecraft == MINECRAFT else megabytes(MODERN_CLIENT_MEMORY)
   return Multiplayer(run, serverFor, clientFor, serverMb=megabytes(spec.serverMemory), clientMb=clientMb)

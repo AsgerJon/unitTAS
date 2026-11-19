@@ -10,7 +10,6 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
@@ -66,7 +65,7 @@ final class ModernReset {
 		float yaw = look != null && look.has("yaw") ? look.get("yaw").getAsFloat() : 0.0F;
 		float pitch = look != null && look.has("pitch") ? look.get("pitch").getAsFloat() : 0.0F;
 		MinecraftServer server = ModernServer.get();
-		if (player.level().dimension() != Level.OVERWORLD) {
+		if (VersionCommon.levelOf(player).dimension() != Level.OVERWORLD) {
 			// back to the overworld, where the reset puts it; the client arrives some ticks later
 			VersionCommon.teleport(player, server.overworld(), at[0], at[1], at[2], yaw, pitch);
 			return Json.object("respawned", true);
@@ -86,21 +85,23 @@ final class ModernReset {
 		VersionCommon.clearRespawn(player);
 		// the first hotbar slot on the server too, as on the client, and told to it: set on one side only, the two
 		// disagree on what is held
-		VersionCommon.selectSlot(player.getInventory(), 0);
+		VersionCommon.selectSlot(VersionCommon.inventory(player), 0);
 		VersionCommon.sendHeldSlot(player, 0);
 		// everything held: the main slots, the armour and the off hand, and the cursor's stack
-		player.getInventory().clearContent();
-		player.containerMenu.setCarried(ItemStack.EMPTY);
+		VersionCommon.inventory(player).clearContent();
+		VersionCommon.setCarried(player, ItemStack.EMPTY);
 		player.stopUsingItem();
 		player.inventoryMenu.broadcastChanges();
-		player.inventoryMenu.sendAllDataToRemote();
+		VersionCommon.sendInventory(player);
 		player.removeAllEffects();
 		// arrows and stingers from earlier tests stay drawn stuck in the player, over what the next test's shots show
 		player.setArrowCount(0);
 		player.setStingerCount(0);
-		player.setGameMode(GameType.CREATIVE);
+		// its world's own game mode (creative in the run's test world, survival in a survival world or save): a class's
+		// world in survival keeps a survival player through the reset (found by meantwell on 26.3)
+		player.setGameMode(VersionCommon.level(player).getServer().getWorldData().getGameType());
 		// creative keeps the player flying if it was
-		player.getAbilities().flying = false;
+		VersionCommon.abilities(player).flying = false;
 		player.onUpdateAbilities();
 		player.setExperienceLevels(0);
 		player.setExperiencePoints(0);
@@ -108,8 +109,8 @@ final class ModernReset {
 		player.clearFire();
 		player.setHealth(player.getMaxHealth());
 		player.getFoodData().setFoodLevel(20);
-		player.getFoodData().setSaturation(20.0F);
-		player.resetFallDistance();
+		VersionCommon.setSaturation(player, 20.0F);
+		VersionCommon.resetFall(player);
 		player.stopRiding();
 		player.setDeltaMovement(Vec3.ZERO);
 		player.connection.teleport(x, y, z, yaw, pitch);
@@ -129,7 +130,7 @@ final class ModernReset {
 				}
 			}
 			for (Entity each : others) {
-				each.discard();
+				VersionCommon.discard(each);
 			}
 		}
 		VersionCommon.serverWorlds().setWeather(false, false, true);

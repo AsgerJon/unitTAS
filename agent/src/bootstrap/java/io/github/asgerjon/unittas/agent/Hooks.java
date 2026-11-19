@@ -6,7 +6,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * The game's methods the probe hooks (SPEC.md 19.7 steps 5 and 6c): each version's in its own file, packed into its
@@ -21,12 +23,84 @@ final class Hooks {
 		BEFORE, AFTER
 	}
 
-	/** One hook: where, when, and its name the probe knows it by. A null descriptor takes the name's every method. */
-	record Hook(String owner, String method, String descriptor, When when, String id) {
+	/**
+	 * One hook: where, when, and its name the probe knows it by. A null descriptor takes the name's every method. A
+	 * class, not a record: the bootstrap is Java 8's (SPEC.md 19.7 step 11a).
+	 */
+	static final class Hook {
+		private final String owner;
+		private final String method;
+		private final String descriptor;
+		private final When when;
+		private final String id;
+
+		Hook(String owner, String method, String descriptor, When when, String id) {
+			this.owner = owner;
+			this.method = method;
+			this.descriptor = descriptor;
+			this.when = when;
+			this.id = id;
+		}
+
+		String owner() {
+			return owner;
+		}
+
+		String method() {
+			return method;
+		}
+
+		String descriptor() {
+			return descriptor;
+		}
+
+		When when() {
+			return when;
+		}
+
+		String id() {
+			return id;
+		}
+
+		@Override
+		public boolean equals(Object other) {
+			if (!(other instanceof Hook)) {
+				return false;
+			}
+			Hook that = (Hook) other;
+			return owner.equals(that.owner) && method.equals(that.method) && Objects.equals(descriptor, that.descriptor)
+				&& when == that.when && id.equals(that.id);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(owner, method, descriptor, when, id);
+		}
+
+		@Override
+		public String toString() {
+			return "Hook[" + when + " " + owner + "." + method + (descriptor == null ? "*" : descriptor) + " " + id
+				+ "]";
+		}
 	}
 
 	/** A version's hooks, and the probe's entry class they reach (the bridge starts it at the first hook). */
-	record Table(String entry, List<Hook> hooks) {
+	static final class Table {
+		private final String entry;
+		private final List<Hook> hooks;
+
+		Table(String entry, List<Hook> hooks) {
+			this.entry = entry;
+			this.hooks = hooks;
+		}
+
+		String entry() {
+			return entry;
+		}
+
+		List<Hook> hooks() {
+			return hooks;
+		}
 	}
 
 	/**
@@ -41,7 +115,7 @@ final class Hooks {
 		int number = 0;
 		for (String line = lines.readLine(); line != null; line = lines.readLine()) {
 			number++;
-			if (line.isBlank() || line.startsWith("#")) {
+			if (line.trim().isEmpty() || line.startsWith("#")) {
 				continue;
 			}
 			String[] parts = line.split("\t", -1);
@@ -62,7 +136,7 @@ final class Hooks {
 		if (entry == null) {
 			throw new IllegalArgumentException(where + "'s hooks name no entry class");
 		}
-		return new Table(entry, List.copyOf(hooks));
+		return new Table(entry, Collections.unmodifiableList(new ArrayList<>(hooks)));
 	}
 
 	private Hooks() {
@@ -87,6 +161,6 @@ final class Hooks {
 			renamed.add(new Hook(names.className(hook.owner()), method, names.descriptor(hook.descriptor()), hook.when(),
 				hook.id()));
 		}
-		return List.copyOf(renamed);
+		return Collections.unmodifiableList(renamed);
 	}
 }

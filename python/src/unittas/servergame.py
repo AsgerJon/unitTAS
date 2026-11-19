@@ -117,6 +117,17 @@ MODERN_PROPERTIES = (
 )
 
 
+#  1.16.1's (SPEC.md 19.7 step 11f): a world type named without a namespace, and the flat layers' JSON as its codec
+#  needs it: its structures (none: StructureSettings' own map, empty), lakes and features said
+LAYERS_1_16 = json.dumps({'structures': {'structures': {}},
+                          'layers': [{'block': 'minecraft:bedrock', 'height': 1},
+                                     {'block': 'minecraft:dirt', 'height': 2},
+                                     {'block': 'minecraft:grass_block', 'height': 1}],
+                          'lakes': False, 'features': False, 'biome': 'minecraft:plains'}, separators=(',', ':'))
+PROPERTIES_1_16 = tuple((key, {'level-type': 'flat', 'generator-settings': LAYERS_1_16}.get(key, value))
+                        for key, value in MODERN_PROPERTIES)
+
+
 class ServerSetupError(UnitTasError):
   """A server folder that can't be written as asked: its message says why."""
 
@@ -143,7 +154,7 @@ def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool, mine
   """
   The server's three files in its folder, for a server of 'minecraft' on
   127.0.0.1 at 'port' with 'players' its operators (server.properties as
-  that version reads it: 1.7.10's, or a modern one's). 'eula' is the
+  that version reads it: 1.7.10's, 1.16.1's, or a modern one's). 'eula' is the
   user's own acceptance of Mojang's EULA (the spec says so); without it,
   nothing is written and ServerSetupError says how to give it.
   """
@@ -160,7 +171,7 @@ def serverFiles(folder: str, port: int, players: Iterable[str], eula: bool, mine
     raise ServerSetupError('two players of one name: %s' % ', '.join(players))
   os.makedirs(folder, exist_ok=True)
   lines = ['# unitTAS: written fresh for this run (on 127.0.0.1 only)']
-  table = PROPERTIES if minecraft == '1.7.10' else MODERN_PROPERTIES
+  table = {'1.7.10': PROPERTIES, '1.16.1': PROPERTIES_1_16}.get(minecraft, MODERN_PROPERTIES)
   lines += ['%s=%s' % (key, port if value is None else value) for key, value in table]
   _writeWhole(os.path.join(folder, 'server.properties'), '\n'.join(lines) + '\n')
   _writeWhole(os.path.join(folder, 'eula.txt'), "# accepted by the user, in the instance spec's [server] table (%s)\n"
@@ -220,17 +231,21 @@ class ServerGame(LaunchedGame):
   user's own acceptance, 'memory' its -Xmx, on 'port' (a free one unless
   given). A 1.7.10 Forge server's probe is in its mods/ ('mods', the
   probe's jar and a Mixin loader among them); a modern server's is the
-  agent ('probe', its jar), as Mojang ships the server. Its output is
-  '<results>/<name>/server.log'. 'ready' starts it and lets it through
-  only once it says it listens on 127.0.0.1 alone.
+  agent ('probe', its jar), as Mojang ships the server or with a loader
+  ('loader', 'loaderVersion': Fabric's, SPEC.md 19.7 step 10f). Its
+  output is '<results>/<name>/server.log'. 'ready' starts it and lets it
+  through only once it says it listens on 127.0.0.1 alone.
   """
 
   def __init__(self, root: str, results: str, name: str = 'server', folder: Optional[str] = None, mods: Iterable[str] = (),
                players: Iterable[str] = (), eula: bool = False, memory: str = '2G', java: Optional[str] = None,
                sources: Optional[Sources] = None, port: Optional[int] = None, minecraft: str = '1.7.10',
-               probe: Optional[str] = None) -> None:
+               probe: Optional[str] = None, loader: Optional[str] = None,
+               loaderVersion: Optional[str] = None) -> None:
     LaunchedGame.__init__(self, root, results, name)
     self.minecraft = minecraft
+    self.loader = loader
+    self.loaderVersion = loaderVersion
     self.probe = probe
     self.folder = os.path.abspath(folder or os.path.join(results, name, 'world-folder'))
     self.mods = list(mods)
@@ -254,7 +269,8 @@ class ServerGame(LaunchedGame):
     if self.minecraft == '1.7.10':
       return serverCommand(self.folder, self.java or findJava(), self.sources, self.memory).java
     agents = (self.probe,) if self.probe else ()
-    return serverVersionCommand(self.folder, self.java, self.sources, self.minecraft, self.memory, agents=agents).java
+    return serverVersionCommand(self.folder, self.java, self.sources, self.minecraft, self.memory, agents=agents,
+                                loader=self.loader, loaderVersion=self.loaderVersion).java
 
   def workingDir(self) -> str:
     #  FML finds mods/ and config/ in the server's working folder

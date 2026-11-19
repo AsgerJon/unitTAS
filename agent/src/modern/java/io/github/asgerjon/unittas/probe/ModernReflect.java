@@ -32,7 +32,7 @@ final class ModernReflect implements Reflect.Game {
 
 	@Override
 	public Object world(Object player) {
-		return ((Entity) player).level();
+		return VersionCommon.levelOf((Entity) player);
 	}
 
 	/** The client's Minecraft, or the server: a client's integrated one, or the dedicated server the probe is in. */
@@ -43,7 +43,7 @@ final class ModernReflect implements Reflect.Game {
 
 	@Override
 	public Object entity(Call call, int id) throws ProbeException {
-		return ModernThings.player(call).level().getEntity(id);
+		return VersionCommon.levelOf(ModernThings.player(call)).getEntity(id);
 	}
 
 	@Override

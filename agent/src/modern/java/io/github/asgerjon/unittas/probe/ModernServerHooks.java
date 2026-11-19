@@ -161,8 +161,8 @@ final class ModernServerHooks {
 		synchronized (bound) {
 			for (ChannelFuture each : bound) {
 				SocketAddress at = each.channel().localAddress();
-				if (at instanceof InetSocketAddress address) {
-					out.add(address);
+				if (at instanceof InetSocketAddress) {
+					out.add((InetSocketAddress) at);
 				}
 			}
 		}

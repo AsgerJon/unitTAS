@@ -1,6 +1,5 @@
 package io.github.asgerjon.unittas.probe;
 
-import net.minecraft.core.HolderLookup;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
@@ -19,7 +18,7 @@ interface ModernClientSide {
 	Player player() throws ProbeException;
 
 	/** The client's level's registries; NotReady while it has no world. */
-	HolderLookup.Provider registries() throws ProbeException;
+	Object registries() throws ProbeException;
 
 	/** The entities the client's level has, as it renders them: the level is the client's own. */
 	Iterable<Entity> entities(Level level);

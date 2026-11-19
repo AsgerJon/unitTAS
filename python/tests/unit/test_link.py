@@ -174,6 +174,30 @@ class HelloTests(_LinkTest):
     thread.join(10)
     self.assertIn('welcome', box.get('value') or {}, box)
 
+  def test_a_game_connected_in_time_gets_its_whole_hello_wait(self) -> None:
+    """
+    The accept's own timeout bounds the wait for a game to connect, not its
+    hello: one that connects as a short accept ends (a caller polling in
+    one-second slices, as LaunchedGame.accept does) still gets helloTimeout
+    to say hello (1.16.1's probe on Java 8 takes over a second: SPEC.md
+    19.7 step 11).
+    """
+    expected = self.expect()
+    fake = FakeProbe(expected.startFile)
+    self.addCleanup(fake.close)
+
+    def slow() -> dict:
+      fake.dial()
+      time.sleep(1.5)
+      fake.send(fake.hello())
+      return fake.read(10)
+
+    thread, box = inThread(slow)
+    connection = self.listener.accept(timeout=1.0, helloTimeout=5)
+    self.addCleanup(connection.close)
+    thread.join(10)
+    self.assertIn('welcome', box.get('value') or {}, box)
+
   def test_unknown_fields_in_the_hello_are_ignored(self) -> None:
     connection, fake = self.connected(extra={'colour': 'green', 'future': {'a': 1}})
     self.assertEqual('alice', connection.name)

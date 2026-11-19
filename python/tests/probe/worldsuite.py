@@ -13,8 +13,10 @@ start, a rule by the version's own name.
 - Arena, fresh: its setUp places gold once; test_d finds it and breaks
   it, and test_e finds it again, in the copy kept after setUp;
 - Layered, a flat world described in mcdex's terms (SPEC.md 17.4):
-  bedrock, two stone and red wool on desert, its daylight cycle off;
-  test_f stands on its red wool.
+  bedrock, two stone and red wool on desert, its daylight cycle off, in
+  survival; test_f stands on its red wool, survival after the reset as
+  its world is (found by meantwell on 26.3: the reset made every player
+  creative), where test_a's player in the run's world is creative.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -28,6 +30,7 @@ from mcdex import MCBiomes, MCBlocks, MCGameRules
 
 from ports import V1_7_10, V26_3, start, version
 from unittas._test_world import World
+from unittas.gamemode import GameMode
 from unittas.testcase import GameTestCase
 from unittas.values import Block, Vec3
 from unittas.worldkind import WorldKind
@@ -82,6 +85,7 @@ class Layered(World):
                           (MCBlocks.RedWool, 1)))
   flatBiome = FixBox[MCBiomes](MCBiomes.Desert)
   rules = FixBox[dict]({MCGameRules.AdvanceTime: False})
+  gameMode = FixBox[GameMode](GameMode.Survival)
 
 
 class EWorldTests(GameTestCase):
@@ -92,6 +96,8 @@ class EWorldTests(GameTestCase):
   layered = Layered()
 
   def test_a_in_the_run_s_flat_world(self) -> None:
+    self.assertEqual('creative', self.game.player().gameMode,
+                     "the run's test world is creative")
     under = self.start.block().below()
     self.assertThing(self.game.block(under), MCBlocks.GrassBlock)
     self.assertEqual(under, self.game.ground(under.x, under.z))
@@ -107,12 +113,14 @@ class EWorldTests(GameTestCase):
   @terrain
   def test_b_leaves_wool(self) -> None:
     #  default terrain: the game put the player well above the flat world,
-    #  on its ground
+    #  standing on a block of its ground: the column's top, or under it (a
+    #  forest's spawn may be under its leaves: 1.16.1's for this seed is)
     start = self.terrain.start
     self.assertGreater(start.y, flatFeet() + 6.0)
     self.assertEqual(self.start, start)
-    ground = self.game.ground(start.block().x, start.block().z)
-    self.assertEqual(start.block().below().y, ground.y)
+    floor = start.block().below()
+    self.assertNotEqual('minecraft:air', self.game.block(floor).id)
+    self.assertGreaterEqual(self.game.ground(floor.x, floor.z).y, floor.y)
     self.game.setBlock(near(self.terrain.start), MCBlocks.RedWool)
     self.assertThing(self.game.block(near(self.terrain.start)),
                      MCBlocks.RedWool)
@@ -136,6 +144,8 @@ class EWorldTests(GameTestCase):
 
   @layered
   def test_f_on_its_own_layers(self) -> None:
+    self.assertEqual('survival', self.game.player().gameMode,
+                     'its world is survival, and the reset keeps it so')
     under = self.start.block().below()
     self.assertThing(self.game.block(under), MCBlocks.RedWool)
     self.assertEqual(under, self.game.ground(under.x, under.z))

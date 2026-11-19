@@ -8,7 +8,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
@@ -41,10 +40,11 @@ final class ModernVerbs {
 	/** container.click (8.5): NotReady without a container's screen; the slot's number in the open container. */
 	private static JsonElement click(Call call) throws ProbeException {
 		Screen screen = Version.screen();
-		if (!(screen instanceof AbstractContainerScreen<?> gui)) {
+		if (!(screen instanceof AbstractContainerScreen<?>)) {
 			throw new ProbeException("NotReady", "container.click needs a container's screen open, not "
 				+ (screen == null ? "none" : Members.className(screen.getClass())), null);
 		}
+		AbstractContainerScreen<?> gui = (AbstractContainerScreen<?>) screen;
 		AbstractContainerMenu menu = gui.getMenu();
 		int size = menu.slots.size();
 		if (!call.has("slot")) {
@@ -69,16 +69,17 @@ final class ModernVerbs {
 		}
 		JsonArray at = given.getAsJsonArray();
 		BlockPos pos = new BlockPos(at.get(0).getAsInt(), at.get(1).getAsInt(), at.get(2).getAsInt());
-		Level level = ModernThings.player(call).level();
+		Level level = VersionCommon.levelOf(ModernThings.player(call));
 		BlockEntity tile = level.getBlockEntity(pos);
-		if (!(tile instanceof Container inventory)) {
-			String there = BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString();
+		if (!(tile instanceof Container)) {
+			String there = VersionCommon.blocks().getKey(level.getBlockState(pos).getBlock()).toString();
 			throw new ProbeException("NotFound", "no inventory at " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ()
 				+ ": " + there + " is there", Json.object("what", there));
 		}
+		Container inventory = (Container) tile;
 		JsonArray slots = new JsonArray();
 		for (int i = 0; i < inventory.getContainerSize(); i++) {
-			slots.add(ModernValues.item(inventory.getItem(i), level.registryAccess()));
+			slots.add(ModernValues.item(inventory.getItem(i), VersionCommon.registries(level)));
 		}
 		return Json.object("slots", slots);
 	}

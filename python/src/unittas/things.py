@@ -146,7 +146,7 @@ def _need(member: Any, catalogue: type, where: str) -> None:
 def _plain(thing: ThingId, member: Any, what: str, *parts: str) -> None:
   """
   NotImplementedError for a part the probe can't be given for that kind
-  of thing: no probe takes a block state, the 1.13 to 1.16.5 shape.
+  of thing (an item's block state, a dimension's NBT).
   """
   for part in parts:
     if getattr(thing, part):
@@ -173,12 +173,23 @@ def blockOf(member: Any, version: Version,
             declared: Optional[dict] = None) -> tuple:
   """
   An MCBlocks member in the version: the block, and its block entity's
-  data as SNBT ('' for none), which block.set takes as 'tile'.
+  data as SNBT ('' for none), which block.set takes as 'tile'. A block
+  mcdex names by a state (1.13 to 1.16.5's water cauldron, a cauldron at
+  level 1) has that state, as the modern probes take a block's
+  (SPEC.md 19.7 step 11).
   """
   _need(member, MCBlocks, 'a block')
   thing = resolve(member, version, declared)
-  _plain(thing, member, 'a block', 'isNumber', 'state')
-  return Block(thing.name, _meta(thing, version)), thing.nbt
+  _plain(thing, member, 'a block', 'isNumber')
+  return Block(thing.name, _meta(thing, version),
+               state=_statePairs(thing.state)), thing.nbt
+
+
+def _statePairs(state: str) -> tuple:
+  """An mcdex id's state ('level=1') as a Block's: pairs in name order."""
+  if not state:
+    return ()
+  return tuple(sorted(tuple(pair.split('=', 1)) for pair in state.split(',')))
 
 
 def _meta(thing: ThingId, version: Version) -> int:
@@ -307,10 +318,11 @@ def membersOf(value: Any, version: Version,
   """
   The members a value the game reports is, in the version (SPEC.md
   14.3): those whose id it fits (the name; the meta where mcdex's id has
-  one, so a tool's damage doesn't count; mcdex's NBT within the value's),
-  the most specific of them: a member whose meta or data matched beats
-  one that names neither, so a potted poppy is no empty flower pot and a
-  wither skeleton no plain skeleton. Twins and an old id two things
+  one, so a tool's damage doesn't count; mcdex's state and NBT within the
+  value's), the most specific of them: a member whose meta, state or data
+  matched beats one that names none, so a potted poppy is no empty flower
+  pot, a wither skeleton no plain skeleton, and 1.16.1's cauldron at
+  level 1 its water cauldron. Twins and an old id two things
   shared give several. Empty where mcdex has no member for it (M6).
 
   Raises
@@ -325,6 +337,10 @@ def membersOf(value: Any, version: Version,
   for thing, member in _candidates(value, version, declared):
     if thing.hasMeta and thing.meta != meta:
       continue
+    if thing.state and not (isinstance(value, Block) and set(
+        _statePairs(thing.state)) <= set(value.state)):
+      #  a member mcdex names by a state: the value's state has it
+      continue
     if thing.nbt:
       if not asked:
         raise ValueError('%s may be %s.%s, told apart by its data %s, '
@@ -335,7 +351,8 @@ def membersOf(value: Any, version: Version,
         have = loads(snbt) if snbt else {}
       if not _subset(loads(thing.nbt), have):
         continue
-    matched.append((int(thing.hasMeta) + int(bool(thing.nbt)), member))
+    matched.append((int(thing.hasMeta) + int(bool(thing.nbt))
+                    + int(bool(thing.state)), member))
   if not matched:
     return frozenset()
   best = max(score for score, _ in matched)

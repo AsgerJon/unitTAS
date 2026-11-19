@@ -1,9 +1,11 @@
 """
 A run's other games for its multiplayer classes, as its spec makes them
-(session.multiplayerFor; SPEC.md 11.3 step 5, 19.7 step 10d), with no
-game started: on 26.3 as Mojang ships it, the dedicated server has the
-spec's agent in (no mods: a vanilla server loads none), its version's
-own Java, its memory and EULA the spec's [server]'s, and the memory
+(session.multiplayerFor; SPEC.md 11.3 step 5, 19.7 steps 10d and 10f),
+with no game started: on 26.3 as Mojang ships it, the dedicated server
+has the spec's agent in (no mods: a vanilla server loads none), its
+version's own Java, its memory and EULA the spec's [server]'s; with
+Fabric, the spec's loader and the clients' mods less [server] exclude;
+the memory
 check counts a modern client's; a further client is a real client of
 its own folder and player, the spec's build done already. 1.7.10's
 clients are counted at its own client's memory; a Gradle run has none.
@@ -78,6 +80,33 @@ class MultiplayerForTests(unittest.TestCase):
     self.assertEqual(('bob', True), (bob.username, bob.built))
     self.assertEqual(os.path.join(self.results, 'client-bob-game'),
                      bob.gameFolder())
+
+  def test_a_fabric_spec_s_server_has_fabric_and_the_mods(self) -> None:
+    """
+    With Fabric Loader (SPEC.md 19.7 step 10f): the server runs with the
+    spec's loader at its version, the agent in, and the clients' mods but
+    those [server] exclude names.
+    """
+    os.makedirs(os.path.join(self.folder, 'lib'))
+    for name in ('a-mod.jar', 'client-only-hud.jar'):
+      with open(os.path.join(self.folder, 'lib', name), 'wb') as file:
+        file.write(b'a mod')
+    spec = self.spec('''
+      minecraft = "26.3"
+      loader = { fabric = "0.20.1" }
+      client = "real"
+      probe = "probe/unittas-probe-26.3.jar"
+      libraries = ["lib/a-mod.jar", "lib/client-only-hud.jar"]
+      window = { display = "plain" }
+      [server]
+      eula = true
+      exclude = ["client-only-*.jar"]
+    ''')
+    server = self.multiplayer(spec).serverFor(('unitTAS',))
+    self.assertEqual(('fabric', '0.20.1', self.probe),
+                     (server.loader, server.loaderVersion, server.probe))
+    self.assertEqual([os.path.join(self.folder, 'lib', 'a-mod.jar')],
+                     server.mods)
 
   def test_1_7_10_s_clients_at_its_own_client_s_memory(self) -> None:
     spec = self.spec('''

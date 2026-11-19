@@ -1,0 +1,38 @@
+# The game's methods the 1.16.1 probe hooks (SPEC.md 19.7 step 11), by Mojang's names: the agent renames each to the
+# names the game runs under (-Dunittas.names: obfuscated in vanilla) at premain. Read by the agent's bootstrap
+# (Hooks.read), the same for every version: tab apart, the probe's entry class first, then each hook's when (BEFORE:
+# called as the method is, and may end it there, its value the method's; AFTER: once it has returned), its class,
+# method and descriptor, and the name the probe knows it by. As 1.20.1's but where 1.16.1 differs: a chat line comes
+# with its type (Gui.handleChat: no tags yet), a command's source is told by sendMessage(line, sender), and the
+# view's matrix is com.mojang.math's.
+entry	io.github.asgerjon.unittas.probe.ModernEntry
+# the game made: the probe dials; Main calls run right after constructing it, on the same thread
+BEFORE	net/minecraft/client/Minecraft	run	()V	minecraft.made
+BEFORE	net/minecraft/client/Minecraft	tick	()V	client.tick.start
+AFTER	net/minecraft/client/Minecraft	tick	()V	client.tick.end
+# the window's title while the probe is awake (PROTOCOL.md 2.5)
+BEFORE	net/minecraft/client/Minecraft	createTitle	()Ljava/lang/String;	window.title
+BEFORE	net/minecraft/client/Minecraft	setScreen	(Lnet/minecraft/client/gui/screens/Screen;)V	screen.set
+BEFORE	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.start
+AFTER	net/minecraft/server/MinecraftServer	tickServer	(Ljava/util/function/BooleanSupplier;)V	server.tick.end
+# what a command's source is told while command.run runs it: its lines (ModernThings.heard); the action bar's none
+BEFORE	net/minecraft/server/level/ServerPlayer	sendMessage	(Lnet/minecraft/network/chat/Component;Ljava/util/UUID;)V	command.heard
+BEFORE	net/minecraft/server/MinecraftServer	sendMessage	(Lnet/minecraft/network/chat/Component;Ljava/util/UUID;)V	command.heard
+# a crash report saved: the game is crashing, said before the JVM goes (ModernHooks.crashSaved)
+AFTER	net/minecraft/CrashReport	saveToFile	(Ljava/io/File;)Z	crash.saved
+BEFORE	net/minecraft/client/gui/Gui	handleChat	(Lnet/minecraft/network/chat/ChatType;Lnet/minecraft/network/chat/Component;Ljava/util/UUID;)V	chat.line
+# after the engine resolved it: 1.16.1 picks a sound's variant at random as it resolves, so the probe never does first
+AFTER	net/minecraft/client/sounds/SoundManager	play	(Lnet/minecraft/client/resources/sounds/SoundInstance;)V	sound.play
+# the real keyboard and mouse dropped before the game reads them, the pointer never grabbed (PROTOCOL.md 2.5)
+BEFORE	net/minecraft/client/KeyboardHandler	keyPress	(JIIII)V	real.input
+BEFORE	net/minecraft/client/KeyboardHandler	charTyped	(JII)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	grabMouse	()V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onPress	(JIII)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onMove	(JDD)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onScroll	(JDD)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	onDrop	(JLjava/util/List;)V	real.input
+BEFORE	net/minecraft/client/MouseHandler	isMouseGrabbed	()Z	mouse.grabbed
+# the frame's camera as the level is drawn with it, and each chunk section's build as it starts (its finish is the
+# section's compiled chunk replaced): 1.16.1 keeps no render state of either, which view.block needs (V1_16_1View)
+BEFORE	net/minecraft/client/renderer/LevelRenderer	renderLevel	(Lcom/mojang/blaze3d/vertex/PoseStack;FJZLnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/GameRenderer;Lnet/minecraft/client/renderer/LightTexture;Lcom/mojang/math/Matrix4f;)V	view.frame
+BEFORE	net/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk	createCompileTask	()Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk$ChunkCompileTask;	view.compiled

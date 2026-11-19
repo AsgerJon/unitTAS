@@ -6,7 +6,6 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.EnumDifficulty;
 import net.minecraft.world.WorldServer;
-import net.minecraft.world.WorldSettings;
 
 import java.util.ArrayList;
 
@@ -63,7 +62,9 @@ public final class ServerReset {
 		player.clearActivePotions();
 		// arrows from earlier tests stay drawn stuck in the player, over what the next test's shots show
 		player.setArrowCountInEntity(0);
-		player.setGameType(WorldSettings.GameType.CREATIVE);
+		// its world's own game mode (creative in the run's test world, survival in a survival world or save), as the
+		// modern probes' reset has it
+		player.setGameType(player.worldObj.getWorldInfo().getGameType());
 		// creative keeps the player flying if it was (1.7.10's game types stop flying only outside creative)
 		player.capabilities.isFlying = false;
 		player.sendPlayerAbilities();

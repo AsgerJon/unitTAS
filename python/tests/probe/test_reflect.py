@@ -19,7 +19,7 @@ import unittest
 
 from mcdex import MCEntities
 
-from ports import NBT_ITEMS, V1_7_10, V1_20_1, V1_21_1, V26_3, at, onlyOn, point, probeGame, start, version
+from ports import NBT_ITEMS, V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3, at, onlyOn, point, probeGame, start, version
 from probegame import READY_SECONDS, ROOT
 from unittas.api import Game
 from unittas.errors import BadRequest, NotFound
@@ -63,11 +63,12 @@ NAMES = {
 }
 
 
-#  1.21.1's and 1.20.1's are 26.3's: the tests write Mojang's names, which the probe translates where the game runs
-#  obfuscated; but 1.20.1's items are NBT (Count, a byte; count, an int, from 1.20.5)
+#  1.21.1's, 1.20.1's and 1.16.1's are 26.3's: the tests write Mojang's names, which the probe translates where the
+#  game runs obfuscated; but 1.20.1's and 1.16.1's items are NBT (Count, a byte; count, an int, from 1.20.5)
 for _entry in NAMES.values():
-  _entry[V1_21_1] = _entry[V1_20_1] = _entry[V26_3]
-NAMES['seven diamonds'][V1_20_1] = ('{Items:[{Slot:0b,id:"minecraft:diamond",Count:7b}]}', 'Count')
+  _entry[V1_21_1] = _entry[V1_20_1] = _entry[V1_16_1] = _entry[V26_3]
+NAMES['seven diamonds'][V1_20_1] = NAMES['seven diamonds'][V1_16_1] = (
+  '{Items:[{Slot:0b,id:"minecraft:diamond",Count:7b}]}', 'Count')
 #  an item's name and enchantments in its NBT, where its items have NBT: 1.7.10's plain name and numbered
 #  enchantment; 1.20.1's name a text component's JSON, its enchantment by id
 ENCHANTED = {
@@ -75,6 +76,8 @@ ENCHANTED = {
   V1_20_1: ('{display:{Name:\'{"text":"Red"}\'},Enchantments:[{id:"minecraft:sharpness",lvl:5s}]}',
             '{"text":"Red"}', 'Enchantments'),
 }
+#  1.16.1's as 1.20.1's: a name's JSON, an enchantment by id
+ENCHANTED[V1_16_1] = ENCHANTED[V1_20_1]
 
 
 def name(what: str):

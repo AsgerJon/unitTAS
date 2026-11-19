@@ -15,7 +15,6 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
-import net.minecraft.util.FormattedCharSequence;
 
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -113,13 +112,8 @@ public final class ModernChat {
 			}
 		}
 		JsonArray usage = new JsonArray();
-		for (FormattedCharSequence line : Members.<java.util.List<FormattedCharSequence>>get(USAGE, shown)) {
-			StringBuilder plain = new StringBuilder();
-			line.accept((index, style, codePoint) -> {
-				plain.appendCodePoint(codePoint);
-				return true;
-			});
-			usage.add(plain.toString());
+		for (String line : Version.usageLines(Members.<java.util.List<?>>get(USAGE, shown))) {
+			usage.add(line);
 		}
 		return Json.object("text", text, "suggestions", offered, "usage", usage);
 	}
@@ -137,11 +131,7 @@ public final class ModernChat {
 		}
 		call.mark = call.probe.chat.mark();
 		Version.chat().addRecentChat(text);
-		if (text.startsWith("/")) {
-			connection.sendCommand(text.substring(1));
-		} else {
-			connection.sendChat(text);
-		}
+		Version.sendChat(connection, text);
 		return Json.object("lines", new JsonArray(), "errors", new JsonArray());
 	}
 

@@ -39,7 +39,7 @@ final class ModernLoaders {
 	/** A mod's version as Fabric Loader says it; "" in vanilla, or for a mod it hasn't. */
 	static String fabricVersion(String mod) {
 		Optional<Object> loader = fabric();
-		if (loader.isEmpty()) {
+		if (!loader.isPresent()) {
 			return "";
 		}
 		try {
@@ -64,29 +64,45 @@ final class ModernLoaders {
 		return Optional.empty();
 	}
 
-	/** An FML loader's version as it says it (its version info). */
+	/**
+	 * An FML loader's version as it says it: its version info's; Forge before 1.17 (32.x for 1.16.1) has none, and its
+	 * ForgeVersion says it (SPEC.md 19.7 step 11e).
+	 */
 	static String fmlVersion(String[] fml) {
+		ClassLoader loader = ModernLoaders.class.getClassLoader();
 		try {
-			Object info = versionInfo(Class.forName(fml[1], true, ModernLoaders.class.getClassLoader()));
-			return (String) info.getClass().getMethod(fml[3]).invoke(info);
+			Optional<Object> info = versionInfo(Class.forName(fml[1], true, loader));
+			if (info.isPresent()) {
+				return (String) info.get().getClass().getMethod(fml[3]).invoke(info.get());
+			}
+			return (String) Class.forName(FORGE_VERSION, true, loader).getMethod("getVersion").invoke(null);
 		} catch (ReflectiveOperationException e) {
 			throw new IllegalStateException(fml[0] + " is here but doesn't say its version: " + e, e);
 		}
 	}
 
+	/** Forge's own version's class before 1.17, when FML had no version info. */
+	private static final String FORGE_VERSION = "net.minecraftforge.versions.forge.ForgeVersion";
+
 	/**
 	 * FML's version info, as each FML has it: FML 4's (NeoForge for 1.21.x) and Forge 47's a static versionInfo(); from
-	 * FML 10 on (NeoForge for 26.x) the running loader's (FMLLoader.getCurrent()) getVersionInfo().
+	 * FML 10 on (NeoForge for 26.x) the running loader's (FMLLoader.getCurrent()) getVersionInfo(); before 1.17's FML,
+	 * none.
 	 */
-	private static Object versionInfo(Class<?> loader) throws ReflectiveOperationException {
+	private static Optional<Object> versionInfo(Class<?> loader) throws ReflectiveOperationException {
 		for (Method each : loader.getMethods()) {
 			if (each.getName().equals("versionInfo") && java.lang.reflect.Modifier.isStatic(each.getModifiers())
 				&& each.getParameterCount() == 0) {
-				return each.invoke(null);
+				return Optional.of(each.invoke(null));
 			}
 		}
-		Object current = loader.getMethod("getCurrent").invoke(null);
-		return loader.getMethod("getVersionInfo").invoke(current);
+		for (Method each : loader.getMethods()) {
+			if (each.getName().equals("getCurrent") && each.getParameterCount() == 0) {
+				Object current = each.invoke(null);
+				return Optional.of(loader.getMethod("getVersionInfo").invoke(current));
+			}
+		}
+		return Optional.empty();
 	}
 
 	/** Each mod the loader beside the probe has, (id, name, version): Fabric Loader's or FML's; none in vanilla. */
@@ -117,7 +133,7 @@ final class ModernLoaders {
 	static java.util.List<String[]> fabricMods() {
 		java.util.List<String[]> out = new java.util.ArrayList<>();
 		Optional<Object> loader = fabric();
-		if (loader.isEmpty()) {
+		if (!loader.isPresent()) {
 			return out;
 		}
 		try {

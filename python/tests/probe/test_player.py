@@ -16,19 +16,20 @@ import os
 import shutil
 import unittest
 
-from ports import V1_7_10, V1_20_1, V1_21_1, V26_3, at, command, lift, onlyOn, probeGame, version
+from ports import V1_7_10, V1_16_1, V1_20_1, V1_21_1, V26_3, at, command, lift, onlyOn, probeGame, version
 from probegame import GONE_SECONDS, READY_SECONDS
 from unittas.errors import BadRequest
 
 #  three red wool, as inventory.get reads them: 1.7.10's by its meta, a block's own id from 1.13 on
 WOOL = {V1_7_10: {'id': 'minecraft:wool', 'count': 3, 'meta': 14}, V1_20_1: {'id': 'minecraft:red_wool', 'count': 3},
-        V1_21_1: {'id': 'minecraft:red_wool', 'count': 3}, V26_3: {'id': 'minecraft:red_wool', 'count': 3}}
+        V1_21_1: {'id': 'minecraft:red_wool', 'count': 3}, V26_3: {'id': 'minecraft:red_wool', 'count': 3},
+        V1_16_1: {'id': 'minecraft:red_wool', 'count': 3}}
 #  a zombie's type and class, the monsters' type, and the player's type, as entity.list names them
 MODERN_ENTITIES = ('minecraft:zombie', 'net.minecraft.world.entity.monster.Zombie',
                    'net.minecraft.world.entity.monster.Enemy', 'minecraft:player')
 ENTITIES = {V1_7_10: ('Zombie', 'net.minecraft.entity.monster.EntityZombie', 'net.minecraft.entity.monster.IMob',
                       'Player'),
-            V1_20_1: MODERN_ENTITIES, V1_21_1: MODERN_ENTITIES,
+            V1_16_1: MODERN_ENTITIES, V1_20_1: MODERN_ENTITIES, V1_21_1: MODERN_ENTITIES,
             V26_3: ('minecraft:zombie', 'net.minecraft.world.entity.monster.zombie.Zombie',
                     'net.minecraft.world.entity.monster.Enemy', 'minecraft:player')}
 #  the creative inventory's and the survival inventory's classes
@@ -36,7 +37,7 @@ MODERN_SCREENS = ('net.minecraft.client.gui.screens.inventory.CreativeModeInvent
                   'net.minecraft.client.gui.screens.inventory.InventoryScreen')
 SCREENS = {V1_7_10: ('net.minecraft.client.gui.inventory.GuiContainerCreative',
                      'net.minecraft.client.gui.inventory.GuiInventory'),
-           V1_20_1: MODERN_SCREENS, V1_21_1: MODERN_SCREENS, V26_3: MODERN_SCREENS}
+           V1_16_1: MODERN_SCREENS, V1_20_1: MODERN_SCREENS, V1_21_1: MODERN_SCREENS, V26_3: MODERN_SCREENS}
 
 
 def timeSet(time: int) -> int:

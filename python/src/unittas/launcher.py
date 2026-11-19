@@ -72,6 +72,8 @@ OLD_FORGE_MAVENS = ('http://files.minecraftforge.net/maven/', 'https://files.min
 ASSETS = 'https://resources.download.minecraft.net/'
 #  Fabric's meta server (fabric-meta's v2 API): the launcher profile for a game version and a loader version
 FABRIC_META = 'https://meta.fabricmc.net/v2/versions/loader/%s/%s/profile/json'
+#  Fabric's server profile for (Minecraft's version, its own): KnotServer and its libraries (SPEC.md 19.7 step 10f)
+FABRIC_SERVER_META = 'https://meta.fabricmc.net/v2/versions/loader/%s/%s/server/json'
 #  NeoForge's maven, where each NeoForge version's installer is (SPEC.md 19.7 step 7)
 NEOFORGE_MAVEN = 'https://maven.neoforged.net/releases/'
 #  The loaders put on a version by their own installer, run headless (SPEC.md 19.7 steps 7 and 8): each one's name as
@@ -83,6 +85,8 @@ INSTALLED = {
 }
 #  The loaders versionCommand puts on a version (1.7.10 Forge is command's, below)
 LOADERS = ('fabric',) + tuple(INSTALLED)
+#  The loaders serverVersionCommand starts a modern server with, None as Mojang ships it (SPEC.md 19.7 step 10f)
+SERVER_LOADERS = (None, 'fabric')
 #  What an installer says when its own sha1 check refuses the jars it made: Forge's installer does so wherever Java's
 #  zlib isn't classic zlib (zlib-ng, as Arch's and Fedora's is), its sha1s being of classic zlib's bytes (SPEC.md
 #  19.7 step 8)
@@ -416,7 +420,8 @@ def serverCommand(folder: str, java: str, sources: Sources, memory: str = '2G') 
 
 
 def serverVersionCommand(folder: str, java: Optional[str], sources: Sources, minecraft: str, memory: str = '2G',
-                         javaCandidates: Optional[dict] = None, agents: tuple = ()) -> Launch:
+                         javaCandidates: Optional[dict] = None, agents: tuple = (), loader: Optional[str] = None,
+                         loaderVersion: Optional[str] = None) -> Launch:
   """
   The launch of a modern dedicated server as Mojang ships it (SPEC.md 19.7 step 10a), in its folder: the version's
   server jar (its JSON's downloads.server, held to its sha1, into the download cache), run as its bundler runs it
@@ -426,7 +431,16 @@ def serverVersionCommand(folder: str, java: Optional[str], sources: Sources, min
   server's folder (where the start file is); a server obfuscated apart from its client (before 26.1), its own table
   of names named to them first (-Dunittas.names, from its server_mappings: 19.7 step 10, V21). No window: no
   natives, no assets. Missing naming what can't be had; ValueError for memory -Xmx wouldn't take.
+
+  With 'loader' fabric (SPEC.md 19.7 step 10f-i): Fabric's server profile for 'loaderVersion' (_serverProfile), its
+  libraries and then the server jar as it is on the class path, its main class (KnotServer), which runs the bundler
+  itself; the server's own libraries are in its jar, so none of the client's. Its agents named the client's table of
+  names (_names), the server's obfuscated names being its client's (V26). ValueError for a loader it doesn't start
+  a server with.
   """
+  if loader not in SERVER_LOADERS:
+    raise ValueError("unitTAS starts a %s dedicated server as Mojang ships it or with %s, not with %r" % (
+      minecraft, ' or '.join(SERVER_LOADERS[1:]), loader))
   if not MEMORY.match(memory or ''):
     raise ValueError("a server's memory is as -Xmx takes it, '2G' or '1536M', not %r" % (memory,))
   vanilla = _versionJson(sources, minecraft)
@@ -438,10 +452,19 @@ def serverVersionCommand(folder: str, java: Optional[str], sources: Sources, min
   if java is None:
     java = findJavaFor(versions.resolve(vanilla).javaMajor, javaCandidates)
   words = [java, '-Xmx' + memory, '-DbundlerRepoDir=' + sources.cache.path('servers/' + minecraft)]
-  if agents and vanilla.get('downloads', {}).get('server_mappings'):
-    words.append('-Dunittas.names=' + namesTable(sources, minecraft, side='server'))
+  if loader is None:
+    if agents and vanilla.get('downloads', {}).get('server_mappings'):
+      words.append('-Dunittas.names=' + namesTable(sources, minecraft, side='server'))
+    words += ['-javaagent:%s=%s' % (agent, folder) for agent in agents]
+    return Launch(words + ['-jar', jar, 'nogui'], [], '')
+  # the server's own libraries are in its bundler jar, which Fabric runs: the profile's alone
+  version = versions.resolve(dict(vanilla, libraries=[]), _serverProfile(sources, minecraft, loaderVersion))
+  path = [_jar(sources, library) for library in version.libraries] + [jar]
+  if agents and vanilla.get('downloads', {}).get('client_mappings'):
+    client = _clientJar(sources, vanilla, minecraft)
+    words += _names(sources, vanilla, minecraft, loader, loaderVersion, version, client)
   words += ['-javaagent:%s=%s' % (agent, folder) for agent in agents]
-  return Launch(words + ['-jar', jar, 'nogui'], [], '')
+  return Launch(words + ['-cp', os.pathsep.join(path), version.mainClass, 'nogui'], [], '')
 
 
 # ---------------------------------------------------------------- any version, with a loader on top (SPEC.md 12)
@@ -502,6 +525,32 @@ def _profile(sources: Sources, minecraft: str, loader: str, loaderVersion: str) 
                "Fabric Loader %s's profile for %s" % (loaderVersion, minecraft))
   with open(path, encoding='utf-8') as file:
     return json.load(file)
+
+
+def _serverProfile(sources: Sources, minecraft: str, loaderVersion: str) -> dict:
+  """
+  Fabric's server profile for that game version (SPEC.md 19.7 step 10f-i), from its meta server, kept as the client's
+  is; Missing when it is for another version.
+  """
+  from urllib.parse import quote
+  url = FABRIC_SERVER_META % (quote(minecraft, safe=''), quote(loaderVersion, safe=''))
+  path = _kept(sources, 'versions/fabric-loader-%s-%s/server-profile.json' % (loaderVersion, minecraft), url,
+               "Fabric Loader %s's server profile for %s" % (loaderVersion, minecraft))
+  with open(path, encoding='utf-8') as file:
+    profile = json.load(file)
+  if profile.get('inheritsFrom') != minecraft:
+    raise Missing("Fabric Loader %s's server profile (%s) is for %s, not %s" % (
+      loaderVersion, path, profile.get('inheritsFrom'), minecraft))
+  return profile
+
+
+def _clientJar(sources: Sources, vanilla: dict, minecraft: str) -> str:
+  """A modern version's client jar, from its JSON's downloads.client, held to its sha1, into the download cache."""
+  client = (vanilla.get('downloads') or {}).get('client')
+  if not client:
+    raise Missing('the %s version JSON names no client jar' % minecraft)
+  return _fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
+                  'the %s client jar' % minecraft, [client['sha1']])
 
 
 def _mavenFile(coordinates: str) -> str:
@@ -724,15 +773,13 @@ def versionCommand(game: str, java: Optional[str], sources: Sources, minecraft: 
   if java is None:
     java = findJavaFor(version.javaMajor, javaCandidates)
   # a profile that names its libraries by their place in the library folder (NeoForge's module path) gets every one
-  # from there: its BootstrapLauncher refuses a module on the class path from another file (SPEC.md 19.7 step 7)
-  gradle = not any('${library_directory}' in argument for argument in version.jvm)
+  # from there: its BootstrapLauncher refuses a module on the class path from another file (SPEC.md 19.7 step 7); so
+  # does a loader its installer put there (Forge 1.16.1's FML finds its libraries from where ModLauncher's jar is:
+  # step 11e)
+  gradle = loader not in INSTALLED and not any('${library_directory}' in argument for argument in version.jvm)
   path = [_jar(sources, library, gradle) for library in version.libraries]
   natives = [(_jar(sources, library, gradle), list(exclude)) for library, exclude in version.natives]
-  client = version.client
-  if not client:
-    raise Missing('the %s version JSON names no client jar' % minecraft)
-  jar = _fetched(sources, 'versions/%s/%s.jar' % (minecraft, minecraft), client['url'],
-                 'the %s client jar' % minecraft, [client['sha1']])
+  jar = _clientJar(sources, vanilla, minecraft)
   if loader in INSTALLED:
     # as a launcher lays a profile out: the client jar by the version's own name, which the loader's BootstrapLauncher
     # leaves alone (its -DignoreList names it); the game it runs is the installer's patched one

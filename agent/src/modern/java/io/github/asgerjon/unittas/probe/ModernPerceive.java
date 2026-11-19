@@ -69,14 +69,14 @@ final class ModernPerceive {
 			"box", box(player.getBoundingBox()),
 			"look", ModernValues.look(player),
 			"motion", Arrays.asList(motion.x, motion.y, motion.z),
-			"on_ground", player.onGround(),
+			"on_ground", VersionCommon.onGround(player),
 			"collided", Json.object("horizontally", player.horizontalCollision, "vertically", player.verticalCollision),
 			"in_water", player.isInWater(),
 			"in_lava", player.isInLava(),
 			"on_ladder", player.onClimbable(),
 			"sneaking", player.isShiftKeyDown(),
 			"sprinting", player.isSprinting(),
-			"flying", player.getAbilities().flying,
+			"flying", VersionCommon.abilities(player).flying,
 			"reach", Json.object("block", Version.blockReach(player), "entity", Version.entityReach(player)),
 			"target", target(level, mc.hitResult),
 			"blocks", around(level, player, around, below, above));
@@ -87,11 +87,11 @@ final class ModernPerceive {
 	 * a fence gate.
 	 */
 	private static boolean opens(Block block) {
-		if (block instanceof DoorBlock door) {
-			return door.type().canOpenByHand();
+		if (block instanceof DoorBlock) {
+			return VersionCommon.opensByHand((DoorBlock) block);
 		}
-		if (block instanceof TrapDoorBlock trapdoor) {
-			return VersionCommon.trapdoorType(trapdoor).canOpenByHand();
+		if (block instanceof TrapDoorBlock) {
+			return VersionCommon.opensByHand((TrapDoorBlock) block);
 		}
 		return block instanceof FenceGateBlock;
 	}
@@ -107,7 +107,8 @@ final class ModernPerceive {
 		}
 		Vec3 at = hit.getLocation();
 		List<Double> where = Arrays.asList(at.x, at.y, at.z);
-		if (hit instanceof EntityHitResult entity) {
+		if (hit instanceof EntityHitResult) {
+			EntityHitResult entity = (EntityHitResult) hit;
 			return Json.object("entity", entity.getEntity().getId(), "type", ModernValues.type(entity.getEntity()),
 				"hit", where);
 		}
@@ -151,7 +152,7 @@ final class ModernPerceive {
 					JsonObject block = Json.object("pos", Arrays.asList(x, y, z));
 					ModernValues.block(state).entrySet().forEach(each -> block.add(each.getKey(), each.getValue()));
 					block.add("boxes", boxes);
-					block.addProperty("liquid", state.liquid());
+					block.addProperty("liquid", VersionCommon.liquid(state));
 					block.addProperty("climbable", state.is(BlockTags.CLIMBABLE));
 					block.addProperty("opens", opens(state.getBlock()));
 					found.add(block);
@@ -172,7 +173,7 @@ final class ModernPerceive {
 		}
 		int x = (int) call.number("x", 0, -30000000, 30000000);
 		int z = (int) call.number("z", 0, -30000000, 30000000);
-		Level level = ModernThings.player(call).level();
+		Level level = VersionCommon.levelOf(ModernThings.player(call));
 		int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
 		if (top < VersionCommon.minY(level)) {
 			throw new ProbeException("NotFound", "nothing at x " + x + ", z " + z + " stops movement or holds a fluid",

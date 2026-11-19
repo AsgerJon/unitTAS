@@ -424,7 +424,9 @@ class Listener(BaseObject):
     """
     The next prepared game to connect, welcomed. Raises LinkTimeout when
     none has within 'timeout' seconds, naming what was refused meanwhile.
-    A connection gets 'helloTimeout' seconds to send its hello.
+    A connection made within it gets 'helloTimeout' seconds to send its
+    hello, however little of 'timeout' was left (a caller polls in short
+    slices; Java 8's probe takes over a second to its hello).
     """
     helloTimeout = self.helloTimeout if helloTimeout is None else helloTimeout
     deadline = time.monotonic() + timeout
@@ -439,7 +441,7 @@ class Listener(BaseObject):
         sock, _ = self.__server__.accept()
       except socket.timeout:
         continue
-      connection = self._welcome(sock, min(helloTimeout, max(left, 0.01)), refused)
+      connection = self._welcome(sock, helloTimeout, refused)
       if connection is not None:
         return connection
 

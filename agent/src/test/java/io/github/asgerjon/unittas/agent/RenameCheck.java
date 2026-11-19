@@ -6,8 +6,11 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +41,7 @@ public final class RenameCheck {
 	private static final String PLAYER = GAME + "Player";
 	private static final String WORLD = GAME + "World";
 	/** What the game keeps by its name, as ProGuard keeps an enum's and a constructor's. */
-	private static final Set<String> KEPT = Set.of("<init>", "<clinit>", "values", "valueOf");
+	private static final Set<String> KEPT = new HashSet<>(Arrays.asList("<init>", "<clinit>", "values", "valueOf"));
 
 	private static int failures;
 
@@ -50,12 +53,12 @@ public final class RenameCheck {
 	}
 
 	public static void main(String[] args) throws Exception {
-		Path classes = Path.of(RenameCheck.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+		Path classes = Paths.get(RenameCheck.class.getProtectionDomain().getCodeSource().getLocation().toURI());
 		Map<String, byte[]> game = classesUnder(classes, GAME);
 		Map<String, byte[]> probe = classesUnder(classes, PROBE);
 		Path work = Files.createTempDirectory("unittas-rename-check-");
 		Path table = work.resolve("names.txt");
-		Files.writeString(table, obfuscation(game), StandardCharsets.UTF_8);
+		Files.write(table, obfuscation(game).getBytes(StandardCharsets.UTF_8));
 		Names names = Names.read(table);
 		Map<String, String> declarers = Declarers.of(game, probe);
 		Map<String, byte[]> renamed = new TreeMap<>();
@@ -120,7 +123,7 @@ public final class RenameCheck {
 		});
 		check("stubs", () -> {
 			Renamer stubs = Renamer.stubs(names.inverse());
-			Path folder = args.length > 0 ? Path.of(args[0]) : work.resolve("stubs");
+			Path folder = args.length > 0 ? Paths.get(args[0]) : work.resolve("stubs");
 			for (Map.Entry<String, byte[]> each : game.entrySet()) {
 				byte[] stub = stubs.rename(renamed.get(names.className(each.getKey())));
 				sameDeclarations(new ClassBytes(each.getValue()), new ClassBytes(stub));
@@ -149,11 +152,11 @@ public final class RenameCheck {
 			refused(() -> new Renamer(Names.read(without), declarers).rename(probe.get(PROBE + "Prober")));
 		});
 		check("refuses-unresolved", () -> {
-			refused(() -> new Renamer(names, Map.of()).rename(probe.get(PROBE + "Prober")));
+			refused(() -> new Renamer(names, Collections.emptyMap()).rename(probe.get(PROBE + "Prober")));
 		});
 		check("refuses-bad-table", () -> {
 			Path bad = work.resolve("bad.txt");
-			Files.writeString(bad, "unittas-names\t2\tobfuscated\tcheck\n");
+			Files.write(bad, "unittas-names\t2\tobfuscated\tcheck\n".getBytes(StandardCharsets.UTF_8));
 			refused(() -> Names.read(bad));
 		});
 		check("lookup", () -> {
@@ -172,14 +175,15 @@ public final class RenameCheck {
 			refused(() -> lookup.apply("x\twhat"));
 		});
 		check("hooks-renamed", () -> {
-			List<Hooks.Hook> renamedHooks = Hooks.renamed(List.of(
+			List<Hooks.Hook> renamedHooks = Hooks.renamed(Arrays.asList(
 				new Hooks.Hook(ENTITY, "tick", "()V", Hooks.When.BEFORE, "tick"),
 				new Hooks.Hook(WORLD, "add", "(L" + ENTITY + ";)V", Hooks.When.AFTER, "added")), names);
 			same(new Hooks.Hook(names.className(ENTITY), names.method(ENTITY, "tick", "()V"), "()V", Hooks.When.BEFORE,
 				"tick"), renamedHooks.get(0));
 			same(new Hooks.Hook(names.className(WORLD), names.method(WORLD, "add", "(L" + ENTITY + ";)V"),
 				"(L" + names.className(ENTITY) + ";)V", Hooks.When.AFTER, "added"), renamedHooks.get(1));
-			refused(() -> Hooks.renamed(List.of(new Hooks.Hook(ENTITY, "gone", "()V", Hooks.When.BEFORE, "x")), names));
+			refused(() -> Hooks.renamed(Arrays.asList(new Hooks.Hook(ENTITY, "gone", "()V", Hooks.When.BEFORE, "x")),
+				names));
 		});
 		System.exit(failures == 0 ? 0 : 1);
 	}
@@ -349,7 +353,8 @@ public final class RenameCheck {
 		private final Map<String, byte[]> classes;
 
 		Loader(Map<String, byte[]> classes) {
-			super(ClassLoader.getPlatformClassLoader());
+			// the platform loader from Java 9, the extension loader on Java 8: the system loader's parent either way
+			super(ClassLoader.getSystemClassLoader().getParent());
 			this.classes = classes;
 		}
 

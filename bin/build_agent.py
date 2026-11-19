@@ -8,8 +8,8 @@ What it compiles against comes from unitTAS's own launcher: 26.3's client jar an
 from the download cache (~/.cache/unittas, or UNITTAS_CACHE, or --cache), each held to its sha1, fetched there if
 missing. Java 25's javac compiles, in two passes:
 - the bootstrap (agent/src/bootstrap/java): the premain, the class rewriter and the bridge, JDK classes only, for
-  Java 17, so that one bootstrap runs on every version's Java (17 for 1.20.1, 21 for 1.21.1, 25 for 26.3: SPEC.md
-  19.7 step 6);
+  Java 8, so that one bootstrap runs on every version's Java (8 for 1.16.1, 17 for 1.20.1, 21 for 1.21.1, 25 for
+  26.3: SPEC.md 19.7 steps 6 and 11a);
 - the probe (src/probe-core/java and the version's own folders), against the game and the bootstrap, for the game's
   Java.
 The probe's classes go into a jar of their own (unittas-probe-inner.jar), which goes inside the agent's jar beside
@@ -77,9 +77,12 @@ VERSIONS = {
                     os.path.join(AGENT, 'v1_21_1', 'hooks.txt'), True),
   '1.20.1': Version('17', (CORE, MODERN, os.path.join(AGENT, 'v1_20_1', 'java')),
                     os.path.join(AGENT, 'v1_20_1', 'hooks.txt'), True),
+  #  Java 8, its own (SPEC.md 19.7 step 11, V30)
+  '1.16.1': Version('8', (CORE, MODERN, os.path.join(AGENT, 'v1_16_1', 'java')),
+                    os.path.join(AGENT, 'v1_16_1', 'hooks.txt'), True),
 }
 #  the bootstrap's Java: the oldest a version runs on
-BOOTSTRAP_RELEASE = '17'
+BOOTSTRAP_RELEASE = '8'
 JAVA_25 = ('/usr/lib/jvm/java-25-openjdk', '/usr/lib/jvm/java-25-openjdk-amd64', '/usr/lib/jvm/jdk-25')
 #  every entry's time, so the same classes make the same jar
 STAMP = (1980, 1, 1, 0, 0, 0)
@@ -174,7 +177,7 @@ def _compile(compiler: str, classPath: list, sources: list, into: str, release: 
 
 
 def compileBootstrap(compiler: str, into: str) -> None:
-  """The bootstrap's classes into the folder, for Java 17: it needs the JDK only, so any javac from 17 does."""
+  """The bootstrap's classes into the folder, for Java 8 (BOOTSTRAP_RELEASE): it needs the JDK only."""
   _compile(compiler, [], sourcesUnder(BOOTSTRAP), into, BOOTSTRAP_RELEASE)
 
 

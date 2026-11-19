@@ -18,17 +18,18 @@ import shutil
 import unittest
 
 from agentgame import HOOKED, AgentGame, buildAgent
-from ports import V1_20_1, V1_21_1, V26_3, onlyOn, version
+from ports import V1_16_1, V1_20_1, V1_21_1, V26_3, onlyOn, start, version
 from probegame import GONE_SECONDS, READY_SECONDS, modVersion, results
 from unittas.reset import reset
 
 TITLE = 'net.minecraft.client.gui.screens.TitleScreen'
 #  what each version runs under, and on
-NAMES = {V26_3: 'mojang', V1_21_1: 'obfuscated', V1_20_1: 'obfuscated'}
-JAVAS = {V26_3: '25', V1_21_1: '21', V1_20_1: '17'}
+NAMES = {V26_3: 'mojang', V1_21_1: 'obfuscated', V1_20_1: 'obfuscated', V1_16_1: 'obfuscated'}
+#  the start of the Java's version as it says it: Java 8 says itself 1.8.0_N
+JAVAS = {V26_3: '25', V1_21_1: '21', V1_20_1: '17', V1_16_1: '1.8.'}
 
 
-@onlyOn(V26_3, V1_21_1, V1_20_1, why="the agent's own port is a version from 1.20.1 on")
+@onlyOn(V26_3, V1_21_1, V1_20_1, V1_16_1, why="the agent's own port is a version from 1.16.1 on")
 class AgentTests(unittest.TestCase):
 
   @classmethod
@@ -71,9 +72,11 @@ class AgentTests(unittest.TestCase):
   def test_4_a_world_and_a_block(self) -> None:
     self.connection.request('world.create', {}, timeout=240)
     self.connection.request('world.prepare')
-    reset(self.connection, at=(0.5, -60.0, 0.5))
-    self.connection.request('block.set', {'pos': [2, -60, 2], 'block': {'id': 'minecraft:red_wool'}})
-    held = self.connection.request('wait.until', {'side': 'client', 'op': 'block.get', 'args': {'pos': [2, -60, 2]},
+    # the start's feet: y -60 from 1.18 on, y 4 before it (1.16.1)
+    feet = int(start()[1])
+    reset(self.connection, at=start())
+    self.connection.request('block.set', {'pos': [2, feet, 2], 'block': {'id': 'minecraft:red_wool'}})
+    held = self.connection.request('wait.until', {'side': 'client', 'op': 'block.get', 'args': {'pos': [2, feet, 2]},
                                                   'max_ticks': 40, 'test': {'path': ['id'], 'eq': 'minecraft:red_wool'}})
     self.assertTrue(held['held'], held)
     self.assertEqual('world', self.connection.request('status')['state'])

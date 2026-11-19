@@ -47,7 +47,7 @@ final class ModernPictures {
 		CompletableFuture<int[]> written = new CompletableFuture<>();
 		Sides.get().post(Side.CLIENT, () -> {
 			Version.screenshot((NativeImage image) -> {
-				try (image) {
+				try (NativeImage held = image) {
 					File folder = file.getParentFile();
 					if (folder != null) {
 						folder.mkdirs();

@@ -6,7 +6,9 @@ a real 1.20.1 Forge 47.4.28 client from unitTAS's own launcher
 47.4.28), Forge installed by its own installer into the download cache as
 the launcher first needs it. Its hello says the game runs under SRG's names
 (Mojang's classes, SRG's members: the launcher's table), on Java 17; its
-ready names Forge's mods (minecraft and forge, not unitTAS).
+ready names Forge's mods (minecraft and forge, not unitTAS). On 1.16.1-forge
+(SPEC.md 19.7 step 11e): 1.16.1 with Forge 32.0.108, MCP's classes and SRG's
+members, on Java 8.
 
   python -m unittas.selftest test_forge.
   (through the watcher: "probe test_forge.")
@@ -31,7 +33,8 @@ class ForgeGameTests(test_neoforge.NeoForgeGameTests):
   LOADER = 'forge'
   LOADERS = FORGE
   NAMES = 'srg'
-  JAVAS = {'1.20.1': '17'}
+  #  Java 8 says itself 1.8.0_N
+  JAVAS = {'1.20.1': '17', '1.16.1': '1.8.'}
 
   @staticmethod
   def gameVersion() -> str:

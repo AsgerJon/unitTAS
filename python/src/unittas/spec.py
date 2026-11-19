@@ -32,7 +32,8 @@ PORTS': 1.7.10 with Forge 10.13.4.1614 (SPEC.md 9.6, decision 5), and
 26.3, 1.21.1 and 1.20.1 each with Fabric Loader 0.20.1 or no loader at
 all (SPEC.md 19.7 steps 4, 5, 6d and 6e: the loader is the mod's, the
 probe a Java agent beside it), with NeoForge too 1.21.1 (21.1.267) and
-26.3 (26.3.0.110; step 7), with Forge 1.20.1 (47.4.28; step 8), a real
+26.3 (26.3.0.110; step 7), with Forge 1.20.1 (47.4.28; step 8); 1.16.1
+with Fabric Loader 0.20.1, Forge 32.0.108 or none (step 11); a real
 client only for now.
 
 - SpecError: what is wrong with a spec, and where.
@@ -62,16 +63,22 @@ FORGE = '10.13.4.1614'
 #  The versions this unitTAS runs, each with its loaders, each loader at its one version: {name: version} by
 #  Minecraft's version (SPEC.md 19.7; NeoForge from step 7)
 PORTS = {MINECRAFT: {'forge': FORGE}, '26.3': {'fabric': '0.20.1', 'neoforge': '26.3.0.110'},
-         '1.21.1': {'fabric': '0.20.1', 'neoforge': '21.1.267'}, '1.20.1': {'fabric': '0.20.1', 'forge': '47.4.28'}}
+         '1.21.1': {'fabric': '0.20.1', 'neoforge': '21.1.267'}, '1.20.1': {'fabric': '0.20.1', 'forge': '47.4.28'},
+         #  1.16.1 (step 11): Forge 32.0.108, its only build (no recommended one)
+         '1.16.1': {'fabric': '0.20.1', 'forge': '32.0.108'}}
 #  Each loader as its own people write its name
 LOADER_NAMES = {'forge': 'Forge', 'fabric': 'Fabric', 'neoforge': 'NeoForge'}
 #  The versions whose game is a real client only: no Gradle run of a mod's own, no dedicated server's probe yet
-REAL_ONLY = ('26.3', '1.21.1', '1.20.1')
+REAL_ONLY = ('26.3', '1.21.1', '1.20.1', '1.16.1')
 #  The versions a spec may name with no loader: the game as Mojang ships it (the probe a Java agent needs none)
-NO_LOADER = ('26.3', '1.21.1', '1.20.1')
-#  The modern versions whose dedicated server has the agent in, as Mojang ships it (SPEC.md 19.7 step 10): 26.3's by
-#  Mojang's names, 1.21.1's and 1.20.1's by their servers' own tables (from their server mappings, V21)
-AGENT_SERVERS = ('26.3', '1.21.1', '1.20.1')
+NO_LOADER = ('26.3', '1.21.1', '1.20.1', '1.16.1')
+#  The modern versions whose dedicated server has the agent in, as Mojang ships it (SPEC.md 19.7 steps 10 and 11f):
+#  26.3's by Mojang's names, 1.21.1's, 1.20.1's and 1.16.1's by their servers' own tables (from their server mappings,
+#  V21)
+AGENT_SERVERS = ('26.3', '1.21.1', '1.20.1', '1.16.1')
+#  The loaders those servers run with too (19.7 step 10f): Fabric's, by its client's names (V26); NeoForge's and
+#  Forge's to come
+SERVER_LOADERS = ('fabric',)
 CLIENTS = ('real', 'gradle')
 DISPLAYS = ('nested', 'headless', 'plain')
 KEYS = ('minecraft', 'loader', 'java', 'client', 'mods', 'build', 'libraries', 'repositories', 'config', 'options',
@@ -234,9 +241,9 @@ def _read(cls: type, path: str) -> InstanceSpec:
   if minecraft in REAL_ONLY and 'server' in body and minecraft not in AGENT_SERVERS:
     raise reader.fail('"server" isn\'t there yet for %s: its dedicated server\'s names are its own (from its server'
                       ' mappings), and the agent has no table of them yet' % minecraft)
-  if minecraft in REAL_ONLY and 'server' in body and loaderName:
-    raise reader.fail('"server" isn\'t there yet for %s with %s: a loader\'s dedicated server comes after vanilla\'s'
-                      % (minecraft, loaderName))
+  if minecraft in REAL_ONLY and 'server' in body and loaderName and loaderName not in SERVER_LOADERS:
+    raise reader.fail('"server" isn\'t there yet for %s with %s: its dedicated server comes after Fabric\'s'
+                      % (minecraft, LOADER_NAMES[loaderName]))
   libraries = tuple(_library(reader, entry) for entry in reader.strings(body, 'libraries'))
   repositories = reader.strings(body, 'repositories')
   if any(isinstance(library, MavenLibrary) for library in libraries) and not repositories:

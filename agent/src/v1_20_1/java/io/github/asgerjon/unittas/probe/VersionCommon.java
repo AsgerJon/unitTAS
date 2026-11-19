@@ -3,13 +3,19 @@ package io.github.asgerjon.unittas.probe;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import io.github.asgerjon.unittas.probe.link.Json;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiConsumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
-import net.minecraft.core.HolderLookup;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetCarriedItemPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -22,20 +28,21 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockSetType;
 import net.minecraft.world.level.block.state.properties.Property;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.BiConsumer;
 
 /**
  * What 1.20.1 does its own way that names no client class (SPEC.md 19.7 step 10b): the part of Version that a
@@ -109,7 +116,7 @@ final class VersionCommon {
 	// ---------------------------------------------------------------- items' data, chat, reach, results
 
 	/** An item's own data as the protocol has it: its NBT as SNBT ("nbt"), when it has any (components are 1.20.5's). */
-	static void itemData(ItemStack stack, HolderLookup.Provider registries, JsonObject item) {
+	static void itemData(ItemStack stack, Object registries, JsonObject item) {
 		CompoundTag tag = stack.getTag();
 		if (tag != null && !tag.isEmpty()) {
 			item.addProperty("nbt", tag.toString());
@@ -120,7 +127,7 @@ final class VersionCommon {
 	 * The protocol's item's data put on its stack: its NBT (SNBT), as /give reads it; BadRequest for components, which
 	 * 1.20.1's items haven't (data components from 1.20.5), and for SNBT that isn't a compound.
 	 */
-	static void applyItemData(ItemStack stack, JsonObject given, String id, HolderLookup.Provider registries)
+	static void applyItemData(ItemStack stack, JsonObject given, String id, Object registries)
 		throws ProbeException {
 		if (given.has("components")) {
 			throw ProbeException.badRequest("item", VersionName.port() + "'s items have NBT, not components (1.20.5's)");
@@ -137,7 +144,7 @@ final class VersionCommon {
 	}
 
 	/** A block entity's data, without its id and place, as /data reads it. */
-	static CompoundTag tileData(BlockEntity tile, HolderLookup.Provider registries) {
+	static CompoundTag tileData(BlockEntity tile, Object registries) {
 		return tile.saveWithoutMetadata();
 	}
 
@@ -146,9 +153,9 @@ final class VersionCommon {
 		return BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect()).toString();
 	}
 
-	/** A trapdoor's kind, whose hand-opening it says (a private field: 1.20.1 has no getter for it). */
-	static BlockSetType trapdoorType(TrapDoorBlock block) {
-		return Members.get(Trapdoors.TYPE, block);
+	/** Whether a player opens the trapdoor by hand (an iron one needs power): its kind says (its getter protected). */
+	static boolean opensByHand(TrapDoorBlock block) {
+		return Members.<BlockSetType>get(Trapdoors.TYPE, block).canOpenByHand();
 	}
 
 	/** Found at the first trapdoor asked about, once the probe has its names. */
@@ -184,15 +191,15 @@ final class VersionCommon {
 	}
 
 	/** An entity's data, without its id, as /data reads it. */
-	static CompoundTag save(Entity entity, HolderLookup.Provider registries) {
+	static CompoundTag save(Entity entity, Object registries) {
 		return entity.saveWithoutId(new CompoundTag());
 	}
 
-	static void load(Entity entity, CompoundTag data, HolderLookup.Provider registries) {
+	static void load(Entity entity, CompoundTag data, Object registries) {
 		entity.load(data);
 	}
 
-	static void loadTile(BlockEntity tile, CompoundTag data, HolderLookup.Provider registries) {
+	static void loadTile(BlockEntity tile, CompoundTag data, Object registries) {
 		tile.load(data);
 	}
 
@@ -248,5 +255,145 @@ final class VersionCommon {
 	/** The version's worlds, their server half alone (a dedicated server's, for the core's WorldOps.bindServer). */
 	static GameWorlds serverWorlds() {
 		return new V1_20_1ServerWorlds();
+	}
+
+	// ---- what 1.16.1 does another way (SPEC.md 19.7 step 11b): the shared code asks each version
+
+	/** The game's blocks by id. */
+	static Registry<Block> blocks() {
+		return BuiltInRegistries.BLOCK;
+	}
+
+	/** The game's items by id. */
+	static Registry<Item> items() {
+		return BuiltInRegistries.ITEM;
+	}
+
+	/** The game's kinds of entity by id. */
+	static Registry<EntityType<?>> entityTypes() {
+		return BuiltInRegistries.ENTITY_TYPE;
+	}
+
+	/** The biomes' registry, by its key. */
+	static ResourceKey<Registry<Biome>> biomeRegistry() {
+		return Registries.BIOME;
+	}
+
+	/** The dimensions' registry, by its key. */
+	static ResourceKey<Registry<Level>> dimensionRegistry() {
+		return Registries.DIMENSION;
+	}
+
+	/** The world an entity is in. */
+	static Level levelOf(Entity entity) {
+		return entity.level();
+	}
+
+	/** A player's inventory. */
+	static Inventory inventory(Player player) {
+		return player.getInventory();
+	}
+
+	/** A player's abilities (flying, may fly). */
+	static Abilities abilities(Player player) {
+		return player.getAbilities();
+	}
+
+	/** Whether an entity stands on the ground. */
+	static boolean onGround(Entity entity) {
+		return entity.onGround();
+	}
+
+	/** An entity's yaw. */
+	static float yRot(Entity entity) {
+		return entity.getYRot();
+	}
+
+	/** An entity's pitch. */
+	static float xRot(Entity entity) {
+		return entity.getXRot();
+	}
+
+	/** An entity's yaw and pitch, set. */
+	static void setRot(Entity entity, float yaw, float pitch) {
+		entity.setYRot(yaw);
+		entity.setXRot(pitch);
+	}
+
+	/** Whether an entity has left its world. */
+	static boolean removed(Entity entity) {
+		return entity.isRemoved();
+	}
+
+	/** An entity taken out of its world, as /kill's kind of removal is not (no death). */
+	static void discard(Entity entity) {
+		entity.discard();
+	}
+
+	/** An entity's fall so far forgotten. */
+	static void resetFall(Entity entity) {
+		entity.resetFallDistance();
+	}
+
+	/** Sets a player's food saturation. */
+	static void setSaturation(Player player, float saturation) {
+		player.getFoodData().setSaturation(saturation);
+	}
+
+	/** The stack a player's cursor carries in an open screen. */
+	static ItemStack carried(Player player) {
+		return player.containerMenu.getCarried();
+	}
+
+	/** The stack a player's cursor carries, set. */
+	static void setCarried(Player player, ItemStack stack) {
+		player.containerMenu.setCarried(stack);
+	}
+
+	/** A player's whole inventory sent to its client again. */
+	static void sendInventory(ServerPlayer player) {
+		player.inventoryMenu.sendAllDataToRemote();
+	}
+
+	/** What a world's item and data calls take (its registries). */
+	static Object registries(Level level) {
+		return level.registryAccess();
+	}
+
+	/** What a server's item and data calls take (its registries). */
+	static Object registries(MinecraftServer server) {
+		return server.registryAccess();
+	}
+
+	/** The block a point is in. */
+	static BlockPos containing(double x, double y, double z) {
+		return BlockPos.containing(x, y, z);
+	}
+
+	/** A text as it is. */
+	static Component literal(String text) {
+		return Component.literal(text);
+	}
+
+	/** A command run as its source typed it (its slash first). */
+	static void perform(MinecraftServer server, CommandSourceStack source, String typed) {
+		server.getCommands().performPrefixedCommand(source, typed);
+	}
+
+	/** Whether a player opens the door by hand (an iron one needs power). */
+	static boolean opensByHand(DoorBlock door) {
+		return door.type().canOpenByHand();
+	}
+
+	/** Whether a block's state is a liquid's. */
+	static boolean liquid(BlockState state) {
+		return state.liquid();
+	}
+
+	/**
+	 * Whether a system message hooked as command.heard went to the action bar: its second argument, the overlay flag.
+	 */
+	static boolean overlay(Object second) {
+		return second != null && (Boolean) second;
 	}
 }

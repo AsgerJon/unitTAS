@@ -4,7 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.instrument.Instrumentation;
-import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 /**
@@ -68,7 +68,7 @@ public final class Agent {
 		String named = System.getProperty(NAMES);
 		if (named != null) {
 			try {
-				names = Names.read(Path.of(named));
+				names = Names.read(Paths.get(named));
 				hooks = Hooks.renamed(hooks, names);
 			} catch (IOException | IllegalArgumentException e) {
 				// never woken by names that would hook the wrong methods: the orchestrator, never greeted, says so

@@ -32,7 +32,7 @@ final class RenamingLoader extends URLClassLoader {
 	private final URL jar;
 
 	private RenamingLoader(URL jar, ClassLoader parent, Renamer renamer, Manifest manifest) {
-		super("unittas-probe", new URL[] {jar}, parent);
+		super(new URL[] {jar}, parent);
 		this.jar = jar;
 		this.renamer = renamer;
 		this.manifest = manifest;
@@ -72,14 +72,14 @@ final class RenamingLoader extends URLClassLoader {
 		}
 		byte[] renamed;
 		try (InputStream in = found.openStream()) {
-			renamed = renamer.rename(in.readAllBytes());
+			renamed = renamer.rename(ClassBytes.readAll(in));
 		} catch (IOException | IllegalArgumentException e) {
 			throw new ClassFormatError("[unitTAS] the probe's " + name + " can't be renamed: " + e.getMessage());
 		}
 		int dot = name.lastIndexOf('.');
 		if (dot > 0) {
 			String packageName = name.substring(0, dot);
-			if (getDefinedPackage(packageName) == null) {
+			if (getPackage(packageName) == null) {
 				if (manifest != null) {
 					definePackage(packageName, manifest, jar);
 				} else {

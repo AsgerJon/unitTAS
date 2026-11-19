@@ -2,9 +2,10 @@
 The agent's rewriter (SPEC.md 19.7 step 6a) on class files of its own, with
 no game: agent/src/test/java's WrapCheck has it wrap the samples' methods,
 loads them under the JVM's verifier and runs them, on every Java the agent
-runs on (17 for 1.20.1, 21 for 1.21.1, 25 for 26.3). The bootstrap and the
-check are compiled for Java 17, as the agent's jar is. A Java not installed
-is skipped, saying so; none at all, or no javac, fails.
+runs on (8 for 1.16.1, 17 for 1.20.1, 21 for 1.21.1, 25 for 26.3). The
+bootstrap and the check are compiled for Java 8, as the agent's jar is
+(SPEC.md 19.7 step 11a, V30). A Java not installed is skipped, saying so;
+none at all, or no javac, fails.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -38,7 +39,9 @@ EXPECTED = [
   'reflection', 'refuses-missing', 'refuses-constructor',
   'refuses-abstract', 'refuses-interface', 'others-untouched', 'hooks-read',
 ]
-JAVAS = (17, 21, 25)
+JAVAS = (8, 17, 21, 25)
+#  the Java the bootstrap is compiled for: the oldest the agent runs on
+RELEASE = '8'
 
 
 def java(major: int) -> Optional[str]:
@@ -57,7 +60,7 @@ def java(major: int) -> Optional[str]:
 
 
 def javac(homes: dict) -> Optional[str]:
-  """The newest javac among the Javas found: any from 17 compiles for 17."""
+  """The newest javac among the Javas found: it compiles for RELEASE."""
   for major in sorted(homes, reverse=True):
     home = homes[major]
     binary = os.path.join(home, 'bin', 'javac') if home else ''
@@ -87,7 +90,7 @@ class WrapTests(unittest.TestCase):
     if cls.javac is None:
       return
     done = subprocess.run(
-      [cls.javac, '--release', '17', '-encoding', 'UTF-8', '-nowarn', '-d',
+      [cls.javac, '--release', RELEASE, '-encoding', 'UTF-8', '-nowarn', '-d',
        cls.classes] + sources(),
       stdin=subprocess.DEVNULL, capture_output=True, text=True)
     cls.compiled = done
@@ -100,10 +103,10 @@ class WrapTests(unittest.TestCase):
     home = self.homes[major]
     if home is None:
       self.skipTest('no Java %d installed' % major)
-    self.assertIsNotNone(self.javac, 'no javac from 17 on found')
+    self.assertIsNotNone(self.javac, 'no javac found')
     self.assertEqual(0, self.compiled.returncode,
-                     'javac --release 17:\n' + self.compiled.stdout
-                     + self.compiled.stderr)
+                     'javac --release %s:\n' % RELEASE
+                     + self.compiled.stdout + self.compiled.stderr)
     done = subprocess.run(
       [os.path.join(home, 'bin', 'java'), '-cp', self.classes, CHECK],
       stdin=subprocess.DEVNULL, capture_output=True, text=True,
@@ -116,11 +119,11 @@ class WrapTests(unittest.TestCase):
 
   def test_some_java_is_installed(self) -> None:
     self.assertTrue(any(self.homes.values()),
-                    'no Java 17, 21 or 25 found: the rewriter is unchecked')
-    self.assertIsNotNone(self.javac, 'no javac from 17 on found')
+                    'no Java 8, 17, 21 or 25 found: the rewriter is unchecked')
+    self.assertIsNotNone(self.javac, 'no javac found')
 
-  def test_the_built_bootstrap_is_for_java_17(self) -> None:
-    self.assertIsNotNone(self.javac, 'no javac from 17 on found')
+  def test_the_built_bootstrap_is_for_java_8(self) -> None:
+    self.assertIsNotNone(self.javac, 'no javac found')
     into = os.path.join(self.classes, 'built')
     build_agent.compileBootstrap(self.javac, into)
     majors = set()
@@ -128,7 +131,10 @@ class WrapTests(unittest.TestCase):
       for name in names:
         with open(os.path.join(where, name), 'rb') as file:
           majors.add(struct.unpack('>4xHH', file.read(8))[1])
-    self.assertEqual({61}, majors, "class files for Java 17 (61): 1.20.1's")
+    self.assertEqual({52}, majors, "class files for Java 8 (52): 1.16.1's")
+
+  def test_on_java_8(self) -> None:
+    self.run_on(8)
 
   def test_on_java_17(self) -> None:
     self.run_on(17)

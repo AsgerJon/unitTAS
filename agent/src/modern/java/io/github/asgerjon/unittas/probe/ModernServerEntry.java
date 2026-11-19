@@ -1,6 +1,7 @@
 package io.github.asgerjon.unittas.probe;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -19,8 +20,8 @@ import net.minecraft.server.level.ServerPlayer;
 public final class ModernServerEntry implements BiFunction<String, Object[], Object> {
 
 	private static volatile Object pass;
-	private static volatile Set<String> hooked = Set.of();
-	private static volatile Set<String> rewritten = Set.of();
+	private static volatile Set<String> hooked = Collections.<String>emptySet();
+	private static volatile Set<String> rewritten = Collections.<String>emptySet();
 
 	private ModernServerEntry() {
 	}
@@ -69,7 +70,7 @@ public final class ModernServerEntry implements BiFunction<String, Object[], Obj
 				return pass;
 			case "command.heard":
 				// a player's or the console's system message: a line of command.run's, if it runs for that source
-				ModernThings.heard(self, (Component) call[2], call.length > 3 && (Boolean) call[3]);
+				ModernThings.heard(self, (Component) call[2], VersionCommon.overlay(call.length > 3 ? call[3] : null));
 				return pass;
 			case "player.joined":
 				// placeNewPlayer(connection, player, ...): the player its second argument

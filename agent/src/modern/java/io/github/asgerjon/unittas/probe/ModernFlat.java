@@ -2,8 +2,6 @@ package io.github.asgerjon.unittas.probe;
 
 import io.github.asgerjon.unittas.probe.link.Json;
 import java.util.List;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 
 /**
  * A flat world's generator options from its layers (world.create's layers, SPEC.md 17.4 and 19.7 step 9), as the
@@ -28,7 +26,7 @@ final class ModernFlat {
 				throw ProbeException.badRequest("layers", VersionName.port() + "'s blocks have no meta, a block being its id"
 					+ " from 1.13 on: " + layer.id + " with meta " + layer.meta);
 			}
-			if (!VersionCommon.known(BuiltInRegistries.BLOCK, layer.id)) {
+			if (!VersionCommon.known(VersionCommon.blocks(), layer.id)) {
 				throw new ProbeException("NotFound", "this game has no block " + layer.id, Json.object("what", layer.id));
 			}
 			if (text.length() > 0) {
@@ -40,7 +38,7 @@ final class ModernFlat {
 			text.append(layer.id);
 		}
 		String named = biome.isEmpty() ? PLAINS : biome;
-		if (VersionCommon.key(Registries.BIOME, named) == null) {
+		if (VersionCommon.key(VersionCommon.biomeRegistry(), named) == null) {
 			throw ProbeException.badRequest("biome", "a biome is a name like minecraft:plains, not " + biome);
 		}
 		return text.append(';').append(named).toString();

@@ -30,7 +30,7 @@ NAMES = {
                   Version.V26_3: [{'call': 'giveExperienceLevels', 'args': [5]}]},
 }
 for _paths in NAMES.values():
-  _paths[Version.V1_21_1] = _paths[Version.V1_20_1] = _paths[Version.V26_3]
+  _paths[Version.V1_21_1] = _paths[Version.V1_20_1] = _paths[Version.V1_16_1] = _paths[Version.V26_3]
 
 
 def named(test: GameTestCase, what: str) -> list:

@@ -174,13 +174,19 @@ class MojangNames:
 
   def onSrg(self, srg: SrgNames) -> MojangNames:
     """
-    The names as Forge runs the game (SPEC.md 19.7 step 8): every class by
-    Mojang's name (Forge's install merges Mojang's for classes), each
-    field and method on from its obfuscated name to SRG's where the MCP
-    config has a line for it (an override's on its own class), kept where
-    none does (a constructor, a JDK method's override).
+    The names as Forge runs the game (SPEC.md 19.7 steps 8 and 11e): every
+    class by Mojang's name (Forge's install merges Mojang's for classes from
+    1.17 on), or by the MCP config's where the game runs those (a tsrg v1
+    file's, before 1.17: srg.renamesClasses); each field and method on from
+    its obfuscated name to SRG's where the MCP config has a line for it (an
+    override's on its own class), kept where none does (a constructor, a
+    JDK method's override).
     """
-    classes = {mojang: mojang for mojang in self.classes}
+    if srg.renamesClasses:
+      classes = {mojang: srg.classes.get(obfuscated, obfuscated)
+                 for mojang, obfuscated in self.classes.items()}
+    else:
+      classes = {mojang: mojang for mojang in self.classes}
     fields = {}
     for (owner, name, descriptor), obfuscated in self.fields.items():
       fields[(owner, name, descriptor)] = srg.fields.get(

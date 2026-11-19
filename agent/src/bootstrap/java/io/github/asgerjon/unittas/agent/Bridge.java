@@ -140,7 +140,7 @@ final class Bridge implements BiFunction<String, Object[], Object> {
 			Files.copy(in, jar.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		}
 		URLClassLoader loader = names == null
-			? new URLClassLoader("unittas-probe", new URL[] {jar.toURI().toURL()}, gameLoader)
+			? new URLClassLoader(new URL[] {jar.toURI().toURL()}, gameLoader)
 			: RenamingLoader.of(jar, gameLoader, names);
 		Class<?> started = Class.forName(entry, true, loader);
 		Function<String, String> lookup = names == null ? null : names::lookup;

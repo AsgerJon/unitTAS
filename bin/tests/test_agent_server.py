@@ -13,8 +13,11 @@ And every game class and member it reaches is in the version's real
 server, by the name it runs under there (V21): an obfuscated version's
 by its server's own table (from its server_mappings), each member by the
 class that declares it, as the agent renames them; 26.3's classes by
-Mojang's names. A version whose server jar or tables aren't in the
-download cache is skipped for that, saying so.
+Mojang's names. Each member is also declared in the server jar itself,
+by its class or one above it: a table may list a member the server jar
+hasn't (1.16.1's Level.setRainLevel, client-only). A version whose server
+jar or tables aren't in the download cache is skipped for that, saying
+so.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -30,6 +33,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from typing import Optional
 
 BIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BIN)
@@ -82,10 +86,10 @@ def named(data: bytes) -> set:
   return out
 
 
-def references(data: bytes) -> tuple:
+def pool(data: bytes) -> tuple:
   """
-  A class file's references: the classes its constant pool names, and the
-  members it refers to, each (f or m, owner, name, descriptor).
+  A class file's constant pool: its UTF-8, class and member entries by
+  index, and where the pool ends.
   """
   count = struct.unpack('>H', data[8:10])[0]
   at, index, entries = 10, 1, {}
@@ -95,7 +99,8 @@ def references(data: bytes) -> tuple:
     tag = data[at]
     if tag == 1:
       length = struct.unpack('>H', data[at + 1:at + 3])[0]
-      entries[index] = (1, data[at + 3:at + 3 + length].decode('utf-8'))
+      text = data[at + 3:at + 3 + length].decode('utf-8', 'replace')
+      entries[index] = (1, text)
       at += 3 + length
     elif tag == 7:
       entries[index] = (7, struct.unpack('>H', data[at + 1:at + 3])[0])
@@ -108,6 +113,77 @@ def references(data: bytes) -> tuple:
     else:
       raise ValueError('a constant pool tag %d no class file has' % tag)
     index += 2 if tag in (5, 6) else 1
+  return entries, at
+
+
+def declared(data: bytes) -> tuple:
+  """
+  What a class file declares: its superclass ('' for none), its
+  interfaces, and its fields' and methods' names and descriptors.
+  """
+  entries, at = pool(data)
+
+  def className(index: int) -> str:
+    """The class entry's internal name."""
+    return entries[entries[index][1]][1]
+
+  parent, count = struct.unpack('>HH', data[at + 4:at + 8])
+  at += 8
+  interfaces = [className(struct.unpack('>H', data[at + 2 * i:
+                                                    at + 2 * i + 2])[0])
+                for i in range(count)]
+  at += 2 * count
+  members = set()
+  for _ in ('fields', 'methods'):
+    count = struct.unpack('>H', data[at:at + 2])[0]
+    at += 2
+    for _ in range(count):
+      name, descriptor, attributes = struct.unpack('>HHH',
+                                                   data[at + 2:at + 8])
+      members.add((entries[name][1], entries[descriptor][1]))
+      at += 8
+      for _ in range(attributes):
+        at += 6 + struct.unpack('>I', data[at + 2:at + 6])[0]
+  return className(parent) if parent else '', interfaces, members
+
+
+def declarer(jar: zipfile.ZipFile, names: set, parsed: dict, owner: str,
+             member: tuple) -> str:
+  """
+  The jar's class that declares the member (its name and descriptor),
+  looked for from the owner up its superclasses and interfaces, as the
+  JVM resolves a reference; '' where no class of the jar's does (one
+  above them all, the JDK's, may). Each class read is kept in parsed.
+  """
+  todo, seen = [owner], set()
+  while todo:
+    each = todo.pop()
+    if each in seen or each not in names:
+      continue
+    seen.add(each)
+    if each not in parsed:
+      parsed[each] = declared(jar.read(each + '.class'))
+    parent, interfaces, members = parsed[each]
+    if member in members:
+      return each
+    todo.extend(([parent] if parent else []) + interfaces)
+  return ''
+
+
+def obfuscated(descriptor: str, classes: dict) -> str:
+  """A descriptor by a table's names for its classes (Mojang's to it)."""
+  return re.sub(r'L([^;]+);',
+                lambda found: 'L%s;' % classes.get(found.group(1),
+                                                   found.group(1)),
+                descriptor)
+
+
+def references(data: bytes) -> tuple:
+  """
+  A class file's references: the classes its constant pool names, and the
+  members it refers to, each (f or m, owner, name, descriptor).
+  """
+  entries = pool(data)[0]
   classes, members = set(), []
   for entry in entries.values():
     if entry[0] == 7:
@@ -140,17 +216,28 @@ def cached(pattern: str) -> str:
   return found[0] if len(found) == 1 else ''
 
 
-def serverClasses(minecraft: str) -> set:
-  """The version's real server's classes: its bundler's inner jar's."""
+def serverJar(minecraft: str) -> Optional[zipfile.ZipFile]:
+  """
+  The version's real server's jar of classes: its bundler's inner jar
+  (from 1.18 on), or the jar itself before (1.16.1's server is a plain
+  jar); None where the download cache has no server jar.
+  """
   path = cached('versions/%s/server-%s.jar' % (minecraft, minecraft))
   if not path:
-    return set()
-  with zipfile.ZipFile(path) as bundler:
-    inner = 'META-INF/versions/%s/server-%s.jar' % (minecraft, minecraft)
-    real = zipfile.ZipFile(io.BytesIO(bundler.read(inner)))
-  with real:
-    return {name[:-len('.class')] for name in real.namelist()
-            if name.endswith('.class')}
+    return None
+  inner = 'META-INF/versions/%s/server-%s.jar' % (minecraft, minecraft)
+  with zipfile.ZipFile(path) as outer:
+    data = outer.read(inner) if inner in outer.namelist() else b''
+  if not data:
+    with open(path, 'rb') as file:
+      data = file.read()
+  return zipfile.ZipFile(io.BytesIO(data))
+
+
+def classNames(jar: zipfile.ZipFile) -> set:
+  """A jar's classes, by internal name."""
+  return {name[:-len('.class')] for name in jar.namelist()
+          if name.endswith('.class')}
 
 
 def reached(classes: dict) -> set:
@@ -174,6 +261,7 @@ def probeClasses(jar: str) -> dict:
 
 
 class ServerProbeTests(unittest.TestCase):
+  maxDiff = None
 
   @classmethod
   def setUpClass(cls) -> None:
@@ -227,29 +315,54 @@ class ServerProbeTests(unittest.TestCase):
       with self.subTest(minecraft=minecraft):
         if isinstance(jar, Exception):
           self.skipTest('no %s agent built here: %s' % (minecraft, jar))
-        inServer = serverClasses(minecraft)
-        if not inServer:
+        real = serverJar(minecraft)
+        if real is None:
           self.skipTest('no %s server jar in the download cache'
                         % minecraft)
-        classes = probeClasses(jar)
-        found = []
-        if build_agent.VERSIONS[minecraft].obfuscated:
-          found = self.byTables(minecraft, jar, classes, inServer)
-        else:
-          client = cached('versions/%s/%s.jar' % (minecraft, minecraft))
-          with zipfile.ZipFile(client) as each:
-            game = {name[:-len('.class')] for name in each.namelist()
-                    if name.endswith('.class')}
-          for own in sorted(reached(classes)):
-            named, members = references(classes[own])
-            for name in named | {member[1] for member in members}:
-              if name in game and name not in inServer:
-                found.append('%s: %s' % (own, name))
+        with real:
+          classes = probeClasses(jar)
+          if build_agent.VERSIONS[minecraft].obfuscated:
+            found = self.byTables(minecraft, jar, classes, real)
+          else:
+            found = self.byMojang(minecraft, classes, real)
         self.assertEqual([], sorted(set(found))[:10])
 
+  def byMojang(self, minecraft: str, classes: dict,
+               real: zipfile.ZipFile) -> list:
+    """
+    What a version under Mojang's names lacks in its server: a game class
+    the probe names, or a game member it reaches that the server's class
+    and those above it don't declare (the client's do).
+    """
+    inServer = classNames(real)
+    path = cached('versions/%s/%s.jar' % (minecraft, minecraft))
+    found = []
+    with zipfile.ZipFile(path) as client:
+      game, inClient, inJar = classNames(client), {}, {}
+      for own in sorted(reached(classes)):
+        named, members = references(classes[own])
+        for name in named | {member[1] for member in members}:
+          if name in game and name not in inServer:
+            found.append('%s: %s' % (own, name))
+        for _, owner, name, descriptor in members:
+          member = (name, descriptor)
+          if owner not in game or owner not in inServer \
+              or not declarer(client, game, inClient, owner, member):
+            continue
+          if not declarer(real, inServer, inJar, owner, member):
+            found.append('%s: %s.%s%s not in the server jar'
+                         % (own, owner, name, descriptor))
+    return found
+
   def byTables(self, minecraft: str, jar: str, classes: dict,
-               inServer: set) -> list:
-    """What an obfuscated version's server lacks, by its own table."""
+               real: zipfile.ZipFile) -> list:
+    """
+    What an obfuscated version's server lacks, by its own table: a class
+    or member the table hasn't, or one the server jar hasn't by the name
+    the table gives (its server_mappings may list a member the server
+    jar's class has not, a client-only one).
+    """
+    inServer, inJar = classNames(real), {}
     clientPath = cached('names/%s-obfuscated-*.txt' % minecraft)
     serverPath = cached('names/%s-server-obfuscated-*.txt' % minecraft)
     if not (clientPath and serverPath):
@@ -280,11 +393,19 @@ class ServerProbeTests(unittest.TestCase):
       for kind, owner, name, descriptor in members:
         if owner not in client:
           continue
-        declarer = declarers.get((owner, name, descriptor), owner)
-        key = (kind, declarer, name, descriptor)
-        if key in clientMembers and key not in serverMembers:
+        at = declarers.get((owner, name, descriptor), owner)
+        key = (kind, at, name, descriptor)
+        if key not in clientMembers or owner not in server:
+          continue
+        if key not in serverMembers:
           found.append('%s: %s.%s%s not in the server'
-                       % (own, declarer, name, descriptor))
+                       % (own, at, name, descriptor))
+          continue
+        running = (serverMembers[key], obfuscated(descriptor, server))
+        if not declarer(real, inServer, inJar, server[owner], running):
+          found.append('%s: %s.%s%s (%s.%s%s) not in the server jar'
+                       % ((own, at, name, descriptor, server[owner])
+                          + running))
     return found
 
 

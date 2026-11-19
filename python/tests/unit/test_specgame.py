@@ -217,6 +217,25 @@ class SpecGameTests(unittest.TestCase):
             ['onboardAccessibility:false', 'tutorialStep:none'],
             sorted(file.read().split()))
 
+  def test_1_16_1_as_1_20_1(self) -> None:
+    """
+    1.16.1 (SPEC.md 19.7 step 11c) as 1.20.1: the version and its loader
+    said, the probe an agent, never in mods/; a returning player's options
+    as 1.16.1 has them (its tutorial's; it has no accessibility onboarding).
+    """
+    game = RealGame(
+      self.spec26('probe = "probe/unittas-probe.jar"\n', '1.16.1'),
+      self.results, 'real', cache=self.cache)
+    self.assertEqual(
+      [sys.executable, '-I', '-m', 'unittas.launcher', '--game',
+       game.gameDir, '--cache', self.cache.root, '--minecraft',
+       '1.16.1', '--loader', 'fabric', '--loader-version', '0.20.1',
+       '--agent', self.probe], game.command())
+    game.prepare()
+    self.assertEqual([], os.listdir(os.path.join(game.gameDir, 'mods')))
+    with open(os.path.join(game.gameDir, 'options.txt')) as file:
+      self.assertEqual(['tutorialStep:none'], sorted(file.read().split()))
+
   def test_the_bundled_probe_for_its_version(self) -> None:
     """With both probes bundled, each version's game gets its own."""
     bundled = os.path.join(self.folder, 'probes')
@@ -226,6 +245,8 @@ class SpecGameTests(unittest.TestCase):
                     b'1.21.1')
     v1_20_1 = touch(os.path.join(bundled, 'unittas-probe-1.20.1-0.1.0.jar'),
                     b'1.20.1')
+    v1_16_1 = touch(os.path.join(bundled, 'unittas-probe-1.16.1-0.1.0.jar'),
+                    b'1.16.1')
     forge = RealGame(self.spec('mods = []\nwindow = { display = "plain" }\n'), self.results, 'real', cache=self.cache,
                      bundled=bundled)
     fabric = RealGame(self.spec26(), self.results, 'real', cache=self.cache, bundled=bundled)
@@ -236,6 +257,9 @@ class SpecGameTests(unittest.TestCase):
       cache=self.cache, bundled=bundled).probeJar())
     self.assertEqual(v1_20_1, RealGame(
       self.spec26(minecraft='1.20.1'), self.results, 'real',
+      cache=self.cache, bundled=bundled).probeJar())
+    self.assertEqual(v1_16_1, RealGame(
+      self.spec26(minecraft='1.16.1'), self.results, 'real',
       cache=self.cache, bundled=bundled).probeJar())
 
   def test_no_probe_bundled_says_so(self) -> None:
