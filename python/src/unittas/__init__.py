@@ -27,4 +27,4 @@ starts Minecraft, and the protocol it speaks with the probe inside the game
 #  Copyright (c) 2026 Asger Jon Vistisen
 from __future__ import annotations
 
-__version__ = '0.1.0-dev24'
+__version__ = '0.1.0-dev25'
