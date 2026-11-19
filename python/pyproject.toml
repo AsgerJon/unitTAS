@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unittas"
-version = "0.1.0-dev21"
+version = "0.1.0-dev22"
 description = "Tests that play the real Minecraft: the orchestrator, and the protocol it speaks with the probe in the game"
 readme = "README.md"
 requires-python = ">=3.14"
