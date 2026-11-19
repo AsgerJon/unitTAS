@@ -67,6 +67,8 @@ final class Perceive {
 			"sprinting", player.isSprinting(),
 			"flying", player.capabilities.isFlying,
 			"reach", Json.object("block", (double) blockReach, "entity", entityReach),
+			// the rate the look turns at: none, as 1.7.10's probe has no mouse.rate (SPEC.md 19.7 step 12)
+			"mouse_rate", Json.object("yaw", 0.0, "pitch", 0.0, "frames", 0),
 			"target", target(mc.theWorld, mc.objectMouseOver),
 			"blocks", around(mc.theWorld, player, around, below, above));
 	}

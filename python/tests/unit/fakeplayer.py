@@ -784,6 +784,7 @@ class FakePlayer:
       'on_ladder': self.onLadder(),
       'sneaking': 'key.sneak' in self.keys, 'sprinting': False,
       'flying': self.flying, 'reach': {'block': REACH, 'entity': 6.0},
+      'mouse_rate': {'yaw': 0.0, 'pitch': 0.0, 'frames': 0},
       'target': self.target(), 'blocks': self.near(around)}
 
   # ----------------------------------------------------- the probe's answers
@@ -799,9 +800,10 @@ class FakePlayer:
       return handler
 
     def look(args: dict) -> dict:
+      #  the look set in the tick the request runs in, and answered there
+      #  (SPEC.md 19.7 step 12, V38)
       self.yaw = float(args['yaw'])
       self.pitch = float(args['pitch'])
-      self.step()
       return {}
 
     def wait(args: dict) -> dict:

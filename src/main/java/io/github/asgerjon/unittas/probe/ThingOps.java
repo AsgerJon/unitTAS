@@ -34,7 +34,9 @@ final class ThingOps {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("player.look").does(ThingOps::look).settles(ThingOps::ticks1);
+		// answered in the tick it ran in: the client's look set at once, the server's copy a tick behind, following
+		// the client's next movement as a player's does (SPEC.md 19.7 step 12, V38)
+		probe.op("player.look").does(ThingOps::look);
 		probe.op("inventory.set").does(ThingOps::inventorySet);
 		probe.op("block.get").does(ThingOps::blockGet);
 		probe.op("block.ground").does(ThingOps::blockGround);
@@ -83,10 +85,6 @@ final class ThingOps {
 			throw Ops.stalled(call.probe, stalled);
 		}
 		return value;
-	}
-
-	private static JsonElement ticks1(Call call, JsonElement value) throws ProbeException, InterruptedException {
-		return wait(call, 1, value);
 	}
 
 	private static JsonElement settle4(Call call, JsonElement value) throws ProbeException, InterruptedException {

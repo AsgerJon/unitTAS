@@ -31,3 +31,5 @@ BEFORE	net/minecraft/client/MouseHandler	onMove	(JDDDD)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	onScroll	(JDD)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	onDrop	(JLjava/util/List;)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	isMouseGrabbed	()Z	mouse.grabbed
+# each frame, after the game's own mouse step (handleAccumulatedMovement, after the frame's ticks): mouse.rate's turn
+AFTER	net/minecraft/client/MouseHandler	handleAccumulatedMovement	()V	mouse.turned

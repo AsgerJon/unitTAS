@@ -20,7 +20,10 @@ final class ModernClientReset {
 			ModernThings.waitClient(call, call.number("settle_ticks", 3, 0, 1200), value));
 	}
 
-	/** client.reset: no screen, no keys held, the first hotbar slot, first person, the HUD shown; no rain on the client. */
+	/**
+	 * client.reset: no screen, no keys held, no mouse.rate, the first hotbar slot, first person, the HUD shown; no rain
+	 * on the client.
+	 */
 	private static JsonElement reset(Call call) throws ProbeException {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null || mc.level == null) {
@@ -31,6 +34,8 @@ final class ModernClientReset {
 			Version.setScreen(null);
 		}
 		KeyMapping.releaseAll();
+		// no rate turns the look on into the next test
+		ModernMouse.stop();
 		// the first hotbar slot, so a given item is the held one
 		VersionCommon.selectSlot(VersionCommon.inventory(mc.player), 0);
 		Version.setCamera(0);

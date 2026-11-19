@@ -3,7 +3,8 @@ What the player perceives (player.perceive, SPEC.md 15.6 step 1) as
 Python values, without a game: read from an answer shaped as the probe
 sends it (and, in fixtures/perceptions.json, answers the probe really
 sent), and back. A missing field is refused by name, and so are a face
-that isn't one of the six and a box that isn't six numbers.
+that isn't one of the six and a box that isn't six numbers. The rate the
+look turns at (mouse.rate, SPEC.md 19.7 step 12) is in it: none is 0, 0.
 """
 #  Apache-2.0 license
 #  Copyright (c) 2026 Asger Jon Vistisen
@@ -16,6 +17,7 @@ import unittest
 
 from unittas.box import Box
 from unittas.codec import fromJson, toJson
+from unittas.mouserate import MouseRate
 from unittas.nearblock import NearBlock
 from unittas.perception import Perception
 from unittas.target import Target
@@ -44,6 +46,7 @@ LOOKING_DOWN = {
   'in_water': False, 'in_lava': False, 'on_ladder': False,
   'sneaking': False, 'sprinting': False, 'flying': False,
   'reach': {'block': 5.0, 'entity': 6.0},
+  'mouse_rate': {'yaw': 0.0, 'pitch': 0.0, 'frames': 0},
   'target': {'block': [0, 3, 0], 'face': 'up', 'hit': [0.5, 4.0, 0.5],
              'id': 'minecraft:grass', 'meta': 0},
   'blocks': [GRASS, POPPY, LADDER, DOOR]}
@@ -69,7 +72,7 @@ class PerceptionClassTests(unittest.TestCase):
   """Each value's fields are the ones it declares (test_values' rule)."""
 
   def test_only_the_declared_fields(self) -> None:
-    for cls in (Box, Target, NearBlock, Perception):
+    for cls in (Box, Target, NearBlock, MouseRate, Perception):
       with self.subTest(cls.__name__):
         value = cls()
         names = list(value.asDict())
@@ -92,8 +95,22 @@ class PerceptionTests(unittest.TestCase):
     self.assertFalse(seen.inWater or seen.inLava or seen.onLadder)
     self.assertFalse(seen.sneaking or seen.sprinting or seen.flying)
     self.assertEqual((5.0, 6.0), (seen.blockReach, seen.entityReach))
+    self.assertEqual(MouseRate(0.0, 0.0, 0), seen.mouseRate)
+    self.assertTrue(seen.mouseRate.none)
     self.assertEqual(4, len(seen.blocks))
     self.assertEqual(LOOKING_DOWN, toJson(seen))
+
+  def test_the_rate_in_force(self) -> None:
+    """
+    The rate mouse.rate set, in degrees a tick (its signs player.look's),
+    and the frames it has turned the look in since.
+    """
+    wire = _with(mouse_rate={'yaw': 2.5, 'pitch': -1.0, 'frames': 87})
+    seen = fromJson(Perception, wire)
+    self.assertEqual(MouseRate(2.5, -1.0, 87), seen.mouseRate)
+    self.assertFalse(seen.mouseRate.none)
+    self.assertEqual(wire, toJson(seen))
+    self.assertTrue(MouseRate(0.0, 0.0, 12).none)
 
   def test_a_block_targeted(self) -> None:
     target = fromJson(Perception, LOOKING_DOWN).target
@@ -164,6 +181,13 @@ class PerceptionTests(unittest.TestCase):
     del near['liquid']
     with self.assertRaisesRegex(ValueError, 'a block near has no "liquid"'):
       fromJson(Perception, _with(blocks=[near]))
+    wire = _with()
+    del wire['mouse_rate']
+    with self.assertRaisesRegex(ValueError,
+                                'a perception has no "mouse_rate"'):
+      fromJson(Perception, wire)
+    with self.assertRaisesRegex(ValueError, 'a mouse rate has no "frames"'):
+      fromJson(Perception, _with(mouse_rate={'yaw': 0.0, 'pitch': 0.0}))
 
 
 class RecordedPerceptionsTests(unittest.TestCase):

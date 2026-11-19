@@ -631,6 +631,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -661,7 +666,7 @@
     "snowy": "false"
    }
   },
-  "tick": 105
+  "tick": 114
  },
  {
   "blocks": [
@@ -1337,6 +1342,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -1364,7 +1374,7 @@
    ],
    "id": "minecraft:stone"
   },
-  "tick": 121
+  "tick": 129
  },
  {
   "blocks": [
@@ -2040,6 +2050,11 @@
    -0.0784000015258789,
    -0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -2067,7 +2082,7 @@
    ],
    "id": "minecraft:stone"
   },
-  "tick": 143
+  "tick": 151
  },
  {
   "blocks": [
@@ -2701,6 +2716,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -2715,7 +2735,7 @@
   "sneaking": false,
   "sprinting": false,
   "target": null,
-  "tick": 161
+  "tick": 168
  },
  {
   "blocks": [
@@ -3349,6 +3369,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -3363,7 +3388,7 @@
   "sneaking": false,
   "sprinting": false,
   "target": {
-   "entity": 84,
+   "entity": 79,
    "hit": [
     0.5,
     -59.33883569688465,
@@ -3371,7 +3396,7 @@
    ],
    "type": "minecraft:minecart"
   },
-  "tick": 164
+  "tick": 170
  },
  {
   "blocks": [
@@ -4054,6 +4079,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -4068,7 +4098,7 @@
   "sneaking": false,
   "sprinting": false,
   "target": null,
-  "tick": 184
+  "tick": 190
  },
  {
   "blocks": [
@@ -4702,6 +4732,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -4716,7 +4751,7 @@
   "sneaking": false,
   "sprinting": false,
   "target": null,
-  "tick": 204
+  "tick": 209
  },
  {
   "blocks": [
@@ -5350,6 +5385,11 @@
    -0.0784000015258789,
    0.0
   ],
+  "mouse_rate": {
+   "frames": 0,
+   "pitch": 0.0,
+   "yaw": 0.0
+  },
   "on_ground": true,
   "on_ladder": false,
   "pos": [
@@ -5364,6 +5404,6 @@
   "sneaking": true,
   "sprinting": false,
   "target": null,
-  "tick": 220
+  "tick": 225
  }
 ]

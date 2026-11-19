@@ -42,6 +42,7 @@ public final class ModernHooks {
 		ModernClientReset.bind(probe);
 		ModernJoin.bind(probe);
 		ModernInput.bind(probe);
+		ModernMouse.bind(probe);
 		ModernChat.bind(probe);
 		ModernSounds.bind(probe);
 		ModernPictures.bind(probe);

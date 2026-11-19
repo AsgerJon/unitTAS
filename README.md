@@ -375,6 +375,12 @@ class GiveTests(GameTestCase):
   `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), `ticks(n)`, `waitUntil`, `screenshot`, and
   `reflect` by readable names (a real client's are translated). Its values are typed (`unittas.values`). An error
   from the game is the package's exception (`unittas.errors`): a mod that threw is a `GameError`.
+- `look(yaw, pitch)` sets the look at once, answered in the tick it ran in (the server's copy follows a tick behind,
+  as a player's does). `mouseRate(yaw, pitch)` turns it at a rate instead, in degrees a tick, every rendered frame
+  by the frame's share of a tick, as a hand turns a mouse: smooth on screen, exact in degrees. It holds until the
+  next `mouseRate`; `0, 0`, `look`, the reset, a screen opening and the world left stop it. It answers at once with
+  the player's `Bearing`: the tick, `pos`, `look` and `motion`, enough to steer every tick. `perceive()` says the
+  rate in force (`mouseRate`). On the agent's versions, 1.16.1 on (1.7.10's probe has none).
 - `command` gives back the command's `result` (1 for success in 1.7.10; from 1.13 on the command's own value, as
   `/time set 6000`'s 6000), `lines` (plain: in 1.7.10 the chat lines that came in while it ran; from 1.13 on what the
   command said back, at once) and `errors` (the red ones among them). A refusal's text is checked with a substring:

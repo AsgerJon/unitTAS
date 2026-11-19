@@ -114,6 +114,10 @@ public final class ModernEntry implements BiFunction<String, Object[], Object> {
 			case "crash.saved":
 				ModernCrash.saved((net.minecraft.CrashReport) self);
 				return pass;
+			case "mouse.turned":
+				// each frame, after the game's own mouse step: mouse.rate's turn (ModernMouse)
+				ModernMouse.frame();
+				return pass;
 			default:
 				// a hook of the version's own (1.21.1's view keeps its frames and builds by hooks): its Version's
 				return Version.hook(hook, self, arguments, pass);

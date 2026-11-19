@@ -114,6 +114,8 @@ public final class ModernPort implements Port {
 		}));
 		// input (SPEC.md 19.7 step 2; PROTOCOL.md 8.9), ModernInput's bodies
 		probe.register(Op.onSide("player.look", Side.CLIENT));
+		// the look turned every frame at a rate (19.7 step 12; PROTOCOL.md 8.9), ModernMouse's
+		probe.register(Op.onSide("mouse.rate", Side.CLIENT));
 		probe.register(Op.onSide("key.down", Side.CLIENT));
 		probe.register(Op.onSide("key.up", Side.CLIENT));
 		probe.register(Op.onSide("key.tap", Side.CLIENT));

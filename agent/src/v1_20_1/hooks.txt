@@ -31,6 +31,8 @@ BEFORE	net/minecraft/client/MouseHandler	onMove	(JDD)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	onScroll	(JDD)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	onDrop	(JLjava/util/List;)V	real.input
 BEFORE	net/minecraft/client/MouseHandler	isMouseGrabbed	()Z	mouse.grabbed
+# each frame, after the game's own mouse step (turnPlayer, after the frame's ticks): mouse.rate's turn
+AFTER	net/minecraft/client/MouseHandler	turnPlayer	()V	mouse.turned
 # the frame's camera as the level is drawn with it, and each chunk section's build as it finishes: 1.20.1 keeps no
 # render state of either, which view.block needs (V1_20_1View)
 BEFORE	net/minecraft/client/renderer/LevelRenderer	renderLevel	(Lcom/mojang/blaze3d/vertex/PoseStack;FJZLnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/GameRenderer;Lnet/minecraft/client/renderer/LightTexture;Lorg/joml/Matrix4f;)V	view.frame

@@ -20,6 +20,7 @@ from mcdex import (MCBlocks, MCDimensions, MCEntities, MCItems,
 
 from fakeprobe import HELLO, FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
+from unittas.bearing import Bearing
 from unittas.codec import toJson
 from unittas.errors import Missing, NoResult, NotFound, NotVerified, UnknownVersion
 from unittas.link import Listener
@@ -429,6 +430,26 @@ class GameTests(unittest.TestCase):
       ('player.teleport', None, {'pos': [0.5, 70.0, 0.5], 'dimension': 'minecraft:the_end'}),
       ('player.look', None, {'yaw': 45.0, 'pitch': 10.0}),
     ], self.sent())
+
+  def test_the_mouse_s_rate(self) -> None:
+    """
+    mouse.rate on the client (SPEC.md 19.7 step 12): the rate the look turns
+    at, in degrees a tick, answered at once with the player's bearing as it
+    is then (its tick, where it is, its look and its motion: what steering
+    needs each tick); 0, 0 stops it.
+    """
+    wire = {'tick': 140, 'pos': [0.5, -60.0, 0.5],
+            'look': {'yaw': 12.5, 'pitch': -3.0},
+            'motion': [0.1, -0.0784, 0.0]}
+    game = self.game({'mouse.rate': lambda args, side: wire})
+    bearing = game.mouseRate(2.5, -1)
+    self.assertEqual(Bearing(140, Vec3(0.5, -60.0, 0.5), Look(12.5, -3.0),
+                             Vec3(0.1, -0.0784, 0.0)), bearing)
+    self.assertEqual(wire, toJson(bearing))
+    game.mouseRate(0, 0)
+    self.assertEqual([('mouse.rate', None, {'yaw': 2.5, 'pitch': -1.0}),
+                      ('mouse.rate', None, {'yaw': 0.0, 'pitch': 0.0})],
+                     self.sent())
 
   def test_what_the_player_perceives(self) -> None:
     """player.perceive on the client (SPEC.md 15.6 step 1), as a Perception."""

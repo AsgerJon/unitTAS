@@ -139,6 +139,14 @@ final class Version {
 
 	// ---------------------------------------------------------------- the inventory
 
+	/**
+	 * How far the game is into the tick after the last one counted, 0 to 1, as this frame is drawn.
+	 * The delta tracker's, its time unfrozen. With the client's ticks, mouse.rate's clock (ModernMouse).
+	 */
+	static float partialTick() {
+		return Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
+	}
+
 	/** The game's own pick of what the crosshair meets, made afresh for the look as it is now (Minecraft's, private). */
 	static void pick(float partialTick) {
 		Members.call(Picking.PICK, Minecraft.getInstance(), partialTick);

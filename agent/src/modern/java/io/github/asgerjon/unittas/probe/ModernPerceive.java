@@ -78,6 +78,7 @@ final class ModernPerceive {
 			"sprinting", player.isSprinting(),
 			"flying", VersionCommon.abilities(player).flying,
 			"reach", Json.object("block", Version.blockReach(player), "entity", Version.entityReach(player)),
+			"mouse_rate", ModernMouse.report(),
 			"target", target(level, mc.hitResult),
 			"blocks", around(level, player, around, below, above));
 	}

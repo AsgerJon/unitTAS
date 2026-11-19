@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 from worktoy.desc import Field
 from worktoy.ezdata import EZData, EZField
 
+from .bearing import Bearing
 from .codec import fromJson, toJson
 from .blockview import BlockView
 from .container import Container
@@ -294,7 +295,28 @@ class Game:
         raise NotVerified(what, side, answer.get('value'), VERIFY_TICKS)
 
   def look(self, yaw: float, pitch: float) -> None:
+    """
+    The client's player looks this way (degrees; yaw 0 is south, a
+    pitch above 0 down), set in the tick the request runs in; the
+    server's copy follows with the client's next movement, a tick
+    behind. A mouse rate in force stops.
+    """
     self.request('player.look', toJson(Look(yaw, pitch)))
+
+  def mouseRate(self, yaw: float, pitch: float) -> Bearing:
+    """
+    The client's player's look turns at this rate, in degrees a tick
+    (SPEC.md 19.7 step 12), every frame by the frame's share of a tick,
+    as a hand turns a mouse; the signs are look's. It holds until the
+    next mouseRate: 0 and 0 stops it, and so do look, the reset, a screen
+    opening, and the world left. Answered at once, in the tick it ran
+    in, with the player's bearing as it is then: the tick, where it is,
+    its look and its motion, what steering needs each tick. perceive
+    says the rate in force. Refused (NotReady) with a screen open, but
+    for 0 and 0.
+    """
+    rate = {'yaw': float(yaw), 'pitch': float(pitch)}
+    return fromJson(Bearing, self.request('mouse.rate', rate))
 
   def perceive(self, around: int = 2, below: int = 1, above: int = 1) -> Perception:
     """

@@ -136,7 +136,12 @@ class VersionsTests(unittest.TestCase):
     self.assertTrue(all(os.path.isdir(folder) for folder in version.sources))
 
   def test_each_version_s_hooks_file(self) -> None:
-    counts = {'26.3': 21, '1.21.1': 22, '1.20.1': 22, '1.16.1': 22}
+    counts = {'26.3': 22, '1.21.1': 23, '1.20.1': 23, '1.16.1': 23}
+    #  each frame's mouse step, after which mouse.rate turns the look
+    #  (SPEC.md 19.7 step 12): 1.21 moved it
+    mouse = {'26.3': 'handleAccumulatedMovement',
+             '1.21.1': 'handleAccumulatedMovement',
+             '1.20.1': 'turnPlayer', '1.16.1': 'turnPlayer'}
     for minecraft, version in build_agent.VERSIONS.items():
       with self.subTest(minecraft=minecraft):
         with open(version.hooks, encoding='utf-8') as file:
@@ -151,6 +156,9 @@ class VersionsTests(unittest.TestCase):
           self.assertEqual(5, len(parts), line)
           self.assertIn(parts[0], ('BEFORE', 'AFTER'), line)
         self.assertEqual(counts[minecraft], len(lines) - 1, "%s's hooks" % minecraft)
+        turned = ['AFTER', 'net/minecraft/client/MouseHandler',
+                  mouse[minecraft], '()V', 'mouse.turned']
+        self.assertIn(turned, [line.split('\t') for line in lines[1:]])
 
   def test_each_version_s_server_hooks_file(self) -> None:
     """A dedicated server's hooks (SPEC.md 19.7 step 10b): the server's entry, its own hooks, no client class; what

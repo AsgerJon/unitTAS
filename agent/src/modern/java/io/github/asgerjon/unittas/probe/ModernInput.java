@@ -23,7 +23,9 @@ final class ModernInput {
 	}
 
 	static void bind(Probe probe) {
-		probe.op("player.look").does(ModernInput::look).settles((call, value) -> ModernThings.waitClient(call, 1, value));
+		// answered in the tick it ran in: the client's look is set at once, the server's copy follows with the client's
+		// next movement, a tick behind, as a player's does (SPEC.md 19.7 step 12, V38)
+		probe.op("player.look").does(ModernInput::look);
 		probe.op("key.down").does(call -> {
 			down(key(call));
 			return new JsonObject();
@@ -42,7 +44,10 @@ final class ModernInput {
 		return ModernThings.waitClient(call, call.number("settle_ticks", 4, 0, 1200), value);
 	}
 
-	/** Turns the client player to look this way (degrees; yaw 0 is south, pitch 90 down), this tick and the last. */
+	/**
+	 * Turns the client player to look this way (degrees; yaw 0 is south, pitch 90 down), this tick and the last. A
+	 * mouse.rate in force stops (ModernMouse).
+	 */
 	private static JsonElement look(Call call) throws ProbeException {
 		LocalPlayer player = Minecraft.getInstance().player;
 		if (player == null) {
@@ -53,6 +58,7 @@ final class ModernInput {
 		}
 		float yaw = (float) call.args.get("yaw").getAsDouble();
 		float pitch = (float) call.args.get("pitch").getAsDouble();
+		ModernMouse.stop();
 		VersionCommon.setRot(player, yaw, pitch);
 		player.yRotO = yaw;
 		player.xRotO = pitch;

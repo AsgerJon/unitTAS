@@ -10,6 +10,7 @@ from __future__ import annotations
 from worktoy.ezdata import EZData, EZField
 
 from .box import Box
+from .mouserate import MouseRate
 from .target import Target
 from .values import Look, Vec3
 
@@ -21,9 +22,10 @@ class Perception(EZData, frozen=True):
   box; its look and motion; whether it stands on the ground, ran into
   something across or up and down ('collidedHorizontally',
   'collidedVertically'), is in water or lava, on a ladder, sneaking,
-  sprinting or flying; how far it reaches blocks and entities; what its
-  crosshair targets; and the blocks around it that aren't air (a tuple
-  of NearBlock).
+  sprinting or flying; how far it reaches blocks and entities; the rate
+  its look turns at ('mouseRate', mouse.rate's: 0 and 0 for none); what
+  its crosshair targets; and the blocks around it that aren't air (a
+  tuple of NearBlock).
   """
 
   tick = EZField[int](0)
@@ -43,5 +45,6 @@ class Perception(EZData, frozen=True):
   flying = EZField[bool](False)
   blockReach = EZField[float](0.0)
   entityReach = EZField[float](0.0)
+  mouseRate = EZField[MouseRate]()
   target = EZField[Target]()
   blocks = EZField[tuple]()

@@ -16,8 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .bearing import Bearing
 from .box import Box
 from .container import Container
+from .mouserate import MouseRate
 from .nearblock import NearBlock
 from .perception import Perception
 from .target import FACES, Target
@@ -31,7 +33,8 @@ _MISSING = object()
 _NAMES = {Vec3: 'a position', BlockPos: 'a block position', Look: 'a look', Item: 'an item', Block: 'a block',
           Inventory: 'an inventory', Entity: 'an entity', Effect: 'an effect', Player: 'a player',
           ChatLine: 'a chat line', Sound: 'a sound', LogLine: 'a log line', Screen: 'a screen', Box: 'a box',
-          Target: 'a target', NearBlock: 'a block near', Perception: 'a perception', Container: 'a container'}
+          Target: 'a target', NearBlock: 'a block near', Perception: 'a perception', Container: 'a container',
+          MouseRate: 'a mouse rate', Bearing: 'a bearing'}
 
 
 # ---------------------------------------------------------------- reading the fields
@@ -377,6 +380,34 @@ def _nearBlockJson(block: NearBlock) -> dict:
   return out
 
 
+def _mouseRate(data: Any) -> MouseRate:
+  body = _object(data, MouseRate)
+  what = 'a mouse rate'
+  return MouseRate(_need(body, 'yaw', float, what),
+                   _need(body, 'pitch', float, what),
+                   _need(body, 'frames', int, what))
+
+
+def _mouseRateJson(rate: MouseRate) -> dict:
+  return {'yaw': rate.yaw, 'pitch': rate.pitch,
+          'frames': rate.frames}
+
+
+def _bearing(data: Any) -> Bearing:
+  body = _object(data, Bearing)
+  what = 'a bearing'
+  return Bearing(_need(body, 'tick', int, what),
+                 _vec3(_need(body, 'pos', list, what)),
+                 _look(_need(body, 'look', dict, what)),
+                 _vec3(_need(body, 'motion', list, what)))
+
+
+def _bearingJson(bearing: Bearing) -> dict:
+  return {'tick': bearing.tick, 'pos': _vec3Json(bearing.pos),
+          'look': _lookJson(bearing.look),
+          'motion': _vec3Json(bearing.motion)}
+
+
 def _perception(data: Any) -> Perception:
   body = _object(data, Perception)
   what = 'a perception'
@@ -396,6 +427,7 @@ def _perception(data: Any) -> Perception:
     sprinting=_need(body, 'sprinting', bool, what), flying=_need(body, 'flying', bool, what),
     blockReach=_need(reach, 'block', float, 'a perception\'s "reach"'),
     entityReach=_need(reach, 'entity', float, 'a perception\'s "reach"'),
+    mouseRate=_mouseRate(_need(body, 'mouse_rate', dict, what)),
     target=_target(body['target']),
     blocks=tuple(_nearBlock(block) for block in _need(body, 'blocks', list, what)))
 
@@ -406,7 +438,9 @@ def _perceptionJson(seen: Perception) -> dict:
           'collided': {'horizontally': seen.collidedHorizontally, 'vertically': seen.collidedVertically},
           'in_water': seen.inWater, 'in_lava': seen.inLava, 'on_ladder': seen.onLadder, 'sneaking': seen.sneaking,
           'sprinting': seen.sprinting, 'flying': seen.flying,
-          'reach': {'block': seen.blockReach, 'entity': seen.entityReach}, 'target': _targetJson(seen.target),
+          'reach': {'block': seen.blockReach, 'entity': seen.entityReach},
+          'mouse_rate': _mouseRateJson(seen.mouseRate),
+          'target': _targetJson(seen.target),
           'blocks': [_nearBlockJson(block) for block in seen.blocks]}
 
 
@@ -454,12 +488,14 @@ def _lookJson(look: Look) -> dict:
 _READERS = {Vec3: _vec3, BlockPos: _blockPos, Look: _look, Item: _item, Block: _block, Inventory: _inventory,
             Entity: _entity, Effect: _effect, Player: _player, ChatLine: _chatLine, Sound: _sound,
             LogLine: _logLine, Screen: _screen, Box: _box, Target: _target, NearBlock: _nearBlock,
-            Perception: _perception, Container: _container}
+            Perception: _perception, Container: _container, MouseRate: _mouseRate,
+            Bearing: _bearing}
 _WRITERS = {Vec3: _vec3Json, BlockPos: _blockPosJson, Look: _lookJson, Item: _itemJson, Block: _blockJson,
             Inventory: _inventoryJson, Entity: _entityJson, Effect: _effectJson, Player: _playerJson,
             ChatLine: _chatLineJson, Sound: _soundJson, LogLine: _logLineJson, Screen: _screenJson, Box: _boxJson,
             Target: _targetJson, NearBlock: _nearBlockJson, Perception: _perceptionJson,
-            Container: _containerJson}
+            Container: _containerJson, MouseRate: _mouseRateJson,
+            Bearing: _bearingJson}
 
 
 def fromJson(kind: type, data: Any) -> Any:
