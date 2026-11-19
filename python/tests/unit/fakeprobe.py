@@ -169,11 +169,16 @@ class FakeProbe:
     return asked
 
   def close(self) -> None:
+    """
+    Hangs up, the socket closed for good: its file read from closed too
+    (else its descriptor stays open for the garbage collector to find).
+    """
     if self.sock is not None:
       try:
         self.sock.shutdown(socket.SHUT_RDWR)
       except OSError:
         pass
+      self.reader.close()
       self.sock.close()
 
 

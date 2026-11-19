@@ -1,7 +1,8 @@
 """
 Tests of unittas.link against FakeProbe: the listener and its start file,
 the hello and the welcome or refusal, requests and their answers, events,
-and the connection's end. No game: a real socket on 127.0.0.1.
+and the connection's end, after which nothing of it is left open. No
+game: a real socket on 127.0.0.1.
 
   python -m unittest discover -s python/tests/unit
 """
@@ -407,6 +408,59 @@ class EndTests(_LinkTest):
     connection.close()
     self.assertTrue(connection.closed)
     self.assertIsNone(fake.read(5), 'the game sees the connection end')
+
+
+class NothingLeftOpenTests(_LinkTest):
+  """
+  A connection's socket is closed for good once it is closed, the file
+  read from it too, so its descriptor is gone then, not when the garbage
+  collector finds it (ResourceWarning: unclosed socket, in CI's log,
+  2026-11-19); the fake's side the same. A refused one leaves no
+  descriptor open.
+  """
+
+  def welcomed(self) -> tuple:
+    """A fake game welcomed, with no cleanup holding on to it."""
+    fake = FakeProbe(self.expect().startFile)
+    thread, box = inThread(fake.connect)
+    connection = self.listener.accept(timeout=10)
+    thread.join(10)
+    return connection, fake
+
+  def assertGone(self, connection, fake) -> None:
+    """Both sockets closed for good: no descriptor left (fileno -1)."""
+    self.assertEqual(-1, connection.__socket__.fileno(),
+                     "the connection's socket is closed for good")
+    self.assertEqual(-1, fake.sock.fileno(), "the fake's socket too")
+
+  def test_closed_from_this_side(self) -> None:
+    connection, fake = self.welcomed()
+    connection.close()
+    fake.close()
+    self.assertGone(connection, fake)
+
+  def test_closed_by_the_game(self) -> None:
+    connection, fake = self.welcomed()
+    fake.close()
+    deadline = time.monotonic() + 5
+    while not connection.closed and time.monotonic() < deadline:
+      time.sleep(0.01)
+    self.assertTrue(connection.closed)
+    connection.close()
+    self.assertGone(connection, fake)
+
+  @unittest.skipUnless(os.path.isdir('/proc/self/fd'),
+                       'counts descriptors in /proc/self/fd')
+  def test_refused(self) -> None:
+    before = len(os.listdir('/proc/self/fd'))
+    fake = FakeProbe(self.expect().startFile, token='0' * 64)
+    thread, box = inThread(fake.connect)
+    with self.assertRaises(LinkTimeout):
+      self.listener.accept(timeout=2)
+    thread.join(10)
+    fake.close()
+    self.assertEqual(-1, fake.sock.fileno(), "the fake's socket")
+    self.assertEqual(before, len(os.listdir('/proc/self/fd')))
 
 
 if __name__ == '__main__':

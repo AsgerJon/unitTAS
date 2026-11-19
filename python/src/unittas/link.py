@@ -41,6 +41,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 #  A game's name goes into its start file, and later into file names: kept plain.
 _NAME = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+#  how long close() waits for the reading thread to end once the socket is
+#  shut down (it ends at once then): it closes the file it reads, which
+#  closes the socket for good
+_READER_ENDS = 5.0
 
 
 class Expected(BaseObject):
@@ -312,8 +316,14 @@ class Connection(BaseObject):
     return bool(isinstance(answer, dict) and answer.get('cancelled'))
 
   def close(self) -> None:
-    """Ends the connection from this side; the game then quits (section 10)."""
+    """
+    Ends the connection from this side; the game then quits (section 10).
+    Once it returns, the socket is closed for good: the reading thread,
+    woken by the shutdown, has closed the file it reads.
+    """
     self._end('closed by this side')
+    if threading.current_thread() is not self.__thread__:
+      self.__thread__.join(_READER_ENDS)
 
   def _end(self, reason: str) -> None:
     with self.__lock__:
@@ -333,7 +343,19 @@ class Connection(BaseObject):
     self.__socket__.close()
 
   def _read(self) -> None:
-    """The reading thread: every line the game sends, until the connection ends."""
+    """
+    The reading thread: every line the game sends, until the connection
+    ends; then the file it read from closed, which closes the socket for
+    good (a socket closed with its file open keeps its descriptor until
+    the garbage collector finds it: a ResourceWarning).
+    """
+    try:
+      self._readLines()
+    finally:
+      self.__reader__.close()
+
+  def _readLines(self) -> None:
+    """Every line the game sends, until the connection ends."""
     while True:
       try:
         line = self.__reader__.readline(MAX_LINE + 1)
@@ -451,37 +473,40 @@ class Listener(BaseObject):
     try:
       line = reader.readline(MAX_LINE + 1)
     except (socket.timeout, OSError):
-      return self._refuse(sock, 'a connection that sent no hello within %s s' % helloTimeout, refused, answer=False)
+      return self._refuse(sock, reader, 'a connection that sent no hello within %s s' % helloTimeout, refused,
+                          answer=False)
     if not line:
-      return self._refuse(sock, 'a connection that closed before its hello', refused, answer=False)
+      return self._refuse(sock, reader, 'a connection that closed before its hello', refused, answer=False)
     try:
       message = decodeLine(line)
     except ValueError as error:
-      return self._refuse(sock, 'not a hello: %s' % error, refused)
+      return self._refuse(sock, reader, 'not a hello: %s' % error, refused)
     body = message.get('hello')
     if not isinstance(body, dict):
-      return self._refuse(sock, 'the first line is not a hello', refused)
+      return self._refuse(sock, reader, 'the first line is not a hello', refused)
     with self.__lock__:
       expected = next((each for each in self.__expected__ if each.matches(body.get('token'))), None)
     if expected is None:
-      return self._refuse(sock, 'a wrong token: no game this orchestrator started has it', refused)
+      return self._refuse(sock, reader, 'a wrong token: no game this orchestrator started has it', refused)
     theirs = body.get('protocol')
     theirs = [number for number in theirs if isinstance(number, int)] if isinstance(theirs, list) else []
     common = set(theirs) & set(PROTOCOLS)
     if not common:
-      return self._refuse(sock, 'the probe speaks protocol %s; this unittas speaks %s: update one of them' % (
+      return self._refuse(sock, reader, 'the probe speaks protocol %s; this unittas speaks %s: update one of them' % (
         sorted(theirs), list(PROTOCOLS)), refused)
     try:
       hello = Hello.fromWire(body)
     except ValueError as error:
-      return self._refuse(sock, 'a broken hello: %s' % error, refused)
+      return self._refuse(sock, reader, 'a broken hello: %s' % error, refused)
     if hello.name != expected.name:
-      return self._refuse(sock, 'the hello names the game %r; its token is %r\'s' % (hello.name, expected.name), refused)
+      return self._refuse(sock, reader, 'the hello names the game %r; its token is %r\'s' % (
+        hello.name, expected.name), refused)
     protocol = max(common)
     try:
       sock.sendall(encodeLine({'welcome': {'protocol': protocol, 'orchestrator': 'unittas %s' % __version__}}))
     except OSError as error:
       refused.append('%s: the welcome couldn\'t be sent (%s)' % (expected.name, error))
+      reader.close()
       sock.close()
       return None
     with self.__lock__:
@@ -492,7 +517,11 @@ class Listener(BaseObject):
     return Connection(sock, reader, hello, protocol)
 
   @staticmethod
-  def _refuse(sock: socket.socket, reason: str, refused: list, answer: bool = True) -> None:
+  def _refuse(sock: socket.socket, reader: Any, reason: str, refused: list, answer: bool = True) -> None:
+    """
+    The connection told why it is refused (unless 'answer' is False),
+    then closed for good, the file read from it too.
+    """
     refused.append(reason)
     if answer:
       try:
@@ -503,6 +532,7 @@ class Listener(BaseObject):
       sock.shutdown(socket.SHUT_RDWR)
     except OSError:
       pass
+    reader.close()
     sock.close()
     return None
 

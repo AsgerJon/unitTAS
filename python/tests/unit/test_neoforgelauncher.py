@@ -29,6 +29,7 @@ one does, and else writes the version JSON and the patched client there:
 from __future__ import annotations
 
 import copy
+import gc
 import hashlib
 import io
 import json
@@ -38,6 +39,7 @@ import stat
 import sys
 import tempfile
 import unittest
+import warnings
 import zipfile
 
 from unittas.cache import Cache
@@ -295,6 +297,19 @@ class NeoForgeLauncherTests(unittest.TestCase):
     self.launch()
     self.assertIn('NeoForge %s installer: Installing NeoForge client'
                   % NEOFORGE, said)
+
+  def test_its_installer_s_output_closed(self) -> None:
+    """
+    The pipe its lines came through closed once it is done, not left for
+    the garbage collector (a ResourceWarning: unclosed file).
+    """
+    gc.collect()
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter('always', ResourceWarning)
+      self.launch()
+      gc.collect()
+    self.assertEqual([], [str(each.message) for each in caught
+                          if issubclass(each.category, ResourceWarning)])
 
   def test_its_installer_held_to_its_sha1(self) -> None:
     self.fixture.served[INSTALLER] = installerJar('not:the:installer')

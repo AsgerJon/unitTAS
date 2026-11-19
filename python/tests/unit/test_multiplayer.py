@@ -58,6 +58,9 @@ class FakeServer:
     self.fake = None
     self.connection = None
     self.listener = None
+    #  every listener, fake probe and connection it opened, each start's:
+    #  the test's cleanup closes them all (closeAll)
+    self.opened = []
     #  the quiet limit the server was asked for its ready with; None: its own
     self.seconds = 'not asked'
     os.makedirs(os.path.join(folder, 'unittas', 'region'), exist_ok=True)
@@ -68,10 +71,13 @@ class FakeServer:
   def ready(self, seconds: float = None) -> tuple:
     self.seconds = seconds
     self.listener = Listener()
+    self.opened.append(self.listener)
     expected = self.listener.prepare(self.folder, 'server', Role.SERVER)
     self.fake = FakeProbe(expected.startFile)
+    self.opened.append(self.fake)
     thread, _ = inThread(self.fake.connect)
     self.connection = self.listener.accept(timeout=10)
+    self.opened.append(self.connection)
     thread.join(10)
     self.asked = self.fake.serve({
       'world.prepare': lambda args, side: {},
@@ -90,6 +96,11 @@ class FakeServer:
       if each is not None:
         each.close()
 
+  def closeAll(self) -> None:
+    """Everything it ever opened closed, stopped or not: the cleanup."""
+    for each in reversed(self.opened):
+      each.close()
+
   def ops(self) -> list:
     return [request['op'] for request in self.asked]
 
@@ -107,6 +118,8 @@ class FakeClient:
     self.asked = []
     self.stops = 0
     self.joined = False
+    #  every listener, fake probe and connection it opened (closeAll)
+    self.opened = []
     os.makedirs(folder, exist_ok=True)
     #  its output, as a launched game has one (outputName, results)
     self.results = folder
@@ -118,10 +131,13 @@ class FakeClient:
 
   def start(self):
     self.listener = Listener()
+    self.opened.append(self.listener)
     expected = self.listener.prepare(self.folder, self.name, Role.CLIENT)
     self.fake = FakeProbe(expected.startFile)
+    self.opened.append(self.fake)
     thread, _ = inThread(self.fake.connect)
     self.connection = self.listener.accept(timeout=10)
+    self.opened.append(self.connection)
     thread.join(10)
     me = dict(PLAYER, name=self.name)
 
@@ -156,6 +172,11 @@ class FakeClient:
   def stop(self) -> None:
     self.stops += 1
     for each in (self.connection, self.fake, self.listener):
+      each.close()
+
+  def closeAll(self) -> None:
+    """Everything it ever opened closed, stopped or not: the cleanup."""
+    for each in reversed(self.opened):
       each.close()
 
   def ops(self) -> list:
@@ -203,6 +224,9 @@ class MultiplayerCase(FakeRun, unittest.TestCase):
     self.handlers['client.reset'] = lambda args, side: {}
     self.servers = []
     self.clients = {}
+    #  each fake game's listeners, fake probes and connections closed after
+    #  the test, whether the run stopped them or not
+    self.addCleanup(self.closeFakes)
     self.ports = iter(range(41300, 41400))
     self.available = 32000
 
@@ -222,6 +246,10 @@ class MultiplayerCase(FakeRun, unittest.TestCase):
     self.run.begin()
     Run.current = self.run
     self.addCleanup(setattr, Run, 'current', None)
+
+  def closeFakes(self) -> None:
+    for each in self.servers + list(self.clients.values()):
+      each.closeAll()
 
   def aliceOps(self) -> list:
     return [request['op'] for request in self.asked]

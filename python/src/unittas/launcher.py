@@ -674,14 +674,16 @@ def _install(words: list, log: str, said: Optional[Callable[[str], None]], headi
   with open(log, 'a' if again else 'w', encoding='utf-8') as output:
     if again:
       output.write('\n--- %s, %s\n' % (heading, again))
-    installing = subprocess.Popen(words, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                  cwd=os.path.dirname(words[2]), env=environment, text=True, errors='replace')
-    for line in installing.stdout:
-      output.write(line)
-      refused = refused or REFUSED in line
-      if said is not None:
-        said('%s: %s' % (heading, line.rstrip('\n')))
-    return installing.wait(), refused
+    #  as a context: the pipe its lines come through closed once it is
+    #  done, and it waited for
+    with subprocess.Popen(words, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          cwd=os.path.dirname(words[2]), env=environment, text=True, errors='replace') as installing:
+      for line in installing.stdout:
+        output.write(line)
+        refused = refused or REFUSED in line
+        if said is not None:
+          said('%s: %s' % (heading, line.rstrip('\n')))
+    return installing.returncode, refused
 
 
 def _buildZlib(sources: Sources, compiler: str, folder: str) -> None:
