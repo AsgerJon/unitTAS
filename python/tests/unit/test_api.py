@@ -21,6 +21,7 @@ from mcdex import (MCBlocks, MCDimensions, MCEntities, MCItems,
 from fakeprobe import HELLO, FakeError, FakeProbe, inThread
 from unittas.api import CommandResult, Game
 from unittas.bearing import Bearing
+from unittas.chatsent import ChatSent
 from unittas.codec import toJson
 from unittas.errors import Missing, NoResult, NotFound, NotVerified, UnknownVersion
 from unittas.link import Listener
@@ -430,6 +431,22 @@ class GameTests(unittest.TestCase):
       ('player.teleport', None, {'pos': [0.5, 70.0, 0.5], 'dimension': 'minecraft:the_end'}),
       ('player.look', None, {'yaw': 45.0, 'pitch': 10.0}),
     ], self.sent())
+
+  def test_a_line_sent_to_the_chat(self) -> None:
+    """
+    chat.send (PROTOCOL.md 8.6) as a member: a line as if typed into the
+    chat and sent, a '/' line a command the server parses as the
+    player's; what came back meanwhile, and the red lines among it.
+    """
+    game = self.game({'chat.send': lambda args, side: {
+      'lines': ['Triggered [portals]'], 'errors': []}})
+    said = game.sendChat('/trigger portals')
+    self.assertEqual(ChatSent(('Triggered [portals]',), ()), said)
+    game.sendChat('hello', settleTicks=10)
+    self.assertEqual([('chat.send', None, {'text': '/trigger portals'}),
+                      ('chat.send', None, {'text': 'hello',
+                                           'settle_ticks': 10})],
+                     self.sent())
 
   def test_the_mouse_s_rate(self) -> None:
     """

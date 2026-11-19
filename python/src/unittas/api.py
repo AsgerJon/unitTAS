@@ -26,6 +26,7 @@ from worktoy.desc import Field
 from worktoy.ezdata import EZData, EZField
 
 from .bearing import Bearing
+from .chatsent import ChatSent
 from .codec import fromJson, toJson
 from .blockview import BlockView
 from .container import Container
@@ -520,6 +521,22 @@ class Game:
 
   def type(self, text: str) -> None:
     self.request('screen.type', {'text': text})
+
+  def sendChat(self, text: str,
+               settleTicks: Optional[int] = None) -> ChatSent:
+    """
+    A line sent to the chat as if typed into it and sent (chat.send): it
+    goes through the network into the chat's history, and a '/' line is
+    a command the server parses as the player's (no op needed for one a
+    player may give, as /trigger). What came back while it settled
+    ('settleTicks' client ticks; the probe's own 4, left out), and the
+    red lines among it.
+    """
+    args = {'text': text}
+    if settleTicks is not None:
+      args['settle_ticks'] = settleTicks
+    said = self.request('chat.send', args)
+    return ChatSent(tuple(said['lines']), tuple(said['errors']))
 
   def key(self, name: str) -> None:
     self.request('screen.key', {'key': name})

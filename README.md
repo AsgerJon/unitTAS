@@ -372,7 +372,8 @@ class GiveTests(GameTestCase):
 
 - `self.game` is the game (`unittas.api.Game`): `command`, `player`, `teleport`, `look`, `held`, `slot`,
   `inventory`, `setSlot`, `block`, `setBlock`, `spawn`, `entity`, `entities`, `remove`, the keys (`tap`, `keyDown`,
-  `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), `ticks(n)`, `waitUntil`, `screenshot`, and
+  `keyUp`, `key`), the screens (`openScreen`, `closeScreen`, `type`), the chat (`sendChat` a line as typed and sent,
+  a `/` line the player's command; `chat` to read it), `ticks(n)`, `waitUntil`, `screenshot`, and
   `reflect` by readable names (a real client's are translated). Its values are typed (`unittas.values`). An error
   from the game is the package's exception (`unittas.errors`): a mod that threw is a `GameError`.
 - `look(yaw, pitch)` sets the look at once, answered in the tick it ran in (the server's copy follows a tick behind,

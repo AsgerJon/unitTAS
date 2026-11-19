@@ -161,6 +161,13 @@ class GameTests(unittest.TestCase):
     said = self.request('chat.send', {'text': '/time set 7000'})
     self.assertTrue(any('7000' in line for line in said['lines']), said)
     self.assertEqual(7000, self.request('world.get')['day_time'])
+    #  as Game's member: what came back, and no red line
+    sent = self.game.sendChat('/time set 8000')
+    self.assertTrue(any('8000' in line for line in sent.lines), sent)
+    self.assertEqual((), sent.errors)
+    self.assertEqual(8000, self.request('world.get')['day_time'])
+    refused = self.game.sendChat('/time set never')
+    self.assertTrue(refused.errors, refused)
 
   def test_10_camera(self) -> None:
     self.request('camera.set', {'view': 1})
