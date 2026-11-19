@@ -1,15 +1,16 @@
 """
 The look turned at a rate (mouse.rate, SPEC.md 19.7 step 12) on the
 run's port: the client's player turns every frame by the frame's share
-of a tick, as a hand turns a mouse. A rate r for n ticks turns about r
-times n (the game time from the request to the last frame before the
-answer: short of n by a frame's share at each end); the look turned in
-more frames than ticks, each by its share of a tick, not a tick's; the
-pitch stops at straight down, the rate still in force; player.look, 0
-and 0, a screen opening and the reset stop it, and it stays stopped; a
-screen open refuses a rate; the answer is the player's bearing (its
-tick, where it is, its look and its motion). On the agent's versions
-(1.16.1 on): the 1.7.10 probe has no mouse.rate.
+of a tick, as a hand turns a mouse, and at each tick's end up to it. So
+a rate r for n ticks has turned r times n at a tick's end, whatever the
+frame rate (the frames in between are the machine's: their count is
+not tested, only that there were some); a rate asked every tick turns
+the whole of each tick; the pitch stops at straight down, the rate
+still in force; player.look, 0 and 0, a screen opening and the reset
+stop it, and it stays stopped; a screen open refuses a rate; the answer
+is the player's bearing (its tick, where it is, its look and its
+motion). On the agent's versions (1.16.1 on): the 1.7.10 probe has no
+mouse.rate.
 
   python -m unittas.selftest test_mouse.
   (through the watcher: "probe test_mouse on 26.3")
@@ -32,9 +33,6 @@ from unittas.values import Look
 
 #  how long a rate is watched, in ticks
 TICKS = 40
-#  how far short of r times n the turn may be, in ticks' worth: a
-#  frame's share at each end, a frame at most a tick (20 frames a second)
-SHORT = 2.0
 
 
 @onlyOn(V26_3, V1_21_1, V1_20_1, V1_16_1,
@@ -80,7 +78,7 @@ class MouseRateTests(unittest.TestCase):
     self.assertEqual(seen.look, after.look, 'the look turns on')
     return after
 
-  def test_a_a_rate_turns_by_the_ticks_in_frames(self) -> None:
+  def test_a_a_rate_turns_r_times_the_ticks(self) -> None:
     yaw, pitch = 2.0, 0.5
     set_ = self.rate(yaw, pitch)
     self.game.ticks(TICKS)
@@ -93,10 +91,9 @@ class MouseRateTests(unittest.TestCase):
     for name, rate, turned in (('yaw', yaw, seen.look.yaw),
                                ('pitch', pitch, seen.look.pitch)):
       with self.subTest(name):
-        self.assertLessEqual(turned, rate * ticks + 1e-3)
-        self.assertGreaterEqual(turned, rate * (ticks - SHORT))
-    #  more frames than ticks: each a frame's share of a tick
-    self.assertGreater(seen.mouseRate.frames, ticks)
+        self.assertAlmostEqual(rate * ticks, turned, delta=1e-3)
+    #  turned in frames between the ticks too (how many is the machine's)
+    self.assertGreater(seen.mouseRate.frames, 0)
 
   def test_b_the_pitch_stops_straight_down(self) -> None:
     self.game.look(0.0, 80.0)
@@ -154,7 +151,26 @@ class MouseRateTests(unittest.TestCase):
     self.assertEqual(before.motion, bearing.motion)
     self.assertEqual(before.look, bearing.look)
 
-  def test_g_the_reset_stops_it(self) -> None:
+  def test_g_asked_every_tick_it_turns_each_tick_whole(self) -> None:
+    """
+    A rate asked again turns the whole of the time between the two
+    requests: the old rate up to the change, the new one from it
+    (meantwell's finding on 26.3: two thirds turned when asked every
+    tick, a frame's share lost at each request). Between two answers the
+    look turns the rate in force times their ticks apart.
+    """
+    before = self.game.request('mouse.rate', {'yaw': 0.0, 'pitch': 0.0})
+    rates = [6.0, 12.0, 15.0, 15.0, 15.0, 15.0, 12.0, 10.0, 4.0, 0.0]
+    answers = [self.game.request('mouse.rate', {'yaw': rate, 'pitch': 0.0})
+               for rate in rates]
+    self.assertEqual(0.0, answers[0]['look']['yaw'] - before['look']['yaw'])
+    for rate, was, now in zip(rates, answers, answers[1:]):
+      with self.subTest(rate=rate, tick=now['tick']):
+        ticks = now['tick'] - was['tick']
+        turned = now['look']['yaw'] - was['look']['yaw']
+        self.assertAlmostEqual(rate * ticks, turned, delta=1e-3)
+
+  def test_h_the_reset_stops_it(self) -> None:
     self.rate(3.0, 0.0)
     self.game.ticks(5)
     reset(self.game.connection, at=start())

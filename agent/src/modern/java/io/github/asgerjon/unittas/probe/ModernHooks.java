@@ -148,6 +148,8 @@ public final class ModernHooks {
 			probe.event("ready", ready(snapshot));
 			return;
 		}
+		// mouse.rate's turn up to this tick's end, before the steps that answer with the look (ModernMouse)
+		ModernMouse.ticked();
 		sides.ticked(Side.CLIENT);
 	}
 
